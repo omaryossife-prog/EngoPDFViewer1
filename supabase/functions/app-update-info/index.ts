@@ -2,7 +2,7 @@ import { adminClient, badRequest, handleOptions, jsonResponse } from "../_shared
 
 function parseVersion(value: unknown): number[] | null {
   const text = String(value ?? "").trim();
-  if (!/^\\d+(?:\\.\\d+){1,3}$/.test(text)) return null;
+  if (!/^\d+(?:\.\d+){1,3}$/.test(text)) return null;
   return text.split(".").map((part) => Number.parseInt(part, 10));
 }
 
@@ -47,7 +47,7 @@ Deno.serve(async (req: Request) => {
     };
     const latestVersion = parseVersion(settings.latest_version);
     const updateUrl = String(settings.update_url ?? "").trim();
-    const safeUrl = /^https:\\/\\//i.test(updateUrl) ? updateUrl : null;
+    const safeUrl = /^https:\/\//i.test(updateUrl) ? updateUrl : null;
     const enabled = Boolean(settings.enabled);
     const updateAvailable = Boolean(
       enabled && latestVersion && safeUrl &&
