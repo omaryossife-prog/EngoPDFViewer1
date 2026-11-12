@@ -76,7 +76,7 @@ def test_next_release_version_is_trusted_and_update_settings_start_disabled():
     main = (ROOT / "engo_main.py").read_text(encoding="utf-8")
     core = (ROOT / "engo_licensing" / "core.py").read_text(encoding="utf-8")
     migration = (ROOT / "supabase" / "migrations" / "20261112223234_add_app_update_settings.sql").read_text(encoding="utf-8")
-    assert 'APP_VERSION = "2.3.7"' in main
-    assert 'APP_VERSION_FALLBACK = "2.3.7"' in core
-    assert "'2.3.7', true" in migration
-    assert "true, false, '2.3.7'" in migration
+    assert 'APP_VERSION = "2.3.6"' in main
+    assert 'APP_VERSION_FALLBACK = "2.3.6"' in core
+    assert "'2.3.6', true" in migration
+    assert "true, false, '2.3.6'" in migration
