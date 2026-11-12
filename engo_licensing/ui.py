@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QApplication, QDialog, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel,
     QListWidget, QMessageBox, QPushButton, QProgressBar, QVBoxLayout, QWidget,
     QComboBox, QScrollArea, QPlainTextEdit, QTableWidget, QTableWidgetItem,
-    QHeaderView, QAbstractItemView,
+    QHeaderView, QAbstractItemView, QAbstractScrollArea, QSizePolicy,
 )
 
 from .core import LicenseService, LicenseState
@@ -398,31 +398,19 @@ class PlansDialog(QDialog):
         comparison_title = QLabel(self._tr("مقارنة المميزات", "Feature comparison")); comparison_title.setObjectName("planHeading")
         root.addWidget(comparison_title)
         self.comparison_table = QTableWidget(0, 5)
-        self.comparison_table.setHorizontalHeaderLabels([
-            self._tr("الميزة", "Feature"),
-            self._tr("مجاني\\nمتاح بلا حدود", "Free\\nUnlimited"),
-            self._tr("مجاني\\nمتاح بحدود", "Free\\nLimited"),
-            self._tr("مجاني\\nغير متاح", "Free\\nUnavailable"),
-            self._tr("مميز\\nمتاح بلا حدود", "Premium\\nUnlimited"),
-        ])
-        comparison_header = self.comparison_table.horizontalHeader()
-        comparison_header.setVisible(True)
-        comparison_header.setFixedHeight(62)
-        comparison_header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
-        comparison_header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        # Two-level header: Free spans its three availability states; Premium
+        # has a single unlimited column. Keep the table itself non-scrollable.
+        self.comparison_table.horizontalHeader().hide()
         self.comparison_table.verticalHeader().setVisible(False)
-        self.comparison_table.verticalHeader().setDefaultSectionSize(36)
         self.comparison_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.comparison_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.comparison_table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
-        self.comparison_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.comparison_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.comparison_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.comparison_table.setFixedHeight(430)
+        self.comparison_table.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents)
+        self.comparison_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.comparison_table.setAlternatingRowColors(True)
         self.comparison_table.setWordWrap(True)
-        self.comparison_table.setColumnWidth(0, 180)
-        for column in range(1, 5):
-            self.comparison_table.setColumnWidth(column, 94)
+        self.comparison_table.setTextElideMode(Qt.TextElideMode.ElideNone)
         self._populate_comparison()
         root.addWidget(self.comparison_table)
         root.addWidget(free)
@@ -505,19 +493,40 @@ class PlansDialog(QDialog):
                 "Feature data was not returned by the server. Deploy the updated account-overview function, then check the account connection and reopen plans."
             ))
 
-        # The real QHeaderView stays pinned while the feature rows scroll.
-        self.comparison_table.setRowCount(0)
+        # Recreate the original grouped header: Free has three states,
+        # Premium has one unlimited state. Feature rows stay in their natural
+        # order; they are not split into separate status sections.
+        self.comparison_table.clear()
+        self.comparison_table.setRowCount(2)
+        self.comparison_table.setSpan(0, 0, 2, 1)
+        self.comparison_table.setItem(0, 0, QTableWidgetItem(self._tr("الميزة", "Feature")))
+        self.comparison_table.setSpan(0, 1, 1, 3)
+        self.comparison_table.setItem(0, 1, QTableWidgetItem(self._tr("مجاني", "Free")))
+        self.comparison_table.setItem(0, 4, QTableWidgetItem(self._tr("مميز", "Premium")))
 
-        def add_section(title_ar: str, title_en: str):
-            row_index = self.comparison_table.rowCount()
-            self.comparison_table.insertRow(row_index)
-            section = QTableWidgetItem(self._tr(title_ar, title_en))
-            section.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            font = section.font()
+        headers = [
+            (1, "غير متاح", "Unavailable", "#d94848"),
+            (2, "متاح بحدود", "Available with limits", "#d6a328"),
+            (3, "متاح بلا حدود", "Available without limits", "#239b62"),
+            (4, "متاح بلا حدود", "Available without limits", "#239b62"),
+        ]
+        for column, ar, en, color in headers:
+            item = QTableWidgetItem(self._tr(ar, en))
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            item.setForeground(QColor(color))
+            font = item.font()
             font.setBold(True)
-            section.setFont(font)
-            self.comparison_table.setItem(row_index, 0, section)
-            self.comparison_table.setSpan(row_index, 0, 1, 5)
+            item.setFont(font)
+            self.comparison_table.setItem(1, column, item)
+
+        for row in range(2):
+            for column in range(5):
+                item = self.comparison_table.item(row, column)
+                if item:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
 
         basic_features = [
             ("فتح وعرض ملفات PDF", "Open and view PDF files"),
@@ -528,61 +537,55 @@ class PlansDialog(QDialog):
             ("التكبير والتصغير وملاءمة الصفحة", "Zoom and fit page"),
             ("تدوير الصفحات", "Rotate pages"),
         ]
-        add_section(
-            "المميزات المتاحة بلا حدود في جميع الخطط",
-            "Features available without limits on all plans",
-        )
+        section_row = self.comparison_table.rowCount()
+        self.comparison_table.insertRow(section_row)
+        section = QTableWidgetItem(self._tr(
+            "الميزات الأساسية المتاحة بلا حدود في جميع الخطط",
+            "Core features unlimited in every plan",
+        ))
+        section.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        font = section.font()
+        font.setBold(True)
+        section.setFont(font)
+        self.comparison_table.setItem(section_row, 0, section)
+        self.comparison_table.setSpan(section_row, 0, 1, 5)
+
         for label_ar, label_en in basic_features:
             row_index = self.comparison_table.rowCount()
             self.comparison_table.insertRow(row_index)
-            self.comparison_table.setItem(row_index, 0, QTableWidgetItem(self._tr(label_ar, label_en)))
-            self._put_status_dot(row_index, 1, "unlimited")
+            self.comparison_table.setItem(
+                row_index, 0, QTableWidgetItem(self._tr(label_ar, label_en))
+            )
+            self._put_status_dot(row_index, 3, "unlimited")
             self._put_status_dot(row_index, 4, "unlimited")
 
-        # Free-plan features are grouped in the requested order: unlimited,
-        # limited, then unavailable. Premium has one unlimited column only.
-        grouped: dict[str, list[tuple[str, str, str, dict | None, dict | None]]] = {
-            "unlimited": [], "limited": [], "unavailable": [],
-        }
         for key, label_ar, label_en in labels:
+            row_index = self.comparison_table.rowCount()
+            self.comparison_table.insertRow(row_index)
+            self.comparison_table.setItem(
+                row_index, 0, QTableWidgetItem(self._tr(label_ar, label_en))
+            )
             free_row = by_key.get(key, {}).get("free")
             premium_row = by_key.get(key, {}).get("premium")
-            grouped[self._free_status(free_row)].append(
-                (key, label_ar, label_en, free_row, premium_row)
+            self._put_status_dot(
+                row_index, self._free_status_column(free_row), self._free_status(free_row)
             )
+            # Premium is represented by one column only: enabled means unlimited.
+            if self._premium_enabled(premium_row):
+                self._put_status_dot(row_index, 4, "unlimited")
 
-        sections = {
-            "unlimited": (
-                "المميزات المتاحة بلا حدود في المجاني",
-                "Free features available without limits",
-            ),
-            "limited": (
-                "المميزات المتاحة بحدود في المجاني",
-                "Free features available with limits",
-            ),
-            "unavailable": (
-                "المميزات غير المتاحة في المجاني",
-                "Features unavailable on Free",
-            ),
-        }
-        for status in ("unlimited", "limited", "unavailable"):
-            items = grouped[status]
-            if not items:
-                continue
-            add_section(*sections[status])
-            for _key, label_ar, label_en, free_row, premium_row in items:
-                row_index = self.comparison_table.rowCount()
-                self.comparison_table.insertRow(row_index)
-                self.comparison_table.setItem(
-                    row_index, 0, QTableWidgetItem(self._tr(label_ar, label_en))
-                )
-                self._put_status_dot(row_index, self._free_status_column(free_row), status)
-                self._put_status_dot(
-                    row_index, 4,
-                    "unlimited" if self._premium_enabled(premium_row) else "unavailable",
-                )
-
+        header = self.comparison_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for column in range(1, 5):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch)
         self.comparison_table.resizeRowsToContents()
+        # Long labels wrap inside their cells; the table itself never scrolls.
+        total_height = self.comparison_table.frameWidth() * 2
+        total_height += sum(
+            self.comparison_table.rowHeight(row)
+            for row in range(self.comparison_table.rowCount())
+        )
+        self.comparison_table.setFixedHeight(total_height + 2)
 
     def _free_status(self, row: dict | None) -> str:
         if not isinstance(row, dict) or not row or not bool(row.get("enabled")):
