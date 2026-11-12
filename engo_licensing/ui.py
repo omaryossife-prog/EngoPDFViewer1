@@ -406,8 +406,8 @@ class GroupedPlanHeader(QHeaderView):
                          positions[3] + widths[3])
         cell(free_left, 0, free_right - free_left, top_height, free)
         cell(positions[4], 0, widths[4], top_height, premium)
-        cell(positions[1], top_height, widths[1], full_height - top_height, limited)
-        cell(positions[2], top_height, widths[2], full_height - top_height, unlimited)
+        cell(positions[1], top_height, widths[1], full_height - top_height, unlimited)
+        cell(positions[2], top_height, widths[2], full_height - top_height, limited)
         cell(positions[3], top_height, widths[3], full_height - top_height, unavailable)
         cell(positions[4], top_height, widths[4], full_height - top_height, unlimited)
         painter.end()
@@ -580,7 +580,7 @@ class PlansDialog(QDialog):
                 (label_ar, label_en, self._premium_enabled(premium_row))
             )
 
-        for free_status in ("limited", "unlimited", "unavailable"):
+        for free_status in ("unlimited", "limited", "unavailable"):
             for label_ar, label_en, premium_unlimited in grouped_features[free_status]:
                 row_index = self.comparison_table.rowCount()
                 self.comparison_table.insertRow(row_index)
@@ -597,7 +597,7 @@ class PlansDialog(QDialog):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for column in range(1, 5):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
-            self.comparison_table.setColumnWidth(column, 84)
+            self.comparison_table.setColumnWidth(column, 136 if column in (1, 4) else 84)
         self.comparison_table.verticalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents
         )
@@ -619,7 +619,7 @@ class PlansDialog(QDialog):
 
     @staticmethod
     def _free_status_column_for_status(status: str) -> int:
-        return {"limited": 1, "unlimited": 2, "unavailable": 3}[status]
+        return {"unlimited": 1, "limited": 2, "unavailable": 3}[status]
 
     @staticmethod
     def _premium_enabled(row: dict | None) -> bool:
