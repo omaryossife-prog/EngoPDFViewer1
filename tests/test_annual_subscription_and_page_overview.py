@@ -46,3 +46,19 @@ def test_annual_database_migration_adds_12_month_activation_support():
     assert "duration_months = 12" in migration
     assert "('premium', 'annual', 12, 0, 'EGP', true)" in migration
     assert "when 'annual' then 12" in migration
+
+
+
+def test_plan_comparison_restores_grouped_free_and_single_premium_header():
+    ui = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
+    assert "self.comparison_table.setSpan(0, 1, 1, 3)" in ui
+    assert 'self._tr("مجاني", "Free")' in ui
+    assert 'self._tr("مميز", "Premium")' in ui
+    assert 'self._tr("متاح بلا حدود", "Available without limits")' in ui
+    assert "self.comparison_table.setItem(1, 4, item)" in ui
+    assert "Premium\\\\nUnavailable" not in ui
+    assert "self.comparison_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)" in ui
+    assert "self.comparison_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)" in ui
+    assert "self.comparison_table.setFixedHeight(total_height + 2)" in ui
+    assert "self._put_status_dot(row_index, 4, \"unlimited\")" in ui
+    assert "grouped: dict[str, list" not in ui
