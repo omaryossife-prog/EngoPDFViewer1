@@ -206,8 +206,8 @@ create trigger devices_record_active_time
 -- ---------------------------------------------------------------------
 create table if not exists public.subscription_prices (
     plan_id text not null references public.plans(plan_id) on delete cascade,
-    billing_period text not null check (billing_period in ('monthly', 'quarterly', 'semiannual')),
-    duration_months integer not null check (duration_months in (1, 3, 6)),
+    billing_period text not null check (billing_period in ('monthly', 'quarterly', 'semiannual', 'annual')),
+    duration_months integer not null check (duration_months in (1, 3, 6, 12)),
     amount numeric(12,2) not null default 0 check (amount >= 0),
     currency text not null default 'EGP',
     is_active boolean not null default true,
@@ -216,7 +216,8 @@ create table if not exists public.subscription_prices (
     check (
         (billing_period = 'monthly' and duration_months = 1) or
         (billing_period = 'quarterly' and duration_months = 3) or
-        (billing_period = 'semiannual' and duration_months = 6)
+        (billing_period = 'semiannual' and duration_months = 6) or
+        (billing_period = 'annual' and duration_months = 12)
     )
 );
 
@@ -224,7 +225,8 @@ insert into public.subscription_prices(plan_id, billing_period, duration_months,
 values
     ('premium', 'monthly', 1, 0, 'EGP', true),
     ('premium', 'quarterly', 3, 0, 'EGP', true),
-    ('premium', 'semiannual', 6, 0, 'EGP', true)
+    ('premium', 'semiannual', 6, 0, 'EGP', true),
+    ('premium', 'annual', 12, 0, 'EGP', true)
 on conflict (plan_id, billing_period) do nothing;
 
 create table if not exists public.subscription_settings (
@@ -296,6 +298,7 @@ begin
         when 'monthly' then 1
         when 'quarterly' then 3
         when 'semiannual' then 6
+        when 'annual' then 12
         else null
     end;
     if v_months is null then
