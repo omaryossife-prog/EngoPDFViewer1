@@ -18,11 +18,16 @@ Deno.serve(async (req: Request) => {
     // though the desktop must (correctly) deny the feature without a signed reply.
     const license = await makeSignedLicense(user.id, deviceId, appVersion);
     const context = license.context;
-    if (context.license_status === "untrusted_build" && !Boolean(context.free_unlimited_mode)) {
+    const entitlements = context.entitlements as Record<string, { enabled?: boolean; limit?: number | null }> | undefined;
+    const entitlement = entitlements?.[feature];
+    const enabled = Boolean(entitlement?.enabled);
+    const featureIsLimited = enabled && entitlement?.limit !== null && entitlement?.limit !== undefined;
+    if (context.license_status === "untrusted_build" &&
+        !Boolean(context.free_unlimited_mode) && featureIsLimited) {
       return jsonResponse({
         allowed: false,
         used: null,
-        limit: null,
+        limit: entitlement?.limit ?? null,
         message: "update_required",
         license: license.envelope,
       });
@@ -33,8 +38,10 @@ Deno.serve(async (req: Request) => {
     });
     if (usageResult.error) throw new Error(usageResult.error.message);
     const usage = usageResult.data as Record<string, unknown>;
-    const validLicense = context.license_status === "active" || (context.license_status === "untrusted_build" && Boolean(context.free_unlimited_mode));
-    const enabled = Boolean((context.entitlements as Record<string, {enabled?: boolean}> | undefined)?.[feature]?.enabled);
+    const validLicense = context.license_status === "active" || (
+      context.license_status === "untrusted_build" &&
+      (Boolean(context.free_unlimited_mode) || (enabled && entitlement?.limit == null))
+    );
     const allowed = validLicense && enabled && Boolean(usage?.allowed);
     return jsonResponse({
       allowed,
