@@ -378,15 +378,15 @@ class GroupedPlanHeader(QHeaderView):
         top_height = 30
         full_height = self.height()
 
-        def cell(x, y, width, height, label):
+        def cell(x, y, width, height, label, text_color=None):
             if width <= 0 or height <= 0:
                 return
             rect = QRect(int(x), int(y), int(width), int(height))
             painter.fillRect(rect, background)
             painter.setPen(border)
             painter.drawRect(rect.adjusted(0, 0, -1, -1))
-            painter.setPen(foreground)
-            font = painter.font()
+            painter.setPen(QColor(text_color) if text_color else foreground)
+            font = self.font()
             font.setBold(y == 0)
             font.setPointSize(max(7, font.pointSize() - 1))
             painter.setFont(font)
@@ -399,17 +399,24 @@ class GroupedPlanHeader(QHeaderView):
         limited = "متاح بحدود" if self.language == "ar" else "Available with limits"
         unlimited = "متاح بلا حدود" if self.language == "ar" else "Available without limits"
         unavailable = "غير متاح" if self.language == "ar" else "Unavailable"
+        status_colors = {
+            "unavailable": "#d94848",
+            "limited": "#d6a328",
+            "unlimited": "#239b62",
+        }
+        free_color = "#4f8ee8"
+        premium_color = "#d6a328"
 
         cell(positions[0], 0, widths[0], full_height, feature)
         free_left = min(positions[1], positions[2], positions[3])
         free_right = max(positions[1] + widths[1], positions[2] + widths[2],
                          positions[3] + widths[3])
-        cell(free_left, 0, free_right - free_left, top_height, free)
-        cell(positions[4], 0, widths[4], top_height, premium)
-        cell(positions[1], top_height, widths[1], full_height - top_height, unlimited)
-        cell(positions[2], top_height, widths[2], full_height - top_height, limited)
-        cell(positions[3], top_height, widths[3], full_height - top_height, unavailable)
-        cell(positions[4], top_height, widths[4], full_height - top_height, unlimited)
+        cell(free_left, 0, free_right - free_left, top_height, free, free_color)
+        cell(positions[4], 0, widths[4], top_height, premium, premium_color)
+        cell(positions[1], top_height, widths[1], full_height - top_height, unlimited, status_colors["unlimited"])
+        cell(positions[2], top_height, widths[2], full_height - top_height, limited, status_colors["limited"])
+        cell(positions[3], top_height, widths[3], full_height - top_height, unavailable, status_colors["unavailable"])
+        cell(positions[4], top_height, widths[4], full_height - top_height, unlimited, status_colors["unlimited"])
         painter.end()
 
 
