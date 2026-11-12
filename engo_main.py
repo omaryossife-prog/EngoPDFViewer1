@@ -1744,7 +1744,7 @@ class MainWindow(QMainWindow):
         self._refresh_license_button()
         if self.license_service is not None:
             state = self.license_service.state
-            if state.license_status == "untrusted_build" and not state.free_unlimited_mode:
+            if state.license_status == "untrusted_build":
                 QTimer.singleShot(0, self._show_unsupported_build_dialog)
             elif state.license_status == "active":
                 self._unsupported_build_dialog_shown = False
@@ -1775,8 +1775,7 @@ class MainWindow(QMainWindow):
         self._update_info = data if not error and isinstance(data, dict) else {}
         self._render_update_notice()
         state = getattr(getattr(self, "license_service", None), "state", None)
-        if (state is not None and state.license_status == "untrusted_build"
-                and not state.free_unlimited_mode):
+        if state is not None and state.license_status == "untrusted_build":
             QTimer.singleShot(0, self._show_unsupported_build_dialog)
 
     def _render_update_notice(self):
@@ -1829,7 +1828,6 @@ class MainWindow(QMainWindow):
         service = getattr(self, "license_service", None)
         state = getattr(service, "state", None) if service is not None else None
         if (state is None or state.license_status != "untrusted_build"
-                or state.free_unlimited_mode
                 or getattr(self, "_unsupported_build_dialog_shown", False)):
             return
         self._unsupported_build_dialog_shown = True
@@ -1838,11 +1836,18 @@ class MainWindow(QMainWindow):
         is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
         current_version = str(state.app_version or APP_VERSION)
         latest_version = str(info.get("latest_version") or "").strip()
-        message = (
-            "هذا الإصدار لم يعد معتمدًا من إدارة ENGO. تم إيقاف المميزات التي تعمل بحدود استخدام حتى تثبّت إصدارًا معتمدًا."
-            if is_ar else
-            "This ENGO release is no longer approved. Features with usage limits are locked until you install a supported release."
-        )
+        if state.free_unlimited_mode:
+            message = (
+                "هذا الإصدار لم يعد معتمدًا من إدارة ENGO. حدّث البرنامج إلى إصدار مدعوم لضمان استمرار عمل جميع المميزات."
+                if is_ar else
+                "This ENGO release is no longer approved. Update to a supported release to ensure all features keep working."
+            )
+        else:
+            message = (
+                "هذا الإصدار لم يعد معتمدًا من إدارة ENGO. تم إيقاف المميزات التي تعمل بحدود استخدام حتى تثبّت إصدارًا معتمدًا."
+                if is_ar else
+                "This ENGO release is no longer approved. Features with usage limits are locked until you install a supported release."
+            )
         if latest_version:
             message += (
                 f"\n\nالإصدار الحالي: {current_version}\nالإصدار المطلوب: {latest_version}"
