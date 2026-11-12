@@ -1,5 +1,5 @@
 import { adminClient, authenticatedUser, badRequest, handleOptions, jsonResponse, makeSignedLicense, readBody, requireText, requireVersion } from "./_shared/common.ts";
-const allowedFeatures = new Set(["pdf_merge","page_themes","app_themes","smart_theme","text_chat","voice_chat","tags","tag_units","translations","ai_search"]);
+const allowedFeatures = new Set(["pdf_merge","page_themes","app_themes","smart_theme","text_chat","voice_chat","voice_board_docx","tags","tag_units","translations","ai_search"]);
 Deno.serve(async (req: Request) => {
   const options = await handleOptions(req); if (options) return options;
   try {
