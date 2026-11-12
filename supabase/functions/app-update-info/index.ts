@@ -47,7 +47,13 @@ Deno.serve(async (req: Request) => {
     };
     const latestVersion = parseVersion(settings.latest_version);
     const updateUrl = String(settings.update_url ?? "").trim();
-    const safeUrl = /^https:\/\//i.test(updateUrl) ? updateUrl : null;
+    let safeUrl: string | null = null;
+    try {
+      const parsedUrl = new URL(updateUrl);
+      if (parsedUrl.protocol === "https:" && parsedUrl.hostname) safeUrl = parsedUrl.toString();
+    } catch {
+      safeUrl = null;
+    }
     const enabled = Boolean(settings.enabled);
     const updateAvailable = Boolean(
       enabled && latestVersion && safeUrl &&
