@@ -913,18 +913,21 @@ class LicenseService:
 
             state = self._apply_payload(payload, session.get("user") or {})
             license_status = str(payload.get("license_status") or "")
-            if (license_status == "untrusted_build"
-                    and not bool(payload.get("free_unlimited_mode", False))):
-                return {"allowed": False, "tracked": False, "message": "update_required"}
             entitlements = payload.get("entitlements") if isinstance(payload.get("entitlements"), dict) else {}
             entitlement = entitlements.get(feature_key) if isinstance(entitlements, dict) else None
             enabled = isinstance(entitlement, dict) and bool(entitlement.get("enabled"))
+            free_unlimited = bool(payload.get("free_unlimited_mode", False))
+            feature_is_unlimited = isinstance(entitlement, dict) and entitlement.get("limit") is None
             server_allowed = response.get("allowed") is True
 
-            # Non-unlimited releases must be explicitly supported by the owner.
-            # The server has already denied their limited features without consuming quota.
+            # An unsupported release may keep enabled unlimited Free features,
+            # but any feature with a finite Free limit is blocked until updating.
+            if (license_status == "untrusted_build" and not free_unlimited
+                    and enabled and isinstance(entitlement, dict) and entitlement.get("limit") is not None):
+                return {"allowed": False, "tracked": False, "message": "update_required"}
+
             if license_status != "active" and not (
-                    license_status == "untrusted_build" and bool(payload.get("free_unlimited_mode", False))
+                    license_status == "untrusted_build" and (free_unlimited or (enabled and feature_is_unlimited))
             ):
                 self._free_state(str(payload.get("message") or license_status or "License unavailable"), authenticated=True)
                 return {"allowed": False, "tracked": False,
