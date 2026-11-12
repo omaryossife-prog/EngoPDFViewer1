@@ -1530,7 +1530,7 @@ class MainWindow(QMainWindow):
             plan_lbl.setText(self._plan_label_localized(state.plan_label, is_ar))
             plan_color = "#d6a328" if state.is_premium else "#4f8ee8"
             plan_lbl.setStyleSheet(
-                f"color: {plan_color}; font-size: 9pt; font-weight: 700; background: transparent;"
+                f"color: {plan_color}; font-size: 11pt; font-weight: 800; background: transparent;"
             )
             if avatar_lbl is not None:
                 cached_pixmap = getattr(self, "_home_avatar_pixmap", None)
