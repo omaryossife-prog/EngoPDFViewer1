@@ -1153,8 +1153,9 @@ class UpdatesTab(QWidget):
         if not re.fullmatch(r"\d+(?:\.\d+){1,3}", version):
             QMessageBox.warning(self, "Engo Admin", "اكتب رقم إصدار صحيحًا مثل 2.3.7.")
             return
-        if url and not url.lower().startswith("https://"):
-            QMessageBox.warning(self, "Engo Admin", "رابط التحديث يجب أن يبدأ بـ https://")
+        parsed_url = urllib.parse.urlparse(url) if url else None
+        if url and (parsed_url.scheme.lower() != "https" or not parsed_url.netloc):
+            QMessageBox.warning(self, "Engo Admin", "أدخل رابط تحديث صحيحًا يبدأ بـ https://")
             return
 
         body = {
