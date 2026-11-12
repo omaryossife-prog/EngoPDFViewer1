@@ -1,6 +1,6 @@
 import { adminClient, authenticatedUser, badRequest, handleOptions, jsonResponse, readBody } from "../_shared/common.ts";
 const periods: Record<string, { months: number }> = {
-  monthly: { months: 1 }, quarterly: { months: 3 }, semiannual: { months: 6 },
+  monthly: { months: 1 }, quarterly: { months: 3 }, semiannual: { months: 6 }, annual: { months: 12 },
 };
 Deno.serve(async (req: Request) => {
   const options = await handleOptions(req); if (options) return options;
