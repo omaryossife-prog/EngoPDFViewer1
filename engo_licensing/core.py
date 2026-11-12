@@ -36,7 +36,7 @@ except Exception:  # pragma: no cover - checked at runtime when signed licenses 
 
 APP_VERSION_FALLBACK = "2.3.6"
 KNOWN_FEATURES = (
-    "pdf_merge", "page_themes", "app_themes", "smart_theme", "text_chat",
+    "pdf_merge", "app_themes", "smart_theme", "text_chat",
     "voice_chat", "voice_board_docx", "tags", "tag_units", "translations", "ai_search",
 )
 
@@ -427,6 +427,11 @@ class LicenseService:
         if result.get("error"):
             raise LicenseError(str(result["error"]))
         return result
+
+    def get_app_update_info(self) -> dict[str, Any]:
+        """Fetch public release information; this endpoint contains no account data."""
+        return self._edge("app-update-info", {"app_version": self.config.app_version})
+
 
     def _load_session(self) -> dict[str, Any] | None:
         if self._session is not None:
@@ -908,16 +913,19 @@ class LicenseService:
 
             state = self._apply_payload(payload, session.get("user") or {})
             license_status = str(payload.get("license_status") or "")
+            if (license_status == "untrusted_build"
+                    and not bool(payload.get("free_unlimited_mode", False))):
+                return {"allowed": False, "tracked": False, "message": "update_required"}
             entitlements = payload.get("entitlements") if isinstance(payload.get("entitlements"), dict) else {}
             entitlement = entitlements.get(feature_key) if isinstance(entitlements, dict) else None
             enabled = isinstance(entitlement, dict) and bool(entitlement.get("enabled"))
             server_allowed = response.get("allowed") is True
 
-            # An unapproved build is restricted to the server-resolved Free plan;
-            # it must still be able to use enabled Free features and consume their
-            # quotas. Premium is already withheld by get_license_context_v1 and
-            # consume_feature_usage_v1 until the build is trusted.
-            if license_status not in ("active", "untrusted_build"):
+            # Non-unlimited releases must be explicitly supported by the owner.
+            # The server has already denied their limited features without consuming quota.
+            if license_status != "active" and not (
+                    license_status == "untrusted_build" and bool(payload.get("free_unlimited_mode", False))
+            ):
                 self._free_state(str(payload.get("message") or license_status or "License unavailable"), authenticated=True)
                 return {"allowed": False, "tracked": False,
                         "message": "The account or this device is not authorized. Feature access is blocked."}
