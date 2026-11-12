@@ -11,7 +11,11 @@ def test_plan_comparison_uses_a_real_pinned_wrapping_header():
     assert "self.comparison_table.setTextElideMode(Qt.TextElideMode.ElideNone)" in ui
     assert "self.comparison_table.setWordWrap(True)" in ui
     assert "QHeaderView.ResizeMode.ResizeToContents" in ui
-    assert 'for free_status in ("limited", "unlimited", "unavailable")' in ui
+    assert 'for free_status in ("unlimited", "limited", "unavailable")' in ui
+    assert 'return {"unlimited": 1, "limited": 2, "unavailable": 3}[status]' in ui
+    assert 'setColumnWidth(column, 136 if column in (1, 4) else 84)' in ui
+    assert 'cell(positions[1], top_height, widths[1], full_height - top_height, unlimited)' in ui
+    assert 'cell(positions[2], top_height, widths[2], full_height - top_height, limited)' in ui
 
 
 def test_plan_labels_are_readable_and_free_is_translated():
