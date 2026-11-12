@@ -63,7 +63,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({
       enabled,
       current_version: String(body.app_version),
-      latest_version: String(settings.latest_version ?? "2.3.7"),
+      latest_version: String(settings.latest_version ?? "2.3.6"),
       update_url: enabled ? safeUrl : null,
       message_ar: String(settings.message_ar ?? ""),
       message_en: String(settings.message_en ?? ""),
