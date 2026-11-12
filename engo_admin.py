@@ -1150,7 +1150,7 @@ class UpdatesTab(QWidget):
     def _save(self):
         version = self.latest_version.text().strip()
         url = self.update_url.text().strip()
-        if not re.fullmatch(r"\\d+(?:\\.\\d+){1,3}", version):
+        if not re.fullmatch(r"\d+(?:\.\d+){1,3}", version):
             QMessageBox.warning(self, "Engo Admin", "اكتب رقم إصدار صحيحًا مثل 2.3.7.")
             return
         if url and not url.lower().startswith("https://"):
