@@ -467,7 +467,7 @@ class PlansDialog(QDialog):
         self.comparison_table.verticalHeader().setVisible(False)
         self.comparison_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.comparison_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.comparison_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.comparison_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.comparison_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.comparison_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.comparison_table.setFixedHeight(420)
