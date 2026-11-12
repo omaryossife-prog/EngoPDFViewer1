@@ -390,7 +390,7 @@ class GroupedPlanHeader(QHeaderView):
             font.setBold(y == 0)
             font.setPointSize(max(7, font.pointSize() - 1))
             painter.setFont(font)
-            flags = Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap
+            flags = int(Qt.AlignmentFlag.AlignCenter) | int(Qt.TextFlag.TextWordWrap)
             painter.drawText(rect.adjusted(4, 2, -4, -2), flags, label)
 
         feature = "الميزة" if self.language == "ar" else "Feature"
