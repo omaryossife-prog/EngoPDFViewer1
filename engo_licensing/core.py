@@ -439,13 +439,15 @@ class LicenseService:
         return self._session
 
     def _persist_session(self, session: dict[str, Any]) -> None:
-        if not session.get("access_token") or not session.get("refresh_token"):
+        access_token = str(session.get("access_token") or "").strip()
+        refresh_token = str(session.get("refresh_token") or "").strip()
+        if not access_token or not refresh_token:
             raise LicenseError("Authentication response did not contain a refreshable session")
         expires_in = int(session.get("expires_in") or 3600)
         expires_at = int(session.get("expires_at") or (time.time() + expires_in))
         normalized = {
-            "access_token": str(session["access_token"]),
-            "refresh_token": str(session["refresh_token"]),
+            "access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": str(session.get("token_type") or "bearer"),
             "expires_at": expires_at,
             "user": session.get("user") if isinstance(session.get("user"), dict) else {},
@@ -454,21 +456,51 @@ class LicenseService:
         self._session = normalized
 
     def _refresh_session(self, session: dict[str, Any]) -> dict[str, Any]:
-        refresh_token = str(session.get("refresh_token") or "")
-        if not refresh_token:
-            raise LicenseError("Saved session has no refresh token; sign in again")
-        updated = self._request("POST", "/auth/v1/token?grant_type=refresh_token",
-                                {"refresh_token": refresh_token})
-        if not isinstance(updated, dict):
-            raise LicenseError("Token refresh returned invalid data")
-        if not updated.get("user") and updated.get("access_token"):
-            try:
-                user = self._request("GET", "/auth/v1/user", access_token=str(updated["access_token"]))
-                updated["user"] = user if isinstance(user, dict) else {}
-            except Exception:
-                updated["user"] = session.get("user") or {}
-        self._persist_session(updated)
-        return self._session or updated
+        """Refresh once, reusing a newer session if another worker already rotated it.
+
+        Supabase refresh tokens are single-use. Several account UI workers can
+        receive an expired-JWT response at nearly the same time. Serialize refresh
+        operations and compare the caller's token with the latest in-memory
+        session before attempting another exchange.
+        """
+        with self._lock:
+            supplied_refresh_token = str(session.get("refresh_token") or "").strip()
+            current = self._load_session() or session
+            current_refresh_token = str(current.get("refresh_token") or "").strip()
+            current_access_token = str(current.get("access_token") or "").strip()
+            current_expiry = int(current.get("expires_at") or 0)
+
+            # A parallel request already refreshed this exact session. Do not
+            # replay the old refresh token and accidentally invalidate the chain.
+            if (
+                current_refresh_token
+                and supplied_refresh_token
+                and current_refresh_token != supplied_refresh_token
+                and current_access_token
+                and current_expiry > int(time.time()) + 5
+            ):
+                return current
+
+            refresh_token = current_refresh_token or supplied_refresh_token
+            if not refresh_token:
+                raise LicenseError("Saved session has no refresh token; sign in again")
+            updated = self._request(
+                "POST", "/auth/v1/token?grant_type=refresh_token",
+                {"refresh_token": refresh_token},
+            )
+            if not isinstance(updated, dict):
+                raise LicenseError("Token refresh returned invalid data")
+            if not updated.get("user") and updated.get("access_token"):
+                try:
+                    user = self._request(
+                        "GET", "/auth/v1/user",
+                        access_token=str(updated["access_token"]).strip(),
+                    )
+                    updated["user"] = user if isinstance(user, dict) else {}
+                except Exception:
+                    updated["user"] = current.get("user") or session.get("user") or {}
+            self._persist_session(updated)
+            return self._session or updated
 
     def get_session(self, refresh: bool = True) -> dict[str, Any] | None:
         with self._lock:
@@ -954,7 +986,8 @@ class LicenseService:
                         or "jwt expired" in retry_message
                         or "invalid jwt" in retry_message):
                     raise LicenseError(
-                        "The saved sign-in session could not be renewed. Sign out, then sign in with Google again."
+                        "The renewed sign-in session was rejected by the account server. "
+                        f"Server response: {retry_exc}"
                     ) from retry_exc
                 raise
 
