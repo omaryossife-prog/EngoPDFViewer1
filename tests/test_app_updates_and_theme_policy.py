@@ -55,7 +55,7 @@ def test_update_info_panel_edge_function_and_schema_are_wired():
     assert "def get_app_update_info(self)" in core
     assert "class UpdatesTab(QWidget)" in admin
     assert 'self.tabs.addTab(self.updates_tab, "إعدادات التحديثات")' in admin
-    assert "update_available" in edge and "const safeUrl = /^https:" in edge
+    assert "update_available" in edge and "new URL(updateUrl)" in edge
     assert "public.app_update_settings" in migration
     assert "enable row level security" in migration.lower()
     assert "grant all on table public.app_update_settings to service_role" in migration.lower()
