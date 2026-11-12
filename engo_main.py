@@ -1821,7 +1821,7 @@ class MainWindow(QMainWindow):
         info = getattr(self, "_update_info", {})
         url = str(info.get("update_url") or "").strip() if isinstance(info, dict) else ""
         target = QUrl(url)
-        if target.isValid() and target.scheme().lower() == "https":
+        if target.isValid() and target.scheme().lower() == "https" and target.host():
             QDesktopServices.openUrl(target)
 
     def _show_unsupported_build_dialog(self):
@@ -1869,7 +1869,7 @@ class MainWindow(QMainWindow):
         update_target = QUrl(update_url)
         update_button.setEnabled(
             bool(info.get("enabled")) and update_target.isValid()
-            and update_target.scheme().lower() == "https"
+            and update_target.scheme().lower() == "https" and bool(update_target.host())
         )
         box.setDefaultButton(cancel_button)
         box.exec()
