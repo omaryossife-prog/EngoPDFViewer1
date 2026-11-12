@@ -375,7 +375,7 @@ create table if not exists public.app_update_settings (
     message_en text,
     updated_at timestamptz not null default now(),
     constraint app_update_settings_latest_version_format
-        check (latest_version ~ '^[0-9]+(\\.[0-9]+){1,3}
+        check (latest_version ~ '^[0-9]+(\.[0-9]+){1,3}
 -- Verification queries (run separately after the patch):
 -- select feature_key, reset_period from public.feature_entitlements where feature_key in ('tags','tag_units') order by feature_key, plan_id;
 -- select plan_id, billing_period, duration_months, amount, currency, is_active from public.subscription_prices order by duration_months;
