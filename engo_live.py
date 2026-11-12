@@ -3349,7 +3349,7 @@ class LiveTutorDialog(QDialog):
             document.core_properties.author = APP_NAME
 
             def set_paragraph_direction(paragraph, value):
-                is_rtl = bool(re.search(r"[\\u0600-\\u06ff]", value or ""))
+                is_rtl = bool(re.search("[ء-ي]", value or ""))
                 paragraph.alignment = (
                     WD_ALIGN_PARAGRAPH.RIGHT if is_rtl else WD_ALIGN_PARAGRAPH.LEFT
                 )
@@ -3364,21 +3364,10 @@ class LiveTutorDialog(QDialog):
                         run._element.get_or_add_rPr().append(rtl)
 
             def add_inline_text(paragraph, value):
-                parts = re.split(r"(\\*\\*.*?\\*\\*|(?<!\\*)\\*[^*]+?\\*|\x60[^\x60]+\x60)", value)
-                for part in parts:
-                    if not part:
-                        continue
-                    if part.startswith("**") and part.endswith("**"):
-                        run = paragraph.add_run(part[2:-2])
-                        run.bold = True
-                    elif part.startswith("*") and part.endswith("*"):
-                        run = paragraph.add_run(part[1:-1])
-                        run.italic = True
-                    elif part.startswith("`") and part.endswith("`"):
-                        run = paragraph.add_run(part[1:-1])
-                        run.font.name = "Consolas"
-                    else:
-                        paragraph.add_run(part)
+                # Keep the transcript readable in Word without leaving Markdown markers.
+                paragraph.add_run(
+                    str(value).replace("**", "").replace("*", "").replace(chr(96), "")
+                )
 
             title = document.add_heading(
                 f"{source_stem} — Complete Lesson Boards", level=0
@@ -3419,9 +3408,9 @@ class LiveTutorDialog(QDialog):
                     elif stripped.startswith(("- ", "* ", "• ")):
                         paragraph = document.add_paragraph(style="List Bullet")
                         add_inline_text(paragraph, stripped[2:])
-                    elif re.match(r"^\\d+[.)]\\s+", stripped):
+                    elif len(stripped) > 2 and stripped[0].isdigit() and stripped[1:3] in (". ", ") "):
                         paragraph = document.add_paragraph(style="List Number")
-                        add_inline_text(paragraph, re.sub(r"^\\d+[.)]\\s+", "", stripped))
+                        add_inline_text(paragraph, stripped[2:])
                     elif stripped.startswith("> "):
                         paragraph = document.add_paragraph(style="Quote")
                         add_inline_text(paragraph, stripped[2:])
@@ -3437,7 +3426,7 @@ class LiveTutorDialog(QDialog):
         except Exception as exc:
             QMessageBox.warning(
                 self, "Export Word",
-                f"Could not export all lesson boards to Word:\\n{exc}",
+                f"Could not export all lesson boards to Word:\n{exc}",
             )
 
     def set_page_preview(self, image_bytes: bytes, page_number: int, page_count: int | None = None):
