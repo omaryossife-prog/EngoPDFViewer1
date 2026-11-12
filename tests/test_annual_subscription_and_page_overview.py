@@ -71,3 +71,17 @@ def test_comparison_has_no_extra_basic_features_section_banner():
     assert "المميزات المتاحة بلا حدود في المجاني" not in ui
     assert '("فتح وعرض ملفات PDF", "Open and view PDF files")' in ui
     assert '("تدوير الصفحات", "Rotate pages")' in ui
+
+
+
+def test_comparison_wraps_full_labels_without_ellipsis_and_sorts_free_statuses():
+    ui = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
+    assert '(1, "متاح بحدود", "Available with limits", "#d6a328")' in ui
+    assert '(2, "متاح بلا حدود", "Available without limits", "#239b62")' in ui
+    assert '(3, "غير متاح", "Unavailable", "#d94848")' in ui
+    assert 'for free_status in ("limited", "unlimited", "unavailable")' in ui
+    assert 'return {"limited": 1, "unlimited": 2, "unavailable": 3}[status]' in ui
+    assert "self.comparison_table.setWordWrap(True)" in ui
+    assert "self.comparison_table.setTextElideMode(Qt.TextElideMode.ElideNone)" in ui
+    assert "self.comparison_table.setColumnWidth(column, 90)" in ui
+    assert "QHeaderView.ResizeMode.ResizeToContents" in ui
