@@ -1506,6 +1506,8 @@ class MainWindow(QMainWindow):
                 label = ("الحساب · " if is_ar else "Account · ") + plan_shown
         else:
             label = "الرجاء تسجيل الدخول" if is_ar else "Please sign in"
+        plan_color = "#d6a328" if state.is_premium else "#4f8ee8"
+        button.setStyleSheet(f"color: {plan_color};" if authenticated else "")
         button.setText(label)
         button.setToolTip("الحساب والاشتراك" if is_ar else "Account and subscription")
 
@@ -1526,6 +1528,10 @@ class MainWindow(QMainWindow):
                 display_name = display_name[:16] + "…"
             name_lbl.setText(display_name)
             plan_lbl.setText(self._plan_label_localized(state.plan_label, is_ar))
+            plan_color = "#d6a328" if state.is_premium else "#4f8ee8"
+            plan_lbl.setStyleSheet(
+                f"color: {plan_color}; font-size: 8pt; font-weight: 700; background: transparent;"
+            )
             if avatar_lbl is not None:
                 cached_pixmap = getattr(self, "_home_avatar_pixmap", None)
                 if cached_pixmap is not None:
@@ -1541,6 +1547,8 @@ class MainWindow(QMainWindow):
         else:
             name_lbl.setText("الرجاء تسجيل الدخول" if is_ar else "Please sign in")
             plan_lbl.setText("")
+            plan_lbl.setStyleSheet("")
+            button.setStyleSheet("")
             self._home_avatar_pixmap = None
             self._home_avatar_url_loaded = ""
             if avatar_lbl is not None:
