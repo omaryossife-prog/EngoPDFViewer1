@@ -1102,7 +1102,7 @@ class UpdatesTab(QWidget):
 
         self.enabled_check = QCheckBox("إظهار إشعار التحديث داخل البرنامج")
         self.latest_version = QLineEdit("2.3.6")
-        self.latest_version.setPlaceholderText("مثال: 2.3.7")
+        self.latest_version.setPlaceholderText("مثال: 2.3.6")
         self.update_url = QLineEdit()
         self.update_url.setPlaceholderText("https://example.com/engo-setup.exe")
         self.message_ar = QTextEdit()
