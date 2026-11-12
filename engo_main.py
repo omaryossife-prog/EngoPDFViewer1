@@ -20,6 +20,7 @@ except ImportError as _office_xml_import_error:
 import re
 import base64
 import time
+import textwrap
 from pathlib import Path
 import pymupdf as fitz  # use the maintained import name; keep fitz alias for existing calls
 from PIL import Image, ImageOps, ImageChops, ImageFilter
@@ -1741,11 +1742,134 @@ class MainWindow(QMainWindow):
         if error and self.license_service is not None:
             self.license_service._free_state(error, authenticated=True)
         self._refresh_license_button()
+        if self.license_service is not None:
+            state = self.license_service.state
+            if state.license_status == "untrusted_build" and not state.free_unlimited_mode:
+                QTimer.singleShot(0, self._show_unsupported_build_dialog)
+            elif state.license_status == "active":
+                self._unsupported_build_dialog_shown = False
         if (not self._close_after_cancel and self.license_service is not None
                 and not self.license_service.state.is_premium):
             reason = self.license_service.state.reason
             if reason:
                 self.show_status("Free mode · " + reason)
+
+    def _check_app_update_info(self):
+        service = getattr(self, "license_service", None)
+        worker = getattr(self, "_update_info_worker", None)
+        if self._close_after_cancel or service is None or _qt_thread_is_running(worker):
+            return
+        worker = ServiceActionWorker(service.get_app_update_info, self)
+        self._update_info_worker = worker
+        worker.completed.connect(self._app_update_info_completed)
+        worker.finished.connect(lambda current=worker: self._update_info_thread_finished(current))
+        worker.start()
+
+    def _update_info_thread_finished(self, worker):
+        if getattr(self, "_update_info_worker", None) is worker:
+            self._update_info_worker = None
+        worker.deleteLater()
+        self._maybe_finish_pending_close()
+
+    def _app_update_info_completed(self, data, error):
+        self._update_info = data if not error and isinstance(data, dict) else {}
+        self._render_update_notice()
+        state = getattr(getattr(self, "license_service", None), "state", None)
+        if (state is not None and state.license_status == "untrusted_build"
+                and not state.free_unlimited_mode):
+            QTimer.singleShot(0, self._show_unsupported_build_dialog)
+
+    def _render_update_notice(self):
+        button = getattr(self, "update_notice_btn", None)
+        if button is None:
+            return
+        info = getattr(self, "_update_info", {})
+        url = str(info.get("update_url") or "").strip() if isinstance(info, dict) else ""
+        update_available = bool(
+            isinstance(info, dict) and info.get("enabled")
+            and info.get("update_available") and url.startswith("https://")
+        )
+        button.setVisible(update_available)
+        if not update_available:
+            return
+        is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
+        custom = str(info.get("message_ar" if is_ar else "message_en") or "").strip()
+        text = custom or (
+            "يتوفر تحديث جديد لبرنامج ENGO. اضغط هنا للتحديث."
+            if is_ar else
+            "A new ENGO update is available. Click here to update."
+        )
+        width = max(20, min(34, int(max(180, button.width()) / 9)))
+        button.setText(textwrap.fill(text, width=width))
+        button.setToolTip(text)
+        button.setLayoutDirection(
+            Qt.LayoutDirection.RightToLeft if is_ar else Qt.LayoutDirection.LeftToRight
+        )
+        tokens = engo_ui_theme_tokens(self.settings.value("ui_theme", "dark", type=str))
+        align = "right" if is_ar else "left"
+        button.setStyleSheet(
+            "QPushButton#homeUpdateNotice {"
+            f"background:{tokens['panel_alt']}; color:{tokens['accent']}; "
+            f"border:1px solid {tokens['border_strong']}; border-radius:8px; "
+            f"padding:7px 9px; font-weight:750; text-align:{align};"
+            "}"
+            "QPushButton#homeUpdateNotice:hover {"
+            f"background:{tokens['hover']}; border-color:{tokens['accent']};"
+            "}"
+        )
+
+    def _open_update_link(self):
+        info = getattr(self, "_update_info", {})
+        url = str(info.get("update_url") or "").strip() if isinstance(info, dict) else ""
+        target = QUrl(url)
+        if target.isValid() and target.scheme().lower() == "https":
+            QDesktopServices.openUrl(target)
+
+    def _show_unsupported_build_dialog(self):
+        service = getattr(self, "license_service", None)
+        state = getattr(service, "state", None) if service is not None else None
+        if (state is None or state.license_status != "untrusted_build"
+                or state.free_unlimited_mode
+                or getattr(self, "_unsupported_build_dialog_shown", False)):
+            return
+        self._unsupported_build_dialog_shown = True
+        info = getattr(self, "_update_info", {})
+        info = info if isinstance(info, dict) else {}
+        is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
+        current_version = str(state.app_version or APP_VERSION)
+        latest_version = str(info.get("latest_version") or "").strip()
+        message = (
+            "هذا الإصدار لم يعد معتمدًا من إدارة ENGO. تم إيقاف المميزات التي تعمل بحدود استخدام حتى تثبّت إصدارًا معتمدًا."
+            if is_ar else
+            "This ENGO release is no longer approved. Features with usage limits are locked until you install a supported release."
+        )
+        if latest_version:
+            message += (
+                f"\n\nالإصدار الحالي: {current_version}\nالإصدار المطلوب: {latest_version}"
+                if is_ar else
+                f"\n\nCurrent version: {current_version}\nRequired version: {latest_version}"
+            )
+        custom = str(info.get("message_ar" if is_ar else "message_en") or "").strip()
+        if custom:
+            message += "\n\n" + custom
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("التحديث مطلوب" if is_ar else "Update required")
+        box.setText(message)
+        update_label = "تحديث الآن" if is_ar else "Update now"
+        cancel_label = "إلغاء" if is_ar else "Cancel"
+        update_button = box.addButton(update_label, QMessageBox.ButtonRole.AcceptRole)
+        cancel_button = box.addButton(cancel_label, QMessageBox.ButtonRole.RejectRole)
+        update_url = str(info.get("update_url") or "").strip()
+        update_target = QUrl(update_url)
+        update_button.setEnabled(
+            bool(info.get("enabled")) and update_target.isValid()
+            and update_target.scheme().lower() == "https"
+        )
+        box.setDefaultButton(cancel_button)
+        box.exec()
+        if box.clickedButton() is update_button:
+            self._open_update_link()
 
     # The licensing server / engo_licensing.core always answer in English. Map the
     # known fixed strings to Arabic here instead of concatenating raw English text
