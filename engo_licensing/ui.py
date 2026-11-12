@@ -490,7 +490,7 @@ class PlansDialog(QDialog):
         self.period_combo.currentIndexChanged.connect(self._update_price)
         period_row.addWidget(self.period_combo,1); pl.addLayout(period_row)
         self.price_label=QLabel("—"); self.price_label.setObjectName("planHeading"); pl.addWidget(self.price_label)
-        self.payment_button=QPushButton(self._tr("التواصل والدفع", "Contact & Pay")); self.payment_button.setObjectName("planPrimary")
+        self.payment_button=QPushButton(self._tr("التواصل والدفع", "Contact and Pay")); self.payment_button.setObjectName("planPrimary")
         self.payment_button.clicked.connect(self._request_payment); pl.addWidget(self.payment_button)
         root.addWidget(premium)
 
@@ -528,7 +528,6 @@ class PlansDialog(QDialog):
         labels = [
             ("pdf_merge", "دمج ملفات PDF", "Merge PDF files"),
             ("app_themes", "ثيمات البرنامج", "App themes"),
-            ("page_themes", "ثيمات الصفحات", "Page themes"),
             ("smart_theme", "القلم الذكي", "Smart pen"),
             ("text_chat", "المحادثة النصية", "Text chat"),
             ("voice_chat", "المحادثة الصوتية والحصص الصوتية", "Voice chat and voice lessons"),
@@ -935,7 +934,7 @@ class AccountDialog(QDialog):
         for lbl in (self.plan_label, self.status_label, self.expiry_label):
             lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             prof_layout.addWidget(lbl)
-        self.plans_button = QPushButton("عرض الخطط والاشتراك" if is_ar else "View plans & subscribe")
+        self.plans_button = QPushButton("عرض الخطط والاشتراك" if is_ar else "View Plans and Subscribe")
         self.plans_button.setObjectName("acctPlans")
         self.plans_button.clicked.connect(self._open_plans)
         self.plans_button.setVisible(False)
@@ -1028,7 +1027,9 @@ class AccountDialog(QDialog):
             self._avatar_url_loaded = avatar_url
             reply = self._network_manager.get(QNetworkRequest(QUrl(avatar_url)))
             reply.finished.connect(lambda r=reply: self._avatar_loaded(r))
-        self.plan_label.setText(self._tr(f"الباقة: {state.plan_label}", f"Plan: {state.plan_label}"))
+        plan_ar = "مميز" if state.is_premium else "مجاني"
+        plan_en = "Premium" if state.is_premium else "Free"
+        self.plan_label.setText(self._tr(f"الباقة: {plan_ar}", f"Plan: {plan_en}"))
         status = str(state.license_status or "free")
         status_labels = {
             "active": ("نشط", "Active"), "free": ("مجاني", "Free"),
@@ -1213,7 +1214,7 @@ class AccountDialog(QDialog):
 
     def _plans_overview_completed(self, data: Any, error: str):
         self.plans_button.setEnabled(True)
-        self.plans_button.setText(self._tr("عرض الخطط والاشتراك", "View plans & subscribe"))
+        self.plans_button.setText(self._tr("عرض الخطط والاشتراك", "View Plans and Subscribe"))
         if error:
             QMessageBox.warning(
                 self, self._tr("تعذر تحميل الخطط", "Could not load plans"),
