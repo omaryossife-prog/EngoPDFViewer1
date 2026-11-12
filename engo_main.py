@@ -111,12 +111,10 @@ from engo_widgets import (
     EngoFileSystemModel,
     MiddleMouseAutoScroll,
     MotionButton,
-    PageThemeDialog,
     ResponsiveSidebarTabs,
     _configure_color_dialog,
     _engo_file_dialog,
     _qt_thread_is_running,
-    apply_page_theme_to_image,
     color_tuple,
     make_icon,
 )
@@ -132,7 +130,7 @@ from engo_licensing import (
 )
 
 
-APP_VERSION = "2.3.6"  # V17 Smart Theme cache/per-page render fix
+APP_VERSION = "2.3.7"  # Update notifications, supported-build policy, and page-theme removal
 
 
 class PDFMergeWorker(QThread):
@@ -159,6 +157,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._register_ipc = bool(register_ipc)
         self.license_service = license_service
+        self._update_info: dict = {}
+        self._update_info_worker = None
+        self._unsupported_build_dialog_shown = False
         self._license_gate_workers = []
         self._license_heartbeat_worker = None
         MainWindow._open_windows.append(self)
@@ -195,15 +196,20 @@ class MainWindow(QMainWindow):
             self.settings.sync()
         except Exception:
             pass
-        self.dark_mode = self.settings.value("dark_mode", False, type=bool)
-        self.smart_page_theme = self.settings.value("smart_page_theme", False, type=bool)
-        self.bg_color = self.settings.value("page_bg", DEFAULT_BG, type=str)
-        self.ink_color = self.settings.value("page_ink", DEFAULT_INK, type=str)
-        raw_themes = self.settings.value("custom_page_themes", "{}")
-        try:
-            self.custom_page_themes = json.loads(raw_themes) if isinstance(raw_themes, str) else dict(raw_themes)
-        except Exception:
-            self.custom_page_themes = {}
+        # Page recoloring/themes have been removed. Clear saved legacy preferences
+        # so PDFs always use their original page colors in every future session.
+        self.dark_mode = False
+        self.smart_page_theme = False
+        self.bg_color = DEFAULT_BG
+        self.ink_color = DEFAULT_INK
+        self.custom_page_themes = {}
+        for saved_key, saved_value in (
+            ("dark_mode", False), ("smart_page_theme", False),
+            ("page_bg", DEFAULT_BG), ("page_ink", DEFAULT_INK),
+        ):
+            self.settings.setValue(saved_key, saved_value)
+        self.settings.remove("custom_page_themes")
+        self.settings.sync()
         raw_annot_colors = self.settings.value("annotation_colors", "{}")
         try:
             self.annotation_colors = dict(DEFAULT_ANNOTATION_COLORS)
@@ -322,6 +328,11 @@ class MainWindow(QMainWindow):
             self._license_heartbeat_timer.timeout.connect(self._start_license_heartbeat)
             self._license_heartbeat_timer.start()
             QTimer.singleShot(400, self._sync_profile_overview)
+        self._update_check_timer = QTimer(self)
+        self._update_check_timer.setInterval(30 * 60 * 1000)
+        self._update_check_timer.timeout.connect(self._check_app_update_info)
+        self._update_check_timer.start()
+        QTimer.singleShot(1400, self._check_app_update_info)
         if self._register_ipc:
             self._setup_ipc_server()
 
@@ -702,10 +713,6 @@ class MainWindow(QMainWindow):
 
         # Utility actions.
         self.utility_group, utility_row = make_group("utility")
-        self.theme_btn = self._button("Page Theme", "action", "theme", "#91b4ff")
-        self.theme_btn.setToolTip("Page Theme · dark mode and custom document colors")
-        self.theme_btn.clicked.connect(self.open_page_theme)
-        utility_row.addWidget(self.theme_btn)
         self.ai_chat_btn = self._button("AI Chat", "action", "ai", "#9fbaff")
         self.ai_chat_btn.setCheckable(True)
         self.ai_chat_btn.setToolTip("Open the AI study chat for summaries, explanations, translation, and OCR")
@@ -1144,6 +1151,14 @@ class MainWindow(QMainWindow):
         else:
             side.insertWidget(browser_insert_index, browser, 1)
         side.setStretch(side.indexOf(browser), 1)
+        self.update_notice_btn = QPushButton()
+        self.update_notice_btn.setObjectName("homeUpdateNotice")
+        self.update_notice_btn.setMinimumHeight(48)
+        self.update_notice_btn.setMaximumHeight(88)
+        self.update_notice_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.update_notice_btn.setVisible(False)
+        self.update_notice_btn.clicked.connect(self._open_update_link)
+        side.insertWidget(side.indexOf(browser) + 1, self.update_notice_btn)
         self._home_browser_current_dir = ""  # Empty means This PC / available drives.
         self._home_browser_breadcrumb_focus_dir = ""
         self._refresh_home_browser()
@@ -1549,50 +1564,51 @@ class MainWindow(QMainWindow):
         self._enforce_premium_settings()
 
     def _enforce_premium_settings(self):
-        """Fall back any paid-only interface setting the moment the account is no
-        longer Premium (subscription ended, was revoked, or device/account lost
-        access) — instead of letting it keep applying until Settings is reopened."""
+        """Return non-Premium accounts to the default dark application theme."""
         service = getattr(self, "license_service", None)
         if service is None or service.state.is_premium:
             return
         is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
-        changed_theme = False
-        current_theme = normalize_ui_theme(self.settings.value("ui_theme", "dark", type=str))
-        if current_theme not in FREE_UI_THEMES:
+        theme_changed = normalize_ui_theme(self.settings.value("ui_theme", "dark", type=str)) != "dark"
+        page_values_changed = bool(
+            self.dark_mode or self.smart_page_theme
+            or str(self.bg_color).lower() != str(DEFAULT_BG).lower()
+            or str(self.ink_color).lower() != str(DEFAULT_INK).lower()
+            or bool(self.custom_page_themes)
+        )
+        if theme_changed:
             self.settings.setValue("ui_theme", "dark")
-            changed_theme = True
+        # Also clear any page-theme settings left behind by older releases.
+        self.dark_mode = False
+        self.smart_page_theme = False
+        self.bg_color, self.ink_color = DEFAULT_BG, DEFAULT_INK
+        self.custom_page_themes = {}
+        for key, value in (
+            ("dark_mode", False), ("smart_page_theme", False),
+            ("page_bg", DEFAULT_BG), ("page_ink", DEFAULT_INK),
+        ):
+            if self.settings.value(key) != value:
+                self.settings.setValue(key, value)
+                page_values_changed = True
+        if self.settings.contains("custom_page_themes"):
+            self.settings.remove("custom_page_themes")
+            page_values_changed = True
 
-        changed_page_theme = False
-        try:
-            from engo_widgets import PageThemeDialog
-            current_bg = QColor(str(getattr(self, "bg_color", ""))).name().lower()
-            current_ink = QColor(str(getattr(self, "ink_color", ""))).name().lower()
-            for name, values in PageThemeDialog.BUILTIN_THEMES.items():
-                if (name not in PageThemeDialog.FREE_THEMES
-                        and str(values.get("bg", "")).lower() == current_bg
-                        and str(values.get("ink", "")).lower() == current_ink):
-                    fallback = PageThemeDialog.BUILTIN_THEMES["Dark"]
-                    self.bg_color, self.ink_color = fallback["bg"], fallback["ink"]
-                    self.settings.setValue("page_bg", self.bg_color)
-                    self.settings.setValue("page_ink", self.ink_color)
-                    for i in range(self.tabs.count()):
-                        tab = self.tabs.widget(i)
-                        if isinstance(tab, DocumentTab):
-                            tab.set_theme(self.dark_mode, self.bg_color, self.ink_color, self.smart_page_theme)
-                    changed_page_theme = True
-                    break
-        except Exception:
-            pass
-
-        if not (changed_theme or changed_page_theme):
+        if not (theme_changed or page_values_changed):
             return
         self.settings.sync()
-        if changed_theme:
+        if theme_changed:
             self._apply_style()
             self._apply_user_interface_preferences()
+        if page_values_changed:
+            for index in range(self.tabs.count()):
+                tab = self.tabs.widget(index)
+                if isinstance(tab, DocumentTab):
+                    tab.set_theme(False, DEFAULT_BG, DEFAULT_INK, False)
+        self._render_update_notice()
         self.show_status(
-            "انتهى اشتراك Premium، فرجعنا مظهر البرنامج المدفوع للوضع المجاني." if is_ar
-            else "Your Premium subscription ended, so paid-only appearance settings were reverted to Free."
+            "تمت إعادة مظهر البرنامج إلى الوضع الداكن الافتراضي." if is_ar
+            else "The application appearance has been reset to the default dark theme."
         )
 
     def _load_home_avatar(self, url: str):
@@ -1801,9 +1817,9 @@ class MainWindow(QMainWindow):
         if not service.state.authenticated:
             title = "تسجيل الدخول مطلوب" if is_ar else "Sign-in required"
             message = (
-                "لا يمكن استخدام هذه الميزة كزائر. سجّل الدخول بحساب Google أولًا حتى يتم احتساب الاستخدام وتطبيق حدود الخطة.\n\nهل تريد فتح نافذة تسجيل الدخول الآن؟"
+                "استخدام هذه الميزة يتطلب تسجيل الدخول بحسابك أولًا. هل تريد فتح نافذة تسجيل الدخول الآن؟"
                 if is_ar else
-                "This feature is not available to guests. Sign in with Google first so usage can be counted and plan limits enforced.\n\nOpen the sign-in window now?"
+                "Please sign in to your account before using this feature. Open the sign-in window now?"
             )
             answer = QMessageBox.question(
                 self, title, message,
@@ -1849,12 +1865,9 @@ class MainWindow(QMainWindow):
                 return
 
             raw_text = str((result or {}).get("message") or "")
-            if raw_text == "untrusted_build":
-                message = (
-                    "هذا الإصدار غير معتمد من الخادم.\nسجّل الدخول بحساب Google معتمد للوصول إلى هذه الميزة."
-                    if is_ar else
-                    "This build is not approved by the server.\nSign in with an approved Google account to access this feature."
-                )
+            if raw_text in ("update_required", "untrusted_build"):
+                QTimer.singleShot(0, self._show_unsupported_build_dialog)
+                return
             else:
                 text_en = denied_message or raw_text or "This feature is not available on the current plan."
                 text = self._FEATURE_DENIED_MESSAGES_AR.get(text_en, text_en) if is_ar else text_en
@@ -3191,6 +3204,7 @@ class MainWindow(QMainWindow):
             self.home_browser_title.setText("تصفح الملفات" if language == "ar" else "Browse files")
         if hasattr(self, "home_browser_path") and not str(getattr(self, "_home_browser_current_dir", "") or "").strip():
             self.home_browser_path.setText("هذا الكمبيوتر" if language == "ar" else "This PC")
+        self._render_update_notice()
 
         # AI composer labels are dynamic (Send/Stop) and can be reset whenever the
         # prompt text changes. Apply the language directly instead of relying only
@@ -6979,12 +6993,6 @@ class MainWindow(QMainWindow):
     def _capture_live_page(self, pdf_path: str, page_index: int):
         """Render the exact PDF page using the same saved page theme as the main viewer."""
         absolute_path = os.path.abspath(pdf_path)
-        theme_tab = None
-        for i in range(self.tabs.count()):
-            candidate = self.tabs.widget(i)
-            if isinstance(candidate, DocumentTab) and os.path.normcase(os.path.abspath(candidate.path)) == os.path.normcase(absolute_path):
-                theme_tab = candidate
-                break
         with fitz.open(absolute_path) as doc:
             if doc.page_count <= 0:
                 raise RuntimeError("The PDF has no pages.")
@@ -6994,16 +7002,6 @@ class MainWindow(QMainWindow):
             scale = min(2.2, 1700.0 / max(float(page.rect.width), float(page.rect.height), 1.0))
             pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False, annots=True)
             image = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-            # DocumentCanvas applies this exact grayscale-to-custom-colors transformation
-            # when dark page theme is enabled. Mirror it here so Voice & Learn's page preview
-            # looks like the page the user is actually viewing, not the unthemed original.
-            if theme_tab is not None:
-                image = apply_page_theme_to_image(
-                    image, theme_tab.dark_mode,
-                    str(theme_tab.bg_color or DEFAULT_BG),
-                    str(theme_tab.ink_color or DEFAULT_INK),
-                    smart=bool(getattr(theme_tab, "smart_page_theme", False)),
-                )
             image.thumbnail((1700, 1700), Image.Resampling.LANCZOS)
             buffer = io.BytesIO()
             image.save(buffer, format="JPEG", quality=88, optimize=True)
@@ -8488,38 +8486,6 @@ class MainWindow(QMainWindow):
             self._close_after_cancel = False
             QTimer.singleShot(0, self.close)
 
-    def open_page_theme(self, _usage_checked=False):
-        if not _usage_checked:
-            self._request_feature_access("page_themes", lambda: self.open_page_theme(True))
-            return
-        dlg = PageThemeDialog(
-            self, self.dark_mode, self.bg_color, self.ink_color,
-            self.custom_page_themes, self.smart_page_theme,
-            is_premium=bool(getattr(getattr(self, "license_service", None), "state", None)
-                            and self.license_service.state.is_premium),
-        )
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            def apply_page_theme_changes():
-                self.dark_mode = dlg.toggle.isChecked()
-                self.smart_page_theme = dlg.smart_toggle.isChecked()
-                self.bg_color, self.ink_color = dlg.bg, dlg.ink
-                self.custom_page_themes = dict(dlg.custom_themes)
-                self.settings.setValue("dark_mode", self.dark_mode)
-                self.settings.setValue("smart_page_theme", self.smart_page_theme)
-                self.settings.setValue("page_bg", self.bg_color)
-                self.settings.setValue("page_ink", self.ink_color)
-                self.settings.setValue("custom_page_themes", json.dumps(self.custom_page_themes, ensure_ascii=False))
-                for i in range(self.tabs.count()):
-                    tab = self.tabs.widget(i)
-                    if isinstance(tab, DocumentTab):
-                        tab.set_theme(self.dark_mode, self.bg_color, self.ink_color, self.smart_page_theme)
-                if self._live_tutor_dialog is not None and self._live_tutor_dialog.isVisible():
-                    self.refresh_live_tutor_page(self._live_tutor_dialog)
-                self.show_status("Page Theme updated")
-            if dlg.smart_toggle.isChecked() and not self.smart_page_theme:
-                self._request_feature_access("smart_theme", apply_page_theme_changes)
-            else:
-                apply_page_theme_changes()
 
     def open_annotation_colors(self):
         dlg = AnnotationColorsDialog(self, self.annotation_colors)
