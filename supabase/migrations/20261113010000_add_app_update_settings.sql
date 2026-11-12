@@ -7,7 +7,7 @@ create table if not exists public.app_update_settings (
     message_en text,
     updated_at timestamptz not null default now(),
     constraint app_update_settings_latest_version_format
-        check (latest_version ~ '^[0-9]+(\\.[0-9]+){1,3}$'),
+        check (latest_version ~ '^[0-9]+(\.[0-9]+){1,3}$'),
     constraint app_update_settings_update_url_https
         check (update_url is null or update_url ~* '^https://')
 );
