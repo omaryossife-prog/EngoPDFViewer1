@@ -1784,9 +1784,12 @@ class MainWindow(QMainWindow):
             return
         info = getattr(self, "_update_info", {})
         url = str(info.get("update_url") or "").strip() if isinstance(info, dict) else ""
+        state = getattr(getattr(self, "license_service", None), "state", None)
+        unsupported_build = bool(state is not None and state.license_status == "untrusted_build")
         update_available = bool(
             isinstance(info, dict) and info.get("enabled")
-            and info.get("update_available") and url.startswith("https://")
+            and (info.get("update_available") or unsupported_build)
+            and url.startswith("https://")
         )
         button.setVisible(update_available)
         if not update_available:
