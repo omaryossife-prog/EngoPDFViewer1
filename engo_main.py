@@ -3027,7 +3027,7 @@ class MainWindow(QMainWindow):
             "Sidebar": "الشريط الجانبي", "Scroll": "تمرير", "Book": "ككتاب",
             "Book · show two pages side by side; can be combined with Scroll": "ككتاب · عرض صفحتين جنبًا إلى جنب، ويمكن دمجه مع التمرير",
             "Unlink": "إلغاء الربط",
-            "Fit width": "ملاءمة العرض", "Page Theme": "مظهر الصفحة",
+            "Fit width": "ملاءمة العرض",
             "AI Chat": "AI محادثة مع", "Voice && AI Teacher": "المدرس الصوتي وAI",
             "Translate": "ترجمة", "Present": "عرض", "Full Screen": "ملء الشاشة",
             "Your PDF study assistant": "مساعدك الدراسي لملفات PDF",
@@ -3091,7 +3091,7 @@ class MainWindow(QMainWindow):
             "Include PDF text or page previews. Current-page actions always include the current page.": "إرفاق نص PDF أو معاينات الصفحات. إجراءات الصفحة الحالية ترفقها دائمًا.",
             "Record one spoken question, send it to the selected AI, and read its answer aloud": "سجّل سؤالك صوتيًا وأرسله إلى المساعد المحدد واستمع إلى إجابته.",
             "Read the latest AI answer aloud": "اقرأ أحدث إجابة من الذكاء الاصطناعي بصوت مسموع.",
-            "PAGE THEME": "مظهر الصفحة", "Saved themes": "المظاهر المحفوظة", "Current settings": "الإعدادات الحالية",
+            "Saved themes": "المظاهر المحفوظة", "Current settings": "الإعدادات الحالية",
             "Obsidian": "سبج", "Sepia": "بني دافئ", "Slate": "رمادي مزرق",
             "Dark Mode / Custom Document Colors": "الوضع الداكن / ألوان مخصصة للمستند", "Recolors rendered page pixels, including scanned notes and embedded images.": "يغيّر ألوان الصفحة المعروضة، بما في ذلك الملاحظات الممسوحة ضوئيًا والصور المضمّنة.",
             "Page background": "خلفية الصفحة", "Text / ink": "لون النص", "Text / ink color": "لون النص", "Quick presets": "مظاهر سريعة",
@@ -3109,7 +3109,7 @@ class MainWindow(QMainWindow):
                 return translations.get(source, _engo_translate_tooltip(source, "ar"))
             return _reverse_ui_translations.get(source, _engo_translate_tooltip(source, "en"))
         # Window titles are not QLabel/Button text, so translate them explicitly.
-        dialog_title_translations = {"Page Theme": "مظهر الصفحة", "Annotation Colors": "ألوان التعليقات التوضيحية"}
+        dialog_title_translations = {"Annotation Colors": "ألوان التعليقات التوضيحية"}
         for dialog_widget in self.findChildren(QDialog):
             try:
                 original_title = dialog_widget.property("engoOriginalWindowTitle")
@@ -4585,6 +4585,7 @@ class MainWindow(QMainWindow):
         # title-bar surface to match this same palette. Retry after the window is shown.
         self._apply_windows_titlebar_theme(theme_tokens)
         QTimer.singleShot(80, lambda colors=dict(theme_tokens): self._apply_windows_titlebar_theme(colors))
+        self._render_update_notice()
 
 
     def _sync_toolbar_pin_button(self):
@@ -4668,7 +4669,7 @@ class MainWindow(QMainWindow):
             "zoom_out": self.zoom_out_btn, "zoom_in": self.zoom_in_btn,
             "fit_width": self.fit_width_btn, "fit_page": self.fit_page_btn,
             "previous": self.prev_btn, "next": self.next_btn, "rotate": self.rotate_page_btn,
-            "theme": self.theme_btn, "ai": self.ai_chat_btn,
+            "ai": self.ai_chat_btn,
             "tutor": self.live_tutor_btn, "translate": self.translate_btn,
             "present": self.present_btn, "full": self.full_btn,
         }
@@ -4682,14 +4683,14 @@ class MainWindow(QMainWindow):
             "sidebar": "الشريط الجانبي", "continuous": "تمرير", "book": book_caption,
             "zoom_out": "تصغير", "zoom_in": "تكبير", "fit_width": "ملاءمة العرض",
             "fit_page": "ملاءمة الصفحة", "previous": "السابق", "next": "التالي", "rotate": "تدوير",
-            "theme": "مظهر الصفحة", "ai": "AI محادثة مع", "tutor": "AI حصة صوتية مع",
+            "ai": "AI محادثة مع", "tutor": "AI حصة صوتية مع",
             "translate": "ترجمة", "present": "عرض", "full": "ملء الشاشة",
         } if is_arabic_ui else {
             "open": "Home", "save": "Save", "search": "Search",
             "sidebar": "Sidebar", "continuous": "Scroll", "book": book_caption,
             "zoom_out": "Zoom Out", "zoom_in": "Zoom In", "fit_width": "Fit Width",
             "fit_page": "Fit Page", "previous": "Previous", "next": "Next", "rotate": "Rotate",
-            "theme": "Page Theme", "ai": "AI Chat", "tutor": "Audio lesson with AI",
+            "ai": "AI Chat", "tutor": "Audio lesson with AI",
             "translate": "Translate", "present": "Present", "full": "Full Screen",
         })
         compact_labels = ({
@@ -4697,19 +4698,19 @@ class MainWindow(QMainWindow):
             "sidebar": "صفحات", "continuous": "تمرير", "book": book_caption,
             "zoom_out": "", "zoom_in": "", "fit_width": "عرض", "fit_page": "صفحة",
             "previous": "سابق", "next": "التالي", "rotate": "تدوير",
-            "theme": "ثيم", "ai": "AI محادثة مع", "tutor": "AI حصة صوتية مع", "translate": "ترجمة",
+            "ai": "AI محادثة مع", "tutor": "AI حصة صوتية مع", "translate": "ترجمة",
             "present": "عرض", "full": "ملء",
         } if is_arabic_ui else {
             "open": "Home", "save": "Save", "search": "Search",
             "sidebar": "Pages", "continuous": "Scroll", "book": book_caption,
             "zoom_out": "", "zoom_in": "", "fit_width": "Fit W", "fit_page": "Fit P",
             "previous": "Prev", "next": "Next", "rotate": "Rot",
-            "theme": "Theme", "ai": "AI Chat", "tutor": "Audio lesson with AI", "translate": "Translate",
+            "ai": "AI Chat", "tutor": "Audio lesson with AI", "translate": "Translate",
             "present": "Present", "full": "Full",
         })
         priority = [
             "open", "save", "search", "tutor", "ai", "translate", "sidebar",
-            "continuous", "book", "theme", "present", "full",
+            "continuous", "book", "present", "full",
             "fit_width", "fit_page", "previous", "next", "rotate", "zoom_out", "zoom_in",
         ]
         group_for_key = {
@@ -4720,7 +4721,7 @@ class MainWindow(QMainWindow):
             "zoom_out": self.zoom_group_frame, "zoom_in": self.zoom_group_frame,
             "fit_width": self.zoom_group_frame, "fit_page": self.zoom_group_frame,
             "previous": self.navigation_group, "next": self.navigation_group, "rotate": self.navigation_group,
-            "theme": self.utility_group, "ai": self.utility_group,
+            "ai": self.utility_group,
             "tutor": self.utility_group, "translate": self.utility_group,
             "present": self.utility_group, "full": self.utility_group,
         }
@@ -9564,7 +9565,7 @@ class MainWindow(QMainWindow):
         enabled = primary_tab is not None and document_view_visible
         for widget in (self.save_btn, self.save_as_btn, self.search_btn, self.sidebar_btn, self.continuous_btn, self.book_btn,
                        self.zoom_out_btn, self.zoom_in_btn, self.fit_width_btn, self.fit_page_btn,
-                       self.prev_btn, self.next_btn, self.rotate_page_btn, self.page_spin, self.theme_btn, self.present_btn,
+                       self.prev_btn, self.next_btn, self.rotate_page_btn, self.page_spin, self.present_btn,
                        self.undo_btn, self.redo_btn, self.ai_chat_btn, self.translate_btn):
             widget.setEnabled(enabled)
         self.annot_colors_btn.setEnabled(True)
@@ -9774,7 +9775,6 @@ class MainWindow(QMainWindow):
             "redo_btn": ("أعد تنفيذ التعديل الذي تراجعت عنه.", "Redo the last undone edit."),
             "delete_btn": ("احذف التعليق أو العنصر المحدد من الصفحة.", "Delete the selected annotation or item from the page."),
             "annot_colors_btn": ("اختر لون القلم والتظليل والملاحظات ومربع النص.", "Choose colors for the pen, highlights, notes, and text boxes."),
-            "theme_btn": ("غيّر ألوان عرض صفحة PDF دون تعديل ألوان واجهة Engo.", "Change the PDF page viewing colors without changing Engo's interface theme."),
             "ai_chat_btn": ("افتح المحادثة النصية لطرح الأسئلة وتلخيص الملف وشرح محتواه. اضغط Space مرتين لفتح المحادثة النصية.", "Open text chat to ask questions, summarize the PDF, and explain its contents. Press Space twice to open text chat."),
             "live_tutor_btn": ("ابدأ حصة صوتية يشرح فيها Engo محتوى الصفحة خطوة بخطوة.", "Start a live spoken lesson where Engo teaches the page step by step."),
             "translate_btn": ("حدد منطقة في الصفحة لترجمتها داخل نافذة ترجمة. استخدم Insert لتحديد المنطقة المراد ترجمتها.", "Select an area on the page to translate it in a translation card. Press Insert to start selecting an area for translation."),
