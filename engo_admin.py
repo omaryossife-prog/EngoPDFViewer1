@@ -1101,7 +1101,7 @@ class UpdatesTab(QWidget):
         form = QFormLayout(release_box)
 
         self.enabled_check = QCheckBox("إظهار إشعار التحديث داخل البرنامج")
-        self.latest_version = QLineEdit("2.3.7")
+        self.latest_version = QLineEdit("2.3.6")
         self.latest_version.setPlaceholderText("مثال: 2.3.7")
         self.update_url = QLineEdit()
         self.update_url.setPlaceholderText("https://example.com/engo-setup.exe")
@@ -1141,7 +1141,7 @@ class UpdatesTab(QWidget):
     def _on_loaded(self, rows):
         row = rows[0] if rows else {}
         self.enabled_check.setChecked(bool(row.get("enabled", False)))
-        self.latest_version.setText(str(row.get("latest_version") or "2.3.7"))
+        self.latest_version.setText(str(row.get("latest_version") or "2.3.6"))
         self.update_url.setText(str(row.get("update_url") or ""))
         self.message_ar.setPlainText(str(row.get("message_ar") or ""))
         self.message_en.setPlainText(str(row.get("message_en") or ""))
@@ -1151,7 +1151,7 @@ class UpdatesTab(QWidget):
         version = self.latest_version.text().strip()
         url = self.update_url.text().strip()
         if not re.fullmatch(r"\d+(?:\.\d+){1,3}", version):
-            QMessageBox.warning(self, "Engo Admin", "اكتب رقم إصدار صحيحًا مثل 2.3.7.")
+            QMessageBox.warning(self, "Engo Admin", "اكتب رقم إصدار صحيحًا مثل 2.3.6.")
             return
         parsed_url = urllib.parse.urlparse(url) if url else None
         if url and (parsed_url.scheme.lower() != "https" or not parsed_url.netloc):
