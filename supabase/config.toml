@@ -1,0 +1,20 @@
+project_id = "milksrcwbqmkczlhjfsi"
+
+[functions.license-check]
+verify_jwt = true
+[functions.device-activate]
+verify_jwt = true
+[functions.device-transfer]
+verify_jwt = true
+[functions.device-heartbeat]
+verify_jwt = true
+[functions.usage-consume]
+verify_jwt = true
+[functions.account-overview]
+verify_jwt = true
+
+[functions.subscription-request]
+verify_jwt = true
+
+[functions.google-oauth-exchange]
+verify_jwt = false

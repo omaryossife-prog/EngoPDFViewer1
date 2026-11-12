@@ -1,0 +1,8 @@
+{
+  "supabase_url": "http://127.0.0.1:8787",
+  "supabase_anon_key": "engo-local-mock-anon-key",
+  "license_public_key_b64": "7GuizEYNXeN15QLK0dd1AIxO1O09elNI+GB3iS3nol0=",
+  "app_version": "2.3.6",
+  "request_timeout": 4,
+  "oauth_timeout": 30
+}

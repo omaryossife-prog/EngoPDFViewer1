@@ -1,0 +1,11 @@
+{
+  "supabase_url": "https://milksrcwbqmkczlhjfsi.supabase.co",
+  "supabase_publishable_key": "sb_publishable_YKIOHDPvVWXhck2btW7ELA_nkJG_a1R",
+  "license_public_key_b64": "uyUZzjFjLm/TB7np6UEsZcVkITtod8gkuvxV+Jd2++U=",
+  "request_timeout": 12,
+  "oauth_timeout": 180,
+  "oauth_redirect_uri": "http://127.0.0.1:43821/callback",
+  "app_version": "2.3.6",
+  "google_desktop_client_id": "1091311923605-uk5q13ptile9poq88sp8sg7n08uo5v1c.apps.googleusercontent.com",
+  "google_desktop_client_secret": ""
+}
