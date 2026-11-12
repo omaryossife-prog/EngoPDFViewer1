@@ -38,9 +38,10 @@ Deno.serve(async (req: Request) => {
     });
     if (usageResult.error) throw new Error(usageResult.error.message);
     const usage = usageResult.data as Record<string, unknown>;
+    const freeFeatureIsUnlimited = entitlement?.limit === null || entitlement?.limit === undefined;
     const validLicense = context.license_status === "active" || (
       context.license_status === "untrusted_build" &&
-      (Boolean(context.free_unlimited_mode) || (enabled && entitlement?.limit == null))
+      (Boolean(context.free_unlimited_mode) || (enabled && freeFeatureIsUnlimited))
     );
     const allowed = validLicense && enabled && Boolean(usage?.allowed);
     return jsonResponse({
