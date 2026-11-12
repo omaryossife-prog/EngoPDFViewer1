@@ -64,7 +64,7 @@ Deno.serve(async (req: Request) => {
       enabled,
       current_version: String(body.app_version),
       latest_version: String(settings.latest_version ?? "2.3.7"),
-      update_url: updateAvailable ? safeUrl : null,
+      update_url: enabled ? safeUrl : null,
       message_ar: String(settings.message_ar ?? ""),
       message_en: String(settings.message_en ?? ""),
       update_available: updateAvailable,
