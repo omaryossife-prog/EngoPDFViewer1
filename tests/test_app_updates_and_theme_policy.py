@@ -25,6 +25,17 @@ def test_plan_labels_are_readable_and_free_is_translated():
     assert 'plan_ar = "مميز" if state.is_premium else "مجاني"' in ui
     assert 'self.plan_label.setText(self._tr(f"الباقة: {plan_ar}", f"Plan: {plan_en}"))' in ui
 
+def test_plan_header_and_home_account_use_semantic_plan_colors():
+    ui = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
+    main = (ROOT / "main.py").read_text(encoding="utf-8")
+    assert '"unavailable": "#d94848"' in ui
+    assert '"limited": "#d6a328"' in ui
+    assert '"unlimited": "#239b62"' in ui
+    assert 'free_color = "#4f8ee8"' in ui
+    assert 'premium_color = "#d6a328"' in ui
+    assert 'plan_color = "#d6a328" if state.is_premium else "#4f8ee8"' in main
+    assert 'plan_lbl.setStyleSheet(' in main
+
 
 def test_page_recoloring_controls_and_entitlement_are_removed():
     main = (ROOT / "engo_main.py").read_text(encoding="utf-8")
