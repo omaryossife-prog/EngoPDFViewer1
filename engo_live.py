@@ -2538,6 +2538,10 @@ class LiveTutorDialog(QDialog):
         self.export_pdf_btn.setToolTip("Export the saved teaching boards for every page of this PDF into one PDF file.")
         self.export_pdf_btn.clicked.connect(self.export_board_pdf)
         board_actions.addWidget(self.export_pdf_btn)
+        self.export_docx_btn = QPushButton("Export Word (Premium)")
+        self.export_docx_btn.setToolTip("Premium only · Export saved lesson boards from all pages of this PDF to a Word document.")
+        self.export_docx_btn.clicked.connect(self._request_export_board_docx)
+        board_actions.addWidget(self.export_docx_btn)
         board_layout.addLayout(board_actions)
         self.board_saved_label = QLabel("Auto-save per page is on · export buttons combine notes from all pages")
         self.board_saved_label.setObjectName("dialogHint")
@@ -3280,6 +3284,161 @@ class LiveTutorDialog(QDialog):
             self.board_saved_label.setText(f"All pages exported to PDF · {len(boards)} pages of notes · {path}")
         except Exception as exc:
             QMessageBox.warning(self, "Export PDF", f"Could not export all lesson boards to PDF:\n{exc}")
+
+    def _request_export_board_docx(self):
+        """Reserve the Premium-only Word export entitlement before creating a file."""
+        boards = self._collect_all_boards_for_pdf()
+        if not boards:
+            QMessageBox.information(
+                self, "Export lesson boards",
+                "No saved lesson notes were found for this PDF. Start a lesson first.",
+            )
+            return
+        owner = self.parent()
+        request_access = getattr(owner, "_request_feature_access", None)
+        if not callable(request_access):
+            QMessageBox.information(
+                self, "Engo",
+                "تصدير لوحة الشرح إلى Word متاح في خطة Premium فقط."
+            )
+            return
+        request_access(
+            "voice_board_docx",
+            lambda saved_boards=boards: self.export_board_docx(saved_boards),
+            "Export voice lesson boards to Word is available only with Premium.",
+        )
+
+    def export_board_docx(self, boards=None):
+        """Export all saved lesson boards for this PDF into a formatted Word file."""
+        boards = boards if isinstance(boards, list) else self._collect_all_boards_for_pdf()
+        if not boards:
+            QMessageBox.information(
+                self, "Export lesson boards",
+                "No saved lesson notes were found for this PDF. Start a lesson first.",
+            )
+            return
+        source_stem = Path(self.pdf_path).stem if self.pdf_path else "Engo"
+        default_path = str(Path.home() / f"{source_stem}_all_pages_lesson_boards.docx")
+        path = _engo_file_dialog(
+            self, "Export all lesson boards for this PDF as Word",
+            "تصدير جميع لوحات الشرح لهذا الملف بصيغة Word",
+            default_path, "Word documents (*.docx)", save=True,
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".docx"):
+            path += ".docx"
+        try:
+            from docx import Document
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            from docx.shared import Inches, Pt
+            from docx.oxml import OxmlElement
+            from docx.oxml.ns import qn
+
+            document = Document()
+            section = document.sections[0]
+            section.top_margin = Inches(0.65)
+            section.bottom_margin = Inches(0.65)
+            section.left_margin = Inches(0.75)
+            section.right_margin = Inches(0.75)
+            normal = document.styles["Normal"]
+            normal.font.name = "Segoe UI"
+            normal.font.size = Pt(10)
+            normal._element.rPr.rFonts.set(qn("w:eastAsia"), "Segoe UI")
+            document.core_properties.title = f"{source_stem} — Complete Lesson Boards"
+            document.core_properties.author = APP_NAME
+
+            def set_paragraph_direction(paragraph, value):
+                is_rtl = bool(re.search(r"[\\u0600-\\u06ff]", value or ""))
+                paragraph.alignment = (
+                    WD_ALIGN_PARAGRAPH.RIGHT if is_rtl else WD_ALIGN_PARAGRAPH.LEFT
+                )
+                if is_rtl:
+                    p_pr = paragraph._p.get_or_add_pPr()
+                    bidi = OxmlElement("w:bidi")
+                    bidi.set(qn("w:val"), "1")
+                    p_pr.append(bidi)
+                    for run in paragraph.runs:
+                        rtl = OxmlElement("w:rtl")
+                        rtl.set(qn("w:val"), "1")
+                        run._element.get_or_add_rPr().append(rtl)
+
+            def add_inline_text(paragraph, value):
+                parts = re.split(r"(\\*\\*.*?\\*\\*|(?<!\\*)\\*[^*]+?\\*|\x60[^\x60]+\x60)", value)
+                for part in parts:
+                    if not part:
+                        continue
+                    if part.startswith("**") and part.endswith("**"):
+                        run = paragraph.add_run(part[2:-2])
+                        run.bold = True
+                    elif part.startswith("*") and part.endswith("*"):
+                        run = paragraph.add_run(part[1:-1])
+                        run.italic = True
+                    elif part.startswith("`") and part.endswith("`"):
+                        run = paragraph.add_run(part[1:-1])
+                        run.font.name = "Consolas"
+                    else:
+                        paragraph.add_run(part)
+
+            title = document.add_heading(
+                f"{source_stem} — Complete Lesson Boards", level=0
+            )
+            set_paragraph_direction(title, source_stem)
+            meta = document.add_paragraph(
+                f"Pages with saved notes: {len(boards)} · Exported by {APP_NAME}"
+            )
+            set_paragraph_direction(meta, meta.text)
+
+            for board_index, item in enumerate(boards):
+                if board_index:
+                    document.add_page_break()
+                page_title = f"Page {item['page']} — {item['title']}"
+                heading = document.add_heading(page_title, level=1)
+                set_paragraph_direction(heading, page_title)
+
+                in_code_block = False
+                for raw_line in str(item.get("markdown") or "").splitlines():
+                    line = raw_line.rstrip()
+                    stripped = line.strip()
+                    if stripped.startswith("```"):
+                        in_code_block = not in_code_block
+                        continue
+                    if not stripped or stripped in {"---", "***"}:
+                        continue
+                    if in_code_block:
+                        paragraph = document.add_paragraph()
+                        run = paragraph.add_run(line)
+                        run.font.name = "Consolas"
+                        run.font.size = Pt(9)
+                    elif stripped.startswith("### "):
+                        paragraph = document.add_heading(stripped[4:], level=3)
+                    elif stripped.startswith("## "):
+                        paragraph = document.add_heading(stripped[3:], level=2)
+                    elif stripped.startswith("# "):
+                        paragraph = document.add_heading(stripped[2:], level=2)
+                    elif stripped.startswith(("- ", "* ", "• ")):
+                        paragraph = document.add_paragraph(style="List Bullet")
+                        add_inline_text(paragraph, stripped[2:])
+                    elif re.match(r"^\\d+[.)]\\s+", stripped):
+                        paragraph = document.add_paragraph(style="List Number")
+                        add_inline_text(paragraph, re.sub(r"^\\d+[.)]\\s+", "", stripped))
+                    elif stripped.startswith("> "):
+                        paragraph = document.add_paragraph(style="Quote")
+                        add_inline_text(paragraph, stripped[2:])
+                    else:
+                        paragraph = document.add_paragraph()
+                        add_inline_text(paragraph, stripped)
+                    set_paragraph_direction(paragraph, stripped)
+
+            document.save(path)
+            self.board_saved_label.setText(
+                f"All pages exported to Word · {len(boards)} pages of notes · {path}"
+            )
+        except Exception as exc:
+            QMessageBox.warning(
+                self, "Export Word",
+                f"Could not export all lesson boards to Word:\\n{exc}",
+            )
 
     def set_page_preview(self, image_bytes: bytes, page_number: int, page_count: int | None = None):
         new_page = int(page_number)
