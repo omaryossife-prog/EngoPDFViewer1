@@ -723,7 +723,13 @@ class AccountDialog(QDialog):
         self._worker: ServiceActionWorker | None = None
         self._plans_worker: ServiceActionWorker | None = None
         self.account_data: dict[str, Any] = {}
-        self._free_unlimited_mode = True  # hide subscription until the server confirms paid mode
+        # Seed the plans visibility from the fresh, Ed25519-verified startup
+        # license. Keep plans hidden while the mode is not yet verified; the
+        # asynchronous account overview is for profile/pricing details, not the
+        # first source of truth for the launch mode.
+        self._free_unlimited_mode = (
+            bool(service.state.free_unlimited_mode) if service.state.verified else True
+        )
         is_ar = self.language == "ar"
         self.setObjectName("engoAccountDialog")
         self.setWindowTitle("الحساب والاشتراك" if is_ar else "Account & Subscription")
@@ -968,6 +974,10 @@ class AccountDialog(QDialog):
         self.signout_button.setVisible(state.authenticated)
         self.signin_container.setVisible(not state.authenticated)
         self.transfer_button.setVisible(state.authenticated and "another device" in state.reason.lower())
+        # Startup verification and post-login heartbeats return a signed state.
+        # Apply it before rendering so the button does not wait for account-overview.
+        if state.verified:
+            self._free_unlimited_mode = bool(state.free_unlimited_mode)
         self.plans_button.setVisible(state.authenticated and not self._free_unlimited_mode)
 
     def closeEvent(self, event):  # noqa: N802
@@ -1169,7 +1179,13 @@ class AccountDialog(QDialog):
             self._set_busy(False, self._tr("تعذر قراءة بيانات الحساب", "Could not read account details"))
             return
         self.account_data = data
-        self._free_unlimited_mode = bool(data.get("free_unlimited_mode", False))
+        # Preserve the launch mode captured by the signed startup check for this
+        # running session. If no signed state exists yet, use the authenticated
+        # account-overview response as a fallback (missing field defaults closed).
+        if self.service.state.verified:
+            self._free_unlimited_mode = bool(self.service.state.free_unlimited_mode)
+        else:
+            self._free_unlimited_mode = bool(data.get("free_unlimited_mode", True))
         self.plans_button.setVisible(self.service.state.authenticated and not self._free_unlimited_mode)
         profile = data.get("profile") if isinstance(data.get("profile"), dict) else {}
         if profile:
