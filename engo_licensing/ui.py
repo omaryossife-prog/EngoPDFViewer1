@@ -537,19 +537,7 @@ class PlansDialog(QDialog):
             ("التكبير والتصغير وملاءمة الصفحة", "Zoom and fit page"),
             ("تدوير الصفحات", "Rotate pages"),
         ]
-        section_row = self.comparison_table.rowCount()
-        self.comparison_table.insertRow(section_row)
-        section = QTableWidgetItem(self._tr(
-            "الميزات الأساسية المتاحة بلا حدود في جميع الخطط",
-            "Core features unlimited in every plan",
-        ))
-        section.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        font = section.font()
-        font.setBold(True)
-        section.setFont(font)
-        self.comparison_table.setItem(section_row, 0, section)
-        self.comparison_table.setSpan(section_row, 0, 1, 5)
-
+        # Keep the common features directly in the table without an extra section banner.
         for label_ar, label_en in basic_features:
             row_index = self.comparison_table.rowCount()
             self.comparison_table.insertRow(row_index)
