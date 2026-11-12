@@ -40,10 +40,10 @@ def test_plan_header_and_home_account_use_semantic_plan_colors():
 
 def test_long_plan_feature_names_use_two_lines_and_keep_header_font_normal():
     ui = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
-    assert '"المحادثة الصوتية\\\\nوالحصص الصوتية"' in ui
-    assert '"Voice chat and\\\\nvoice lessons"' in ui
-    assert '"تصدير لوحة الشرح الصوتية\\\\nإلى Word"' in ui
-    assert '"Export voice lesson\\\\nboard to Word"' in ui
+    assert '"المحادثة الصوتية\\nوالحصص الصوتية"' in ui
+    assert '"Voice chat and\\nvoice lessons"' in ui
+    assert '"تصدير لوحة الشرح الصوتية\\nإلى Word"' in ui
+    assert '"Export voice lesson\\nboard to Word"' in ui
     assert "font.setPointSize(max(9, font.pointSize()))" in ui
     assert "font.setPointSize(max(7, font.pointSize() - 1))" not in ui
     assert "self.comparison_table.setTextElideMode(Qt.TextElideMode.ElideNone)" in ui
