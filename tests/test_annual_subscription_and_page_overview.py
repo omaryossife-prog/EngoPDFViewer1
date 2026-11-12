@@ -62,3 +62,12 @@ def test_plan_comparison_restores_grouped_free_and_single_premium_header():
     assert "self.comparison_table.setFixedHeight(total_height + 2)" in ui
     assert "self._put_status_dot(row_index, 4, \"unlimited\")" in ui
     assert "grouped: dict[str, list" not in ui
+
+
+
+def test_comparison_has_no_extra_basic_features_section_banner():
+    ui = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
+    assert "الميزات الأساسية المتاحة بلا حدود في جميع الخطط" not in ui
+    assert "المميزات المتاحة بلا حدود في المجاني" not in ui
+    assert '("فتح وعرض ملفات PDF", "Open and view PDF files")' in ui
+    assert '("تدوير الصفحات", "Rotate pages")' in ui
