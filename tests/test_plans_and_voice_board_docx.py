@@ -14,7 +14,7 @@ def test_plan_comparison_has_a_sticky_header_and_requested_column_order():
     assert 'self._tr("مجاني\\nمتاح بحدود", "Free\\nLimited")' in source
     assert 'self._tr("مجاني\\nغير متاح", "Free\\nUnavailable")' in source
     assert 'self._tr("مميز\\nمتاح بلا حدود", "Premium\\nUnlimited")' in source
-    assert '("unlimited": 1, "limited": 2, "unavailable": 3)' in source
+    assert 'return {"unlimited": 1, "limited": 2, "unavailable": 3}' in source
     assert 'for status in ("unlimited", "limited", "unavailable")' in source
     assert "المميزات المتاحة بلا حدود في جميع الخطط" in source
     assert "المميزات غير المتاحة في المجاني" in source
