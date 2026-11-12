@@ -34,7 +34,7 @@ except Exception:  # pragma: no cover - checked at runtime when signed licenses 
     Ed25519PublicKey = None  # type: ignore[assignment]
 
 
-APP_VERSION_FALLBACK = "2.3.6"
+APP_VERSION_FALLBACK = "2.3.7"
 KNOWN_FEATURES = (
     "pdf_merge", "app_themes", "smart_theme", "text_chat",
     "voice_chat", "voice_board_docx", "tags", "tag_units", "translations", "ai_search",
