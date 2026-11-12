@@ -1,5 +1,5 @@
 import { adminClient, authenticatedUser, badRequest, handleOptions, jsonResponse, makeSignedLicense, readBody, requireText, requireVersion } from "./_shared/common.ts";
-const allowedFeatures = new Set(["pdf_merge","page_themes","app_themes","smart_theme","text_chat","voice_chat","voice_board_docx","tags","tag_units","translations","ai_search"]);
+const allowedFeatures = new Set(["pdf_merge","app_themes","smart_theme","text_chat","voice_chat","voice_board_docx","tags","tag_units","translations","ai_search"]);
 Deno.serve(async (req: Request) => {
   const options = await handleOptions(req); if (options) return options;
   try {
@@ -17,15 +17,32 @@ Deno.serve(async (req: Request) => {
     // Otherwise a missing/invalid signing key could consume a user's quota even
     // though the desktop must (correctly) deny the feature without a signed reply.
     const license = await makeSignedLicense(user.id, deviceId, appVersion);
+    const context = license.context;
+    const entitlements = context.entitlements as Record<string, { enabled?: boolean; limit?: number | null }> | undefined;
+    const entitlement = entitlements?.[feature];
+    const enabled = Boolean(entitlement?.enabled);
+    const featureIsLimited = enabled && entitlement?.limit !== null && entitlement?.limit !== undefined;
+    if (context.license_status === "untrusted_build" &&
+        !Boolean(context.free_unlimited_mode) && featureIsLimited) {
+      return jsonResponse({
+        allowed: false,
+        used: null,
+        limit: entitlement?.limit ?? null,
+        message: "update_required",
+        license: license.envelope,
+      });
+    }
     const usageResult = await admin.rpc("consume_feature_usage_v1", {
       p_user_id: user.id, p_device_id: deviceId, p_app_version: appVersion,
       p_feature_key: feature, p_amount: amount, p_scope_key: scopeKey,
     });
     if (usageResult.error) throw new Error(usageResult.error.message);
     const usage = usageResult.data as Record<string, unknown>;
-    const context = license.context;
-    const validLicense = context.license_status === "active" || context.license_status === "untrusted_build";
-    const enabled = Boolean((context.entitlements as Record<string, {enabled?: boolean}> | undefined)?.[feature]?.enabled);
+    const freeFeatureIsUnlimited = entitlement?.limit === null || entitlement?.limit === undefined;
+    const validLicense = context.license_status === "active" || (
+      context.license_status === "untrusted_build" &&
+      (Boolean(context.free_unlimited_mode) || (enabled && freeFeatureIsUnlimited))
+    );
     const allowed = validLicense && enabled && Boolean(usage?.allowed);
     return jsonResponse({
       allowed,

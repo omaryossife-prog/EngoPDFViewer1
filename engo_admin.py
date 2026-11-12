@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -1085,6 +1086,105 @@ class BuildsTab(QWidget):
         self.load()
 
 
+
+# --------------------------------------------------------------------------
+# Application update distribution settings
+# --------------------------------------------------------------------------
+
+class UpdatesTab(QWidget):
+    def __init__(self, main_window):
+        super().__init__()
+        self.main = main_window
+
+        root = QVBoxLayout(self)
+        release_box = QGroupBox("إعدادات إصدار ENGO والتحديثات")
+        form = QFormLayout(release_box)
+
+        self.enabled_check = QCheckBox("إظهار إشعار التحديث داخل البرنامج")
+        self.latest_version = QLineEdit("2.3.6")
+        self.latest_version.setPlaceholderText("مثال: 2.3.6")
+        self.update_url = QLineEdit()
+        self.update_url.setPlaceholderText("https://example.com/engo-setup.exe")
+        self.message_ar = QTextEdit()
+        self.message_ar.setPlaceholderText("رسالة تظهر للمستخدم باللغة العربية (اختياري)")
+        self.message_en = QTextEdit()
+        self.message_en.setPlaceholderText("Message shown to English users (optional)")
+        self.message_ar.setFixedHeight(70)
+        self.message_en.setFixedHeight(70)
+
+        form.addRow("", self.enabled_check)
+        form.addRow("أحدث إصدار:", self.latest_version)
+        form.addRow("رابط التحديث:", self.update_url)
+        form.addRow("رسالة التحديث بالعربية:", self.message_ar)
+        form.addRow("Update message (English):", self.message_en)
+        root.addWidget(release_box)
+
+        actions = QHBoxLayout()
+        self.refresh_btn = QPushButton("إعادة تحميل")
+        self.save_btn = QPushButton("حفظ إعدادات التحديث")
+        self.refresh_btn.clicked.connect(self.load)
+        self.save_btn.clicked.connect(self._save)
+        actions.addStretch(1)
+        actions.addWidget(self.refresh_btn)
+        actions.addWidget(self.save_btn)
+        root.addLayout(actions)
+        root.addStretch(1)
+
+    def load(self):
+        self.main.run_async(
+            lambda c: c.select("app_update_settings", filters={"id": "eq.true"}, limit=1),
+            self._on_loaded,
+            args=(self.main.client,),
+            busy_label="جاري تحميل إعدادات التحديثات…",
+        )
+
+    def _on_loaded(self, rows):
+        row = rows[0] if rows else {}
+        self.enabled_check.setChecked(bool(row.get("enabled", False)))
+        self.latest_version.setText(str(row.get("latest_version") or "2.3.6"))
+        self.update_url.setText(str(row.get("update_url") or ""))
+        self.message_ar.setPlainText(str(row.get("message_ar") or ""))
+        self.message_en.setPlainText(str(row.get("message_en") or ""))
+        self.main.status("تم تحميل إعدادات التحديثات")
+
+    def _save(self):
+        version = self.latest_version.text().strip()
+        url = self.update_url.text().strip()
+        if not re.fullmatch(r"\d+(?:\.\d+){1,3}", version):
+            QMessageBox.warning(self, "Engo Admin", "اكتب رقم إصدار صحيحًا مثل 2.3.6.")
+            return
+        parsed_url = urllib.parse.urlparse(url) if url else None
+        if url and (parsed_url.scheme.lower() != "https" or not parsed_url.netloc):
+            QMessageBox.warning(self, "Engo Admin", "أدخل رابط تحديث صحيحًا يبدأ بـ https://")
+            return
+
+        body = {
+            "id": True,
+            "enabled": self.enabled_check.isChecked(),
+            "latest_version": version,
+            "update_url": url or None,
+            "message_ar": self.message_ar.toPlainText().strip() or None,
+            "message_en": self.message_en.toPlainText().strip() or None,
+            "updated_at": _now_iso(),
+        }
+
+        def save(client):
+            existing = client.select(
+                "app_update_settings", filters={"id": "eq.true"}, limit=1
+            )
+            return (
+                client.update("app_update_settings", {"id": "eq.true"}, body)
+                if existing else client.insert("app_update_settings", body)
+            )
+
+        self.main.run_async(
+            save,
+            lambda _result: self.main.status("تم حفظ إعدادات التحديثات"),
+            args=(self.main.client,),
+            busy_label="جاري حفظ إعدادات التحديثات…",
+        )
+
+
 # --------------------------------------------------------------------------
 # Usage analytics and subscription pricing configuration
 # --------------------------------------------------------------------------
@@ -1311,6 +1411,7 @@ class AdminMainWindow(QMainWindow):
         self.usage_tab = UsageStatsTab(self)
         self.pricing_tab = PricingTab(self)
         self.builds_tab = BuildsTab(self)
+        self.updates_tab = UpdatesTab(self)
         self.tabs.addTab(self.users_tab, "المستخدمون والاشتراكات")
         self.tabs.addTab(self.devices_tab, "الأجهزة")
         self.tabs.addTab(self.payments_tab, "المدفوعات")
@@ -1318,6 +1419,7 @@ class AdminMainWindow(QMainWindow):
         self.tabs.addTab(self.usage_tab, "إحصائيات الاستخدام")
         self.tabs.addTab(self.pricing_tab, "الخطط والأسعار")
         self.tabs.addTab(self.builds_tab, "نسخ البرنامج الموثوقة")
+        self.tabs.addTab(self.updates_tab, "إعدادات التحديثات")
         root.addWidget(self.tabs, 1)
 
         self.status_bar = QStatusBar()
@@ -1352,6 +1454,7 @@ class AdminMainWindow(QMainWindow):
             self.features_tab.load()
             self.pricing_tab.load()
             self.builds_tab.load()
+            self.updates_tab.load()
 
         def on_err(message):
             self.connection_label.setText("فشل الاتصال")

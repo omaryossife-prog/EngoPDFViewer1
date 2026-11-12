@@ -7,7 +7,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from PyQt6.QtCore import Qt, QThread, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal, QSize, QUrl
+from PyQt6.QtCore import Qt, QRect, QThread, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal, QSize, QUrl
 from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QLinearGradient, QBrush, QPen, QPixmap
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PyQt6.QtWidgets import (
@@ -349,6 +349,70 @@ class EngoSplashScreen(QWidget):
             event.ignore()
 
 
+class GroupedPlanHeader(QHeaderView):
+    """Pinned two-row plan header painted independently from the scrolling rows."""
+
+    def __init__(self, language: str = "en", theme: str = "dark", parent=None):
+        super().__init__(Qt.Orientation.Horizontal, parent)
+        self.language = "ar" if str(language).lower().startswith("ar") else "en"
+        self.tokens = _get_theme_tokens(theme)
+        self.setFixedHeight(72)
+        self.setSectionsClickable(False)
+        self.setSectionsMovable(False)
+        self.setHighlightSections(False)
+
+    def set_theme(self, theme: str):
+        self.tokens = _get_theme_tokens(theme)
+        self.viewport().update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self.viewport())
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        background = QColor(self.tokens["raised"])
+        foreground = QColor(self.tokens["text"])
+        border = QColor(self.tokens["border_strong"])
+        painter.fillRect(self.viewport().rect(), background)
+
+        positions = [self.sectionViewportPosition(i) for i in range(5)]
+        widths = [self.sectionSize(i) for i in range(5)]
+        top_height = 30
+        full_height = self.height()
+
+        def cell(x, y, width, height, label):
+            if width <= 0 or height <= 0:
+                return
+            rect = QRect(int(x), int(y), int(width), int(height))
+            painter.fillRect(rect, background)
+            painter.setPen(border)
+            painter.drawRect(rect.adjusted(0, 0, -1, -1))
+            painter.setPen(foreground)
+            font = painter.font()
+            font.setBold(y == 0)
+            font.setPointSize(max(7, font.pointSize() - 1))
+            painter.setFont(font)
+            flags = int(Qt.AlignmentFlag.AlignCenter) | int(Qt.TextFlag.TextWordWrap)
+            painter.drawText(rect.adjusted(4, 2, -4, -2), flags, label)
+
+        feature = "الميزة" if self.language == "ar" else "Feature"
+        free = "مجاني" if self.language == "ar" else "Free"
+        premium = "مميز" if self.language == "ar" else "Premium"
+        limited = "متاح بحدود" if self.language == "ar" else "Available with limits"
+        unlimited = "متاح بلا حدود" if self.language == "ar" else "Available without limits"
+        unavailable = "غير متاح" if self.language == "ar" else "Unavailable"
+
+        cell(positions[0], 0, widths[0], full_height, feature)
+        free_left = min(positions[1], positions[2], positions[3])
+        free_right = max(positions[1] + widths[1], positions[2] + widths[2],
+                         positions[3] + widths[3])
+        cell(free_left, 0, free_right - free_left, top_height, free)
+        cell(positions[4], 0, widths[4], top_height, premium)
+        cell(positions[1], top_height, widths[1], full_height - top_height, limited)
+        cell(positions[2], top_height, widths[2], full_height - top_height, unlimited)
+        cell(positions[3], top_height, widths[3], full_height - top_height, unavailable)
+        cell(positions[4], top_height, widths[4], full_height - top_height, unlimited)
+        painter.end()
+
+
 class PlansDialog(QDialog):
     """Free/Premium plan picker with a replaceable owner-provided QR image."""
     PERIODS = ("monthly", "quarterly", "semiannual", "annual")
@@ -398,16 +462,15 @@ class PlansDialog(QDialog):
         comparison_title = QLabel(self._tr("مقارنة المميزات", "Feature comparison")); comparison_title.setObjectName("planHeading")
         root.addWidget(comparison_title)
         self.comparison_table = QTableWidget(0, 5)
-        # Two-level header: Free spans its three availability states; Premium
-        # has a single unlimited column. Keep the table itself non-scrollable.
-        self.comparison_table.horizontalHeader().hide()
+        # The native horizontal header stays pinned while feature rows scroll.
+        self.comparison_table.setHorizontalHeader(GroupedPlanHeader(self.language, theme, self.comparison_table))
         self.comparison_table.verticalHeader().setVisible(False)
         self.comparison_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.comparison_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.comparison_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.comparison_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.comparison_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.comparison_table.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents)
         self.comparison_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.comparison_table.setFixedHeight(420)
         self.comparison_table.setAlternatingRowColors(True)
         self.comparison_table.setWordWrap(True)
         self.comparison_table.setTextElideMode(Qt.TextElideMode.ElideNone)
@@ -427,7 +490,7 @@ class PlansDialog(QDialog):
         self.period_combo.currentIndexChanged.connect(self._update_price)
         period_row.addWidget(self.period_combo,1); pl.addLayout(period_row)
         self.price_label=QLabel("—"); self.price_label.setObjectName("planHeading"); pl.addWidget(self.price_label)
-        self.payment_button=QPushButton(self._tr("التواصل والدفع", "Contact & Pay")); self.payment_button.setObjectName("planPrimary")
+        self.payment_button=QPushButton(self._tr("التواصل والدفع", "Contact and Pay")); self.payment_button.setObjectName("planPrimary")
         self.payment_button.clicked.connect(self._request_payment); pl.addWidget(self.payment_button)
         root.addWidget(premium)
 
@@ -465,7 +528,6 @@ class PlansDialog(QDialog):
         labels = [
             ("pdf_merge", "دمج ملفات PDF", "Merge PDF files"),
             ("app_themes", "ثيمات البرنامج", "App themes"),
-            ("page_themes", "ثيمات الصفحات", "Page themes"),
             ("smart_theme", "القلم الذكي", "Smart pen"),
             ("text_chat", "المحادثة النصية", "Text chat"),
             ("voice_chat", "المحادثة الصوتية والحصص الصوتية", "Voice chat and voice lessons"),
@@ -493,40 +555,9 @@ class PlansDialog(QDialog):
                 "Feature data was not returned by the server. Deploy the updated account-overview function, then check the account connection and reopen plans."
             ))
 
-        # Recreate the original grouped header: Free has three states,
-        # Premium has one unlimited state. Feature rows stay in their natural
-        # order; they are not split into separate status sections.
-        self.comparison_table.clear()
-        self.comparison_table.setRowCount(2)
-        self.comparison_table.setSpan(0, 0, 2, 1)
-        self.comparison_table.setItem(0, 0, QTableWidgetItem(self._tr("الميزة", "Feature")))
-        self.comparison_table.setSpan(0, 1, 1, 3)
-        self.comparison_table.setItem(0, 1, QTableWidgetItem(self._tr("مجاني", "Free")))
-        self.comparison_table.setItem(0, 4, QTableWidgetItem(self._tr("مميز", "Premium")))
-
-        headers = [
-            (1, "متاح بحدود", "Available with limits", "#d6a328"),
-            (2, "متاح بلا حدود", "Available without limits", "#239b62"),
-            (3, "غير متاح", "Unavailable", "#d94848"),
-            (4, "متاح بلا حدود", "Available without limits", "#239b62"),
-        ]
-        for column, ar, en, color in headers:
-            item = QTableWidgetItem(self._tr(ar, en))
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            item.setForeground(QColor(color))
-            font = item.font()
-            font.setBold(True)
-            item.setFont(font)
-            self.comparison_table.setItem(1, column, item)
-
-        for row in range(2):
-            for column in range(5):
-                item = self.comparison_table.item(row, column)
-                if item:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    font = item.font()
-                    font.setBold(True)
-                    item.setFont(font)
+        # Feature rows are grouped by Free availability. The two-level
+        # column header is a real QHeaderView, so it remains fixed while rows scroll.
+        self.comparison_table.setRowCount(0)
 
         basic_features = [
             ("فتح وعرض ملفات PDF", "Open and view PDF files"),
@@ -537,17 +568,11 @@ class PlansDialog(QDialog):
             ("التكبير والتصغير وملاءمة الصفحة", "Zoom and fit page"),
             ("تدوير الصفحات", "Rotate pages"),
         ]
-        # Gather all features, then show Free availability in the requested order:
-        # limited first, unlimited second, unavailable last. The common PDF
-        # features are unlimited on both plans and belong in the unlimited group.
         grouped_features: dict[str, list[tuple[str, str, bool]]] = {
             "limited": [],
-            "unlimited": [],
+            "unlimited": [(label_ar, label_en, True) for label_ar, label_en in basic_features],
             "unavailable": [],
         }
-        for label_ar, label_en in basic_features:
-            grouped_features["unlimited"].append((label_ar, label_en, True))
-
         for key, label_ar, label_en in labels:
             free_row = by_key.get(key, {}).get("free")
             premium_row = by_key.get(key, {}).get("premium")
@@ -559,9 +584,9 @@ class PlansDialog(QDialog):
             for label_ar, label_en, premium_unlimited in grouped_features[free_status]:
                 row_index = self.comparison_table.rowCount()
                 self.comparison_table.insertRow(row_index)
-                self.comparison_table.setItem(
-                    row_index, 0, QTableWidgetItem(self._tr(label_ar, label_en))
-                )
+                feature_item = QTableWidgetItem(self._tr(label_ar, label_en))
+                feature_item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+                self.comparison_table.setItem(row_index, 0, feature_item)
                 self._put_status_dot(
                     row_index, self._free_status_column_for_status(free_status), free_status
                 )
@@ -569,25 +594,14 @@ class PlansDialog(QDialog):
                     self._put_status_dot(row_index, 4, "unlimited")
 
         header = self.comparison_table.horizontalHeader()
-        # Keep the feature-name column wide; availability columns are compact
-        # and may wrap their labels over two or more lines.
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for column in range(1, 5):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
-            self.comparison_table.setColumnWidth(column, 90)
-        self.comparison_table.setWordWrap(True)
-        self.comparison_table.setTextElideMode(Qt.TextElideMode.ElideNone)
+            self.comparison_table.setColumnWidth(column, 84)
         self.comparison_table.verticalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents
         )
         self.comparison_table.resizeRowsToContents()
-        # Long labels wrap inside their cells; the table itself never scrolls.
-        total_height = self.comparison_table.frameWidth() * 2
-        total_height += sum(
-            self.comparison_table.rowHeight(row)
-            for row in range(self.comparison_table.rowCount())
-        )
-        self.comparison_table.setFixedHeight(total_height + 2)
 
     def _free_status(self, row: dict | None) -> str:
         if not isinstance(row, dict) or not row or not bool(row.get("enabled")):
@@ -920,7 +934,7 @@ class AccountDialog(QDialog):
         for lbl in (self.plan_label, self.status_label, self.expiry_label):
             lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             prof_layout.addWidget(lbl)
-        self.plans_button = QPushButton("عرض الخطط والاشتراك" if is_ar else "View plans & subscribe")
+        self.plans_button = QPushButton("عرض الخطط والاشتراك" if is_ar else "View Plans and Subscribe")
         self.plans_button.setObjectName("acctPlans")
         self.plans_button.clicked.connect(self._open_plans)
         self.plans_button.setVisible(False)
@@ -1013,7 +1027,9 @@ class AccountDialog(QDialog):
             self._avatar_url_loaded = avatar_url
             reply = self._network_manager.get(QNetworkRequest(QUrl(avatar_url)))
             reply.finished.connect(lambda r=reply: self._avatar_loaded(r))
-        self.plan_label.setText(self._tr(f"الباقة: {state.plan_label}", f"Plan: {state.plan_label}"))
+        plan_ar = "مميز" if state.is_premium else "مجاني"
+        plan_en = "Premium" if state.is_premium else "Free"
+        self.plan_label.setText(self._tr(f"الباقة: {plan_ar}", f"Plan: {plan_en}"))
         status = str(state.license_status or "free")
         status_labels = {
             "active": ("نشط", "Active"), "free": ("مجاني", "Free"),
@@ -1198,7 +1214,7 @@ class AccountDialog(QDialog):
 
     def _plans_overview_completed(self, data: Any, error: str):
         self.plans_button.setEnabled(True)
-        self.plans_button.setText(self._tr("عرض الخطط والاشتراك", "View plans & subscribe"))
+        self.plans_button.setText(self._tr("عرض الخطط والاشتراك", "View Plans and Subscribe"))
         if error:
             QMessageBox.warning(
                 self, self._tr("تعذر تحميل الخطط", "Could not load plans"),
