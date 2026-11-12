@@ -40,7 +40,7 @@ Deno.serve(async (req: Request) => {
 
     const settings = data ?? {
       enabled: false,
-      latest_version: "2.3.7",
+      latest_version: "2.3.6",
       update_url: null,
       message_ar: null,
       message_en: null,
