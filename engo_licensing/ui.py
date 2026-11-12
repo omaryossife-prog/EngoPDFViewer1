@@ -4,7 +4,7 @@ from __future__ import annotations
 import traceback
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from PyQt6.QtCore import Qt, QThread, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal, QSize, QUrl
@@ -44,6 +44,19 @@ def _fmt_date_only(value: Any) -> str:
         return dt.strftime("%Y-%m-%d")
     except (ValueError, TypeError):
         return value[:10] if len(value) >= 10 else value
+
+
+def _fmt_datetime_local(value: Any) -> str:
+    """Render an ISO timestamp in the computer's local timezone, without seconds."""
+    if not value or not isinstance(value, str):
+        return "—"
+    try:
+        dt = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone().strftime("%Y-%m-%d %H:%M")
+    except (ValueError, TypeError, OverflowError):
+        return "—"
 
 
 class StartupVerifierWorker(QThread):
@@ -969,7 +982,11 @@ class AccountDialog(QDialog):
         }
         status_ar, status_en = status_labels.get(status, (status, status))
         self.status_label.setText(self._tr(f"الحالة: {status_ar}", f"Status: {status_en}"))
-        self.expiry_label.setText(self._tr(f"تنتهي صلاحية التحقق: {state.expires_at or '—'}", f"License check expires: {state.expires_at or '—'}"))
+        expiry_text = _fmt_datetime_local(state.expires_at)
+        self.expiry_label.setText(self._tr(
+            f"تنتهي صلاحية التحقق: {expiry_text}",
+            f"License check expires: {expiry_text}",
+        ))
         self.message_label.setText(state.reason or "")
         self.signout_button.setVisible(state.authenticated)
         self.signin_container.setVisible(not state.authenticated)

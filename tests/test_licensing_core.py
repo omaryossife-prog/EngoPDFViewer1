@@ -7,7 +7,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from engo_licensing.core import (
-    LicenseConfig, LicenseService, SignatureError, canonical_json, is_expected_free_startup, LicenseState,
+    LicenseConfig, LicenseService, NetworkError, SignatureError, canonical_json,
+    is_expected_free_startup, LicenseState,
 )
 
 
@@ -68,6 +69,51 @@ def test_signed_license_preserves_free_unlimited_launch_mode():
     assert state.verified is True
     assert state.authenticated is True
     assert state.free_unlimited_mode is True
+
+
+def test_refresh_session_reuses_a_newer_rotated_session(monkeypatch):
+    service, _envelope, _private = make_service_and_envelope()
+    old_session = {
+        "access_token": "old-access", "refresh_token": "old-refresh",
+        "expires_at": int(time.time()) + 3600, "user": {"id": "user-1"},
+    }
+    newer_session = {
+        "access_token": "new-access", "refresh_token": "new-refresh",
+        "expires_at": int(time.time()) + 3600, "user": {"id": "user-1"},
+    }
+    service._session = newer_session
+
+    def unexpected_refresh(*_args, **_kwargs):
+        pytest.fail("A stale refresh token must not be sent after a newer session exists")
+
+    monkeypatch.setattr(service, "_request", unexpected_refresh)
+    assert service._refresh_session(old_session) == newer_session
+
+
+def test_authenticated_edge_recovers_when_parallel_worker_rotated_session(monkeypatch):
+    service, _envelope, _private = make_service_and_envelope()
+    old_session = {
+        "access_token": "old-access", "refresh_token": "old-refresh",
+        "expires_at": int(time.time()) + 3600, "user": {"id": "user-1"},
+    }
+    newer_session = {
+        "access_token": "new-access", "refresh_token": "new-refresh",
+        "expires_at": int(time.time()) + 3600, "user": {"id": "user-1"},
+    }
+    service._session = old_session
+    used_tokens = []
+
+    def fake_edge(_name, _body, access_token=None):
+        used_tokens.append(access_token)
+        if access_token == "old-access":
+            # Simulate a concurrent account worker completing the refresh.
+            service._session = newer_session
+            raise NetworkError("Server returned HTTP 401: Authentication required")
+        return {"ok": True}
+
+    monkeypatch.setattr(service, "_edge", fake_edge)
+    assert service._authenticated_edge("account-overview", {}) == {"ok": True}
+    assert used_tokens == ["old-access", "new-access"]
 
 
 def test_tampered_entitlement_is_rejected():
