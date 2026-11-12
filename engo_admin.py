@@ -822,14 +822,14 @@ class PaymentsTab(QWidget):
         for i, p in enumerate(self.filtered):
             email = self.main.users_index.get(p.get("user_id"), p.get("user_id", "—"))
             metadata = p.get("metadata") if isinstance(p.get("metadata"), dict) else {}
-            period = {"monthly": "شهري", "quarterly": "ربع سنوي", "semiannual": "نصف سنوي"}.get(metadata.get("billing_period"), "—")
+            period = {"monthly": "شهري", "quarterly": "ربع سنوي", "semiannual": "نصف سنوي", "annual": "سنوي"}.get(metadata.get("billing_period"), "—")
             values = [email, p.get("plan_id") or "—",
                       str(p.get("amount")) if p.get("amount") is not None else "—",
                       p.get("currency") or "—", p.get("provider") or "—",
                       status_ar.get(p.get("status"), p.get("status")), period, _fmt_dt(p.get("created_at"))]
             for col, value in enumerate(values):
                 self.table.setItem(i, col, QTableWidgetItem(str(value)))
-            if p.get("status") == "pending" and metadata.get("billing_period") in ("monthly", "quarterly", "semiannual"):
+            if p.get("status") == "pending" and metadata.get("billing_period") in ("monthly", "quarterly", "semiannual", "annual"):
                 holder = QWidget(); row_layout = QHBoxLayout(holder); row_layout.setContentsMargins(1,1,1,1); row_layout.setSpacing(3)
                 approve = QPushButton("تأكيد"); approve.setToolTip("تأكيد التحويل وتفعيل Premium")
                 reject = QPushButton("رفض"); reject.setToolTip("رفض طلب الدفع")
@@ -1173,6 +1173,7 @@ class PricingTab(QWidget):
         ("monthly", "شهري", 1),
         ("quarterly", "ربع سنوي", 3),
         ("semiannual", "نصف سنوي", 6),
+        ("annual", "سنوي", 12),
     )
     def __init__(self, main_window):
         super().__init__(); self.main=main_window; self.rows_by_period={}
@@ -1188,7 +1189,7 @@ class PricingTab(QWidget):
         mode_layout.addWidget(self.free_unlimited_check,1)
         mode_layout.addWidget(self.save_mode_btn)
         root.addWidget(mode_box)
-        self.table=QTableWidget(3,6); self.table.setHorizontalHeaderLabels(["الفترة", "المدة بالشهور", "السعر", "العملة", "متاحة", ""])
+        self.table=QTableWidget(4,6); self.table.setHorizontalHeaderLabels(["الفترة", "المدة بالشهور", "السعر", "العملة", "متاحة", ""])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setDefaultSectionSize(40); self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         root.addWidget(self.table)

@@ -3549,6 +3549,46 @@ class PageOverviewGrid(QListWidget):
         super().__init__(parent)
         self._last_responsive_metrics = None
         self._updating_responsive_metrics = False
+        self._page_aspect_ratio = 2.0 / 3.0
+        self._wheel_line_step = 20
+
+    def set_page_aspect_ratio(self, aspect_ratio: float):
+        """Use the document's prevailing page orientation for the gallery cards."""
+        try:
+            ratio = float(aspect_ratio)
+        except (TypeError, ValueError):
+            ratio = 2.0 / 3.0
+        ratio = max(0.35, min(3.0, ratio))
+        if abs(ratio - self._page_aspect_ratio) < 0.01:
+            return
+        self._page_aspect_ratio = ratio
+        self._last_responsive_metrics = None
+        self.update_responsive_metrics()
+
+    def set_wheel_scroll_line_step(self, step: int):
+        """Match the number of pixels used by the normal PDF reader per wheel notch."""
+        try:
+            self._wheel_line_step = max(1, int(step))
+        except (TypeError, ValueError):
+            self._wheel_line_step = 20
+
+    def wheelEvent(self, event):
+        """Keep the gallery wheel movement identical to normal continuous PDF scrolling."""
+        angle_delta = int(event.angleDelta().y())
+        pixel_delta = int(event.pixelDelta().y())
+        if pixel_delta:
+            amount = pixel_delta
+        elif angle_delta:
+            lines = max(3, int(round(self._wheel_line_step * 3)))
+            amount = int((angle_delta / 120.0) * lines)
+        else:
+            amount = 0
+        if amount:
+            bar = self.verticalScrollBar()
+            bar.setValue(bar.value() - amount)
+            event.accept()
+            return
+        super().wheelEvent(event)
 
     def update_responsive_metrics(self):
         """Fit six or more page tiles across desktop screens without stale item sizes."""
@@ -3569,11 +3609,11 @@ class PageOverviewGrid(QListWidget):
         columns = min(columns, max(1, (usable_width + spacing) // 150))
         tile_width = max(140, (usable_width - spacing * (columns - 1)) // columns)
 
-        # The former 270px icon-height limit made portrait pages look narrow even
-        # when each column had 240px available. Give the icon enough height to use
-        # its natural portrait ratio; QIcon keeps the PDF image aspect ratio intact.
-        icon_width = max(112, tile_width - 20)
-        icon_height = max(180, int(round(icon_width * 1.50)))
+        # Match the gallery card and selection outline to the document's prevailing
+        # page orientation. Portrait remains 3:2 tall; landscape pages get a wide,
+        # shorter card instead of being trapped inside a portrait tile.
+        icon_width = max(112, tile_width - 16)
+        icon_height = max(96, int(round(icon_width / self._page_aspect_ratio)))
         tile_height = icon_height + 48
         metrics = (tile_width, tile_height, icon_width, icon_height)
         if metrics == self._last_responsive_metrics:
@@ -4140,9 +4180,10 @@ class DocumentTab(QWidget):
         # At desktop widths this gives six or more columns rather than leaving
         # a large unused strip on the right side of the gallery.
         self.page_overview_grid.setItemAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
-        self.page_overview_grid.update_responsive_metrics()
+        self.page_overview_grid.setSpacing(0)
+        self.page_overview_grid.set_wheel_scroll_line_step(self.scroll.verticalScrollBar().singleStep())
         self.page_overview_grid.metricsChanged.connect(self._on_page_overview_metrics_changed)
-        self.page_overview_grid.setSpacing(1)
+        self.page_overview_grid.update_responsive_metrics()
         self.page_overview_grid.setWordWrap(True)
         self.page_overview_grid.setTextElideMode(Qt.TextElideMode.ElideNone)
         self.page_overview_grid.setUniformItemSizes(True)
@@ -4441,8 +4482,8 @@ class DocumentTab(QWidget):
             }}
             QListWidget#pageOverviewGrid::item {{
                 background: transparent; color: {tokens['text']};
-                border: 2px solid transparent; border-radius: 12px;
-                padding: 3px 2px; margin: 0px;
+                border: 2px solid transparent; border-radius: 10px;
+                padding: 2px 1px; margin: 0px;
             }}
             QListWidget#pageOverviewGrid::item:hover {{
                 background: transparent; color: {tokens['accent']};
@@ -4477,11 +4518,39 @@ class DocumentTab(QWidget):
         self.page_overview_btn.setIcon(make_icon("fullscreen", tokens["text"], 16))
         self.page_overview_btn.setAutoRaise(False)
 
+    def _page_overview_document_aspect_ratio(self) -> float:
+        """Return the median visible-page aspect ratio for consistent portrait/landscape cards."""
+        if not self.doc or getattr(self.doc, "is_closed", False):
+            return 2.0 / 3.0
+        count = max(1, int(getattr(self, "page_count", 1) or 1))
+        # Sample a handful of evenly spaced pages instead of loading every page.
+        sample_count = min(7, count)
+        indices = sorted({
+            round(index * (count - 1) / max(1, sample_count - 1))
+            for index in range(sample_count)
+        })
+        ratios = []
+        for page_index in indices:
+            try:
+                page_rect = self.doc.load_page(page_index).rect
+                width = float(page_rect.width)
+                height = float(page_rect.height)
+                if width > 0 and height > 0:
+                    ratios.append(width / height)
+            except (RuntimeError, ValueError, IndexError):
+                continue
+        if not ratios:
+            return 2.0 / 3.0
+        ratios.sort()
+        return ratios[len(ratios) // 2]
+
     def show_page_overview(self):
         """Show all pages in a scrollable gallery with sharp, lazy-loaded previews."""
         if self._page_overview_active or not self.doc or getattr(self.doc, "is_closed", False):
             return
         grid = self.page_overview_grid
+        grid.set_page_aspect_ratio(self._page_overview_document_aspect_ratio())
+        grid.set_wheel_scroll_line_step(self.scroll.verticalScrollBar().singleStep())
         grid.update_responsive_metrics()
         grid.setUpdatesEnabled(False)
         grid.clear()
