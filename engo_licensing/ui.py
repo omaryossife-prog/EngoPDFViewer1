@@ -351,7 +351,7 @@ class EngoSplashScreen(QWidget):
 
 class PlansDialog(QDialog):
     """Free/Premium plan picker with a replaceable owner-provided QR image."""
-    PERIODS = ("monthly", "quarterly", "semiannual")
+    PERIODS = ("monthly", "quarterly", "semiannual", "annual")
 
     def __init__(self, service: LicenseService, account_data: dict, language: str = "en", parent=None, theme: str = "dark"):
         super().__init__(parent)
@@ -435,6 +435,7 @@ class PlansDialog(QDialog):
         self.period_combo.addItem(self._tr("شهري", "Monthly"), "monthly")
         self.period_combo.addItem(self._tr("ربع سنوي", "Quarterly"), "quarterly")
         self.period_combo.addItem(self._tr("نصف سنوي", "Semiannual"), "semiannual")
+        self.period_combo.addItem(self._tr("سنوي", "Annual"), "annual")
         self.period_combo.currentIndexChanged.connect(self._update_price)
         period_row.addWidget(self.period_combo,1); pl.addLayout(period_row)
         self.price_label=QLabel("—"); self.price_label.setObjectName("planHeading"); pl.addWidget(self.price_label)
