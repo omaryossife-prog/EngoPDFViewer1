@@ -388,7 +388,9 @@ class GroupedPlanHeader(QHeaderView):
             painter.setPen(QColor(text_color) if text_color else foreground)
             font = self.font()
             font.setBold(y == 0)
-            font.setPointSize(max(7, font.pointSize() - 1))
+            # Keep the application's normal header font size; shrinking this
+            # custom-painted header made the pinned labels noticeably smaller.
+            font.setPointSize(max(9, font.pointSize()))
             painter.setFont(font)
             flags = int(Qt.AlignmentFlag.AlignCenter) | int(Qt.TextFlag.TextWordWrap)
             painter.drawText(rect.adjusted(4, 2, -4, -2), flags, label)
@@ -537,8 +539,8 @@ class PlansDialog(QDialog):
             ("app_themes", "ثيمات البرنامج", "App themes"),
             ("smart_theme", "القلم الذكي", "Smart pen"),
             ("text_chat", "المحادثة النصية", "Text chat"),
-            ("voice_chat", "المحادثة الصوتية والحصص الصوتية", "Voice chat and voice lessons"),
-            ("voice_board_docx", "تصدير لوحة الشرح الصوتية إلى Word", "Export voice lesson board to Word"),
+            ("voice_chat", "المحادثة الصوتية\\nوالحصص الصوتية", "Voice chat and\\nvoice lessons"),
+            ("voice_board_docx", "تصدير لوحة الشرح الصوتية\\nإلى Word", "Export voice lesson\\nboard to Word"),
             ("tags", "الوسوم", "Tags"),
             ("tag_units", "وحدات الوسوم", "Tag units"),
             ("translations", "الترجمة", "Translations"),
