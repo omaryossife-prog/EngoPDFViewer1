@@ -369,7 +369,7 @@ grant execute on function public.admin_reject_qr_payment_v1(uuid) to service_rol
 create table if not exists public.app_update_settings (
     id boolean primary key default true check (id is true),
     enabled boolean not null default false,
-    latest_version text not null default '2.3.7',
+    latest_version text not null default '2.3.6',
     update_url text,
     message_ar text,
     message_en text,
@@ -387,13 +387,13 @@ create table if not exists public.app_update_settings (
 );
 insert into public.app_update_settings (
     id, enabled, latest_version, update_url, message_ar, message_en, updated_at
-) values (true, false, '2.3.7', null, null, null, now())
+) values (true, false, '2.3.6', null, null, null, now())
 on conflict (id) do nothing;
 alter table public.app_update_settings enable row level security;
 revoke all on table public.app_update_settings from public, anon, authenticated;
 grant all on table public.app_update_settings to service_role;
 insert into public.trusted_builds (app_version, is_approved, notes, approved_at)
-values ('2.3.7', true, 'ENGO update notifications and supported-build policy', now())
+values ('2.3.6', true, 'Current ENGO application release', now())
 on conflict (app_version) do nothing;
 
 commit;
