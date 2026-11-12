@@ -55,6 +55,21 @@ def test_valid_ed25519_license_response_is_accepted():
     assert state.plan_id == "premium"
 
 
+def test_signed_license_preserves_free_unlimited_launch_mode():
+    service, envelope, private = make_service_and_envelope()
+    envelope["payload"]["free_unlimited_mode"] = True
+    envelope["signature"] = base64.b64encode(
+        private.sign(canonical_json(envelope["payload"]))
+    ).decode("ascii")
+
+    payload = service._verify_signed_response(envelope)
+    state = service._apply_payload(payload, {"id": "user-1"})
+
+    assert state.verified is True
+    assert state.authenticated is True
+    assert state.free_unlimited_mode is True
+
+
 def test_tampered_entitlement_is_rejected():
     service, envelope, _private = make_service_and_envelope()
     envelope["payload"]["plan_id"] = "free"
