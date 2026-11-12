@@ -131,7 +131,7 @@ from engo_licensing import (
 )
 
 
-APP_VERSION = "2.3.7"  # Update notifications, supported-build policy, and page-theme removal
+APP_VERSION = "2.3.6"  # V17 Smart Theme cache/per-page render fix
 
 
 class PDFMergeWorker(QThread):
