@@ -50,6 +50,13 @@ def test_long_plan_feature_names_use_two_lines_and_keep_header_font_normal():
     assert "self.comparison_table.setWordWrap(True)" in ui
     assert "self.comparison_table.resizeRowsToContents()" in ui
 
+
+def test_home_account_plan_label_has_slightly_larger_text():
+    main = (ROOT / "main.py").read_text(encoding="utf-8")
+    assert "QLabel#homeAcctPlan { color: #607087; font-size: 9pt;" in main
+    assert "QLabel#homeAcctPlan {{ color: {theme_tokens['muted']}; font-size: 9pt;" in main
+    assert 'font-size: 9pt; font-weight: 700; background: transparent;' in main
+
 def test_page_recoloring_controls_and_entitlement_are_removed():
     main = (ROOT / "engo_main.py").read_text(encoding="utf-8")
     core = (ROOT / "engo_licensing" / "core.py").read_text(encoding="utf-8")

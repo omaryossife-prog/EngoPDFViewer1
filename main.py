@@ -1530,7 +1530,7 @@ class MainWindow(QMainWindow):
             plan_lbl.setText(self._plan_label_localized(state.plan_label, is_ar))
             plan_color = "#d6a328" if state.is_premium else "#4f8ee8"
             plan_lbl.setStyleSheet(
-                f"color: {plan_color}; font-size: 8pt; font-weight: 700; background: transparent;"
+                f"color: {plan_color}; font-size: 9pt; font-weight: 700; background: transparent;"
             )
             if avatar_lbl is not None:
                 cached_pixmap = getattr(self, "_home_avatar_pixmap", None)
@@ -2625,7 +2625,7 @@ class MainWindow(QMainWindow):
             QFrame#homeAccountWidget:hover { background: #dde5f0; border-color: #a8b8d0; }
             QLabel#homeAcctAvatar { background: #d0e8f0; color: #386fd3; border: 2px solid #90c0d8; border-radius: 18px; font-size: 13pt; font-weight: 900; }
             QLabel#homeAcctName { color: #1a2a3a; font-size: 9.5pt; font-weight: 750; }
-            QLabel#homeAcctPlan { color: #607087; font-size: 8pt; font-weight: 600; }
+            QLabel#homeAcctPlan { color: #607087; font-size: 9pt; font-weight: 600; }
             QFrame#homeFileBrowser { background: #ffffff; border: 1px solid #ccd5e1; border-radius: 10px; }
             QLineEdit#homeBrowserPath { color: #202c3e; font-size: 9pt; font-weight: 700; }
             QTreeView#homeBrowserTree { background: #f8fafc; color: #202c3e; border: 1px solid #d1d9e5; border-radius: 7px; padding: 4px; outline: 0; font-size: 8.5pt; font-weight: 650; }
@@ -3843,7 +3843,7 @@ class MainWindow(QMainWindow):
         QFrame#homeAccountWidget:hover {{ background: {theme_tokens['hover']}; border-color: {theme_tokens['border_strong']}; }}
         QLabel#homeAcctAvatar {{ background: {theme_tokens['selection']}; color: {theme_tokens['accent']}; border: 2px solid {theme_tokens['border_strong']}; border-radius: 18px; font-size: 13pt; font-weight: 900; }}
         QLabel#homeAcctName {{ color: {theme_tokens['text']}; font-size: 9.5pt; font-weight: 750; }}
-        QLabel#homeAcctPlan {{ color: {theme_tokens['muted']}; font-size: 8pt; font-weight: 600; }}
+        QLabel#homeAcctPlan {{ color: {theme_tokens['muted']}; font-size: 9pt; font-weight: 600; }}
         QFrame#homeFileBrowser {{ background: #202630; border: 1px solid #354154; border-radius: 10px; }}
         QTreeView#homeBrowserTree {{ background: #171c25; color: #e9edf5; border: 1px solid #354154; border-radius: 7px; padding: 4px; outline: 0; }}
         QTreeView#homeBrowserTree::item {{ padding: 5px 5px; border-radius: 4px; }}
