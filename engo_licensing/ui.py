@@ -502,10 +502,10 @@ class PlansDialog(QDialog):
         self.period_group = QButtonGroup(self)
         self.period_group.setExclusive(True)
         period_labels = (
-            ("monthly", self._tr("شهري\\nشهر واحد", "Monthly\\n1 month")),
-            ("quarterly", self._tr("ربع سنوي\\n3 أشهر", "Quarterly\\n3 months")),
-            ("semiannual", self._tr("نصف سنوي\\n6 أشهر", "Semiannual\\n6 months")),
-            ("annual", self._tr("سنوي\\n12 شهر", "Annual\\n12 months")),
+            ("monthly", self._tr("شهري\nشهر واحد", "Monthly\n1 month")),
+            ("quarterly", self._tr("ربع سنوي\n3 أشهر", "Quarterly\n3 months")),
+            ("semiannual", self._tr("نصف سنوي\n6 أشهر", "Semiannual\n6 months")),
+            ("annual", self._tr("سنوي\n12 شهر", "Annual\n12 months")),
         )
         for period, label in period_labels:
             button = QPushButton(label)
