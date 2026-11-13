@@ -8455,28 +8455,38 @@ class MainWindow(QMainWindow):
                     missing_key_message = (
                         f"مفتاح API الخاص بـ {provider_label} غير مُضاف. "
                         "لإضافته: افتح إعدادات البرنامج ← الصيانة ← إعدادات الذكاء الاصطناعي، "
-                        "ثم الصق المفتاح في خانة API key واضغط «حفظ الإعدادات»، وبعدها أعد إرسال سؤالك."
+                        "ثم الصق المفتاح في خانة API key، واضغط «تحديث النماذج المتاحة» وانتظر ظهور النماذج، "
+                        "ثم اضغط «حفظ الإعدادات» وأعد إرسال سؤالك."
                     )
                 else:
                     missing_key_message = (
                         f"مفتاح API الخاص بـ {provider_label} غير مُضاف. "
-                        "أنت تستخدم Engo بوضع الزائر، لذلك إعدادات الذكاء الاصطناعي ومفاتيح API مقفولة. "
-                        "سجّل الدخول أولًا من نافذة الحساب والاشتراك؛ بعد تسجيل الدخول افتح إعدادات البرنامج "
-                        "← الصيانة ← إعدادات الذكاء الاصطناعي، وأضف المفتاح ثم أعد إرسال سؤالك."
+                        "لإعداد Engo، سجّل الدخول بحساب Google أولًا. هل تريد فتح نافذة تسجيل الدخول الآن؟"
                     )
             elif signed_in:
                 missing_key_message = (
                     f"No API key is configured for {provider_label}. "
                     "Open Application Settings → Maintenance → AI settings, paste the key in the API key field, "
-                    "select Save settings, then send your question again."
+                    "click Refresh available models and wait for the model list to load, then select Save settings "
+                    "and send your question again."
                 )
             else:
                 missing_key_message = (
                     f"No API key is configured for {provider_label}. "
-                    "AI settings and API keys are locked in Guest mode. Sign in first from Account & Subscription; "
-                    "then open Application Settings → Maintenance → AI settings, add the key, and send your question again."
+                    "Sign in with Google first to set up Engo. Would you like to open the sign-in window now?"
                 )
-            self.ai_panel.append_message_for(path, "assistant", missing_key_message)
+            if signed_in:
+                self.ai_panel.append_message_for(path, "assistant", missing_key_message)
+            else:
+                answer = QMessageBox.question(
+                    self,
+                    "تسجيل الدخول مطلوب" if is_ar else "Sign-in required",
+                    missing_key_message,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
+                )
+                if answer == QMessageBox.StandardButton.Yes:
+                    self.open_account_dialog()
             self.ai_panel.set_busy(False)
             return
         if not _usage_checked:
