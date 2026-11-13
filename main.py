@@ -5989,7 +5989,7 @@ class MainWindow(QMainWindow):
         self._open_supported_document(source_path)
 
     def _begin_operation_loading(self, operation="file"):
-        """Show a compact, theme-aware busy dialog for a synchronous open operation."""
+        """Show a tiny splash-style popup while a file or session is opening."""
         existing = getattr(self, "_operation_loading_dialog", None)
         if existing is not None:
             try:
@@ -6006,57 +6006,63 @@ class MainWindow(QMainWindow):
             self.settings.value("ui_theme", "dark", type=str)
         )
         tokens = engo_ui_theme_tokens(theme)
-        if operation == "session":
-            message = "جاري فتح الجلسة..." if is_ar else "Opening session..."
-        else:
-            # Keep the loading copy short and consistent for single and multi-file opens.
-            message = "جاري فتح الملف..." if is_ar else "Opening file..."
+        message = (
+            ("جاري فتح الجلسة..." if is_ar else "Opening session...")
+            if operation == "session"
+            else ("جاري فتح الملف..." if is_ar else "Opening file...")
+        )
 
+        # Frameless popup: no title bar, logo, or empty header area.
         dialog = QDialog(self)
         dialog.setObjectName("engoBusyDialog")
-        dialog.setWindowTitle("ENGO")
         dialog.setWindowFlags(
-            Qt.WindowType.Dialog
-            | Qt.WindowType.CustomizeWindowHint
-            | Qt.WindowType.WindowTitleHint
+            Qt.WindowType.Tool
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
         )
+        dialog.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
         dialog.setLayoutDirection(
             Qt.LayoutDirection.RightToLeft if is_ar
             else Qt.LayoutDirection.LeftToRight
         )
-        dialog.setFixedSize(320, 82)
+        dialog.setFixedSize(300, 58)
+
         layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(20, 14, 20, 14)
-        layout.setSpacing(10)
+        layout.setContentsMargins(16, 7, 16, 7)
+        layout.setSpacing(5)
 
         label = QLabel(message)
-        label.setObjectName("engoBusyLabel")
+        label.setObjectName("splashStatus")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(label)
 
-        # Match the startup splash: a slim, indeterminate bar in the active accent.
+        # This is the same QProgressBar setup used by EngoSplashScreen.
         progress = QProgressBar()
-        progress.setObjectName("engoBusyProgress")
-        progress.setRange(0, 0)
         progress.setTextVisible(False)
-        progress.setFixedHeight(4)
+        progress.setRange(0, 0)
         layout.addWidget(progress)
 
+        # Copy the startup splash bar styling verbatim so its accent chunk,
+        # track, height and indeterminate animation are identical.
         dialog.setStyleSheet(
-            f"QDialog#engoBusyDialog {{ background:{tokens['panel']}; "
-            f"border:1px solid {tokens['border']}; border-radius:13px; }}"
-            f"QLabel#engoBusyLabel {{ color:{tokens['text']}; "
-            "background:transparent; border:0; font-size:11pt; font-weight:800; }}"
-            f"QProgressBar#engoBusyProgress {{ background:{tokens['panel']}; "
-            "border:0; border-radius:3px; min-height:4px; max-height:4px; }}"
-            f"QProgressBar#engoBusyProgress::chunk {{ background:{tokens['accent']}; "
-            "border-radius:3px; }}"
+            f"QDialog#engoBusyDialog {{ background:{tokens['window']}; "
+            f"border:1px solid {tokens['border']}; border-radius:12px; }}"
+            f"QLabel#splashStatus {{ color:{tokens['text']}; "
+            "font-size:9.5pt; font-weight:650; background:transparent; border:0; }}"
+            f"QProgressBar {{ border:0; border-radius:3px; "
+            f"background:{tokens['panel']}; min-height:4px; max-height:4px; }}"
+            f"QProgressBar::chunk {{ background:{tokens['accent']}; border-radius:3px; }}"
         )
+
         self._operation_loading_dialog = dialog
         try:
             if self.isVisible():
                 dialog.move(self.frameGeometry().center() - dialog.rect().center())
+            else:
+                screen = QApplication.primaryScreen()
+                if screen is not None:
+                    dialog.move(screen.availableGeometry().center() - dialog.rect().center())
         except RuntimeError:
             pass
         dialog.show()
