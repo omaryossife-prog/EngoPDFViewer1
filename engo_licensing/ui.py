@@ -449,8 +449,11 @@ class PlansDialog(QDialog):
         self.account_data = account_data if isinstance(account_data, dict) else {}
         self._worker: ServiceActionWorker | None = None
         self._selected_billing_period = "monthly"
+        self._is_premium_current = bool(self.service.state.is_premium)
         self.period_cards: dict[str, QPushButton] = {}
-        self._payment_button_text = self._tr("التواصل والدفع", "Contact and Pay")
+        self._payment_button_text = self._tr(
+            "زيادة مدة الاشتراك", "Extend subscription"
+        ) if self._is_premium_current else self._tr("التواصل والدفع", "Contact and Pay")
         self._network_manager = QNetworkAccessManager(self)
         self.setWindowTitle(self._tr("خطط الاشتراك", "Subscription plans"))
         self.setMinimumSize(600, 650)
@@ -463,6 +466,7 @@ class PlansDialog(QDialog):
             QFrame#planCard {{ background:{t['panel']}; border:1px solid {t['border']}; border-radius:12px; }}
             QLabel#planHeading {{ font-size:14pt; font-weight:850; }}
             QLabel#planMuted {{ color:{t['muted']}; }}
+            QLabel#currentPlanBadge {{ color:#ffffff; background:#16845b; border-radius:10px; padding:5px 10px; font-size:9pt; font-weight:800; }}
             QPushButton {{ background:{t['raised']}; color:{t['text']}; border:1px solid {t['border']}; border-radius:8px; padding:7px 12px; min-height:34px; font-weight:700; }}
             QPushButton:hover {{ background:{t['hover']}; border-color:{t['border_strong']}; }}
             QPushButton#planPrimary {{ background:{t['accent']}; color:white; border-color:{t['accent']}; }}
@@ -488,7 +492,14 @@ class PlansDialog(QDialog):
         root.addWidget(self.data_warning)
 
         free = QFrame(); free.setObjectName("planCard"); fl = QVBoxLayout(free); fl.setContentsMargins(14,12,14,12)
-        free_title = QLabel(self._tr("مجاني", "Free")); free_title.setObjectName("planHeading"); fl.addWidget(free_title)
+        free_header = QHBoxLayout()
+        free_title = QLabel(self._tr("مجاني", "Free")); free_title.setObjectName("planHeading")
+        free_header.addWidget(free_title); free_header.addStretch(1)
+        if not self._is_premium_current:
+            free_badge = QLabel(self._tr("✓ خطتك الحالية", "✓ Current plan"))
+            free_badge.setObjectName("currentPlanBadge")
+            free_header.addWidget(free_badge)
+        fl.addLayout(free_header)
         free_copy = QLabel(self._tr("الميزات الأساسية، مع حدود الميزات التي يحددها Engo.", "Core tools plus feature availability configured by Engo.")); free_copy.setWordWrap(True); fl.addWidget(free_copy)
         comparison_title = QLabel(self._tr("مقارنة المميزات", "Feature comparison")); comparison_title.setObjectName("planHeading")
         root.addWidget(comparison_title)
@@ -510,8 +521,22 @@ class PlansDialog(QDialog):
         root.addWidget(free)
 
         premium = QFrame(); premium.setObjectName("planCard"); pl = QVBoxLayout(premium); pl.setContentsMargins(14,12,14,12)
-        premium_title = QLabel(self._tr("مميز", "Premium")); premium_title.setObjectName("planHeading"); pl.addWidget(premium_title)
-        premium_copy = QLabel(self._tr("إتاحة أوسع للميزات حسب إعدادات Engo.", "Expanded feature access as configured by Engo.")); premium_copy.setWordWrap(True); pl.addWidget(premium_copy)
+        premium_header = QHBoxLayout()
+        premium_title = QLabel(self._tr("مميز", "Premium")); premium_title.setObjectName("planHeading")
+        premium_header.addWidget(premium_title); premium_header.addStretch(1)
+        if self._is_premium_current:
+            premium_badge = QLabel(self._tr("✓ اشتراكك الحالي", "✓ Your active plan"))
+            premium_badge.setObjectName("currentPlanBadge")
+            premium_header.addWidget(premium_badge)
+        pl.addLayout(premium_header)
+        premium_copy = QLabel(
+            self._tr(
+                "اشتراكك المميز نشط. اختر مدة لإضافة فترة اشتراك جديدة."
+                if self._is_premium_current else "إتاحة أوسع للميزات حسب إعدادات Engo.",
+                "Your Premium subscription is active. Choose a period to add more subscription time."
+                if self._is_premium_current else "Expanded feature access as configured by Engo."
+            )
+        ); premium_copy.setWordWrap(True); pl.addWidget(premium_copy)
         pl.addWidget(QLabel(self._tr("مدة الاشتراك:", "Billing period:")))
         period_cards_row = QHBoxLayout()
         period_cards_row.setSpacing(8)
