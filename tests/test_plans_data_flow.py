@@ -332,3 +332,12 @@ def test_abandoned_text_chat_reservations_are_refunded_after_timeout():
     assert "used - v_expired.amount" in migration
     assert "set status = 'refunded'" in migration
 
+def test_current_plan_badge_uses_the_known_working_signed_license_state():
+    source = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
+    start = source.index("class PlansDialog(QDialog):")
+    end = source.index("    def _tr(", start)
+    dialog_init = source[start:end]
+    assert "self._is_premium_current = bool(self.service.state.is_premium)" in dialog_init
+    assert 'if not self._is_premium_current:' in dialog_init
+    assert 'if self._is_premium_current:' in dialog_init
+    assert 'self.account_data.get("subscription")' not in dialog_init
