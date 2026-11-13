@@ -10658,6 +10658,7 @@ def main():
             window._apply_interface_language()
         window.showMaximized()
         splash.fade_out()
+        QTimer.singleShot(1400, window._retry_pending_text_chat_settlements)
         if startup_paths:
             QTimer.singleShot(120, lambda values=startup_paths: [window.open_pdf(path) for path in values])
         else:
