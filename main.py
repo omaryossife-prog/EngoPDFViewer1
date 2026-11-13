@@ -269,6 +269,10 @@ class MainWindow(QMainWindow):
         self._speak_next_response = False
         self._teaching_payload = None
         self._close_after_cancel = False
+        self._update_info = {}
+        self._update_info_worker = None
+        self._update_prompt_shown = False
+        self._update_manual_check = False
         # Debounce toolbar reflow while the window is being resized.  The timer
         # runs after Qt has recalculated child geometry, so density is selected
         # from the real width available to the toolbar rather than a stale width.
@@ -331,6 +335,11 @@ class MainWindow(QMainWindow):
             self._license_heartbeat_timer.timeout.connect(self._start_license_heartbeat)
             self._license_heartbeat_timer.start()
             QTimer.singleShot(400, self._sync_profile_overview)
+        self._update_check_timer = QTimer(self)
+        self._update_check_timer.setInterval(30 * 60 * 1000)
+        self._update_check_timer.timeout.connect(self._check_app_update_info)
+        self._update_check_timer.start()
+        QTimer.singleShot(1400, self._check_app_update_info)
         if self._register_ipc:
             self._setup_ipc_server()
 
@@ -979,6 +988,7 @@ class MainWindow(QMainWindow):
         self.home_acct_avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.home_acct_avatar.setObjectName("homeAcctAvatar")
         acct_text = QVBoxLayout()
+        self.home_acct_text_layout = acct_text
         acct_text.setSpacing(1)
         _lang = str(self.settings.value("interface_language", "en", type=str) or "en").lower()
         self.home_acct_name = QLabel("زائر" if _lang.startswith("ar") else "Guest")
@@ -1153,6 +1163,22 @@ class MainWindow(QMainWindow):
         else:
             side.insertWidget(browser_insert_index, browser, 1)
         side.setStretch(side.indexOf(browser), 1)
+        self.home_update_center_btn = QPushButton("✦  Update Center")
+        self.home_update_center_btn.setObjectName("homeUpdateCenter")
+        self.home_update_center_btn.setFixedHeight(38)
+        self.home_update_center_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.home_update_center_btn.setToolTip("Check for Engo updates and release information")
+        self.home_update_center_btn.clicked.connect(self._open_update_center)
+        self.home_update_center_btn.setStyleSheet(
+            "QPushButton#homeUpdateCenter { background:#285fc4; color:#ffffff; "
+            "border:1px solid #5b8bea; border-radius:9px; padding:7px 10px; "
+            "font-weight:800; text-align:left; }"
+            "QPushButton#homeUpdateCenter:hover { background:#3474df; border-color:#8eb0f4; }"
+            "QPushButton#homeUpdateCenter:pressed { background:#214d9f; }"
+        )
+        settings_index = side.indexOf(self.home_settings_btn)
+        side.insertWidget(settings_index if settings_index >= 0 else side.count() - 1,
+                          self.home_update_center_btn)
         self._home_browser_current_dir = ""  # Empty means This PC / available drives.
         self._home_browser_breadcrumb_focus_dir = ""
         self._refresh_home_browser()
@@ -1488,9 +1514,15 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _plan_label_localized(plan_label, is_ar):
+        value = str(plan_label or "Free").strip()
         if not is_ar:
-            return plan_label or "Free"
-        return "مجاني" if (plan_label or "Free") == "Free" else (plan_label or "Free")
+            return value
+        normalized = value.casefold()
+        if normalized == "free":
+            return "مجاني"
+        if normalized == "premium":
+            return "مميز"
+        return value
 
     def _refresh_license_button(self):
         button = getattr(self, "home_account_btn", None)
@@ -1508,10 +1540,11 @@ class MainWindow(QMainWindow):
             metadata = user.get("user_metadata") if isinstance(user.get("user_metadata"), dict) else {}
             name = metadata.get("full_name") or metadata.get("name") or user.get("email") or ""
             first_name = str(name).split()[0] if name else ""
-            plan_shown = self._plan_label_localized(state.plan_label, is_ar)
+            actual_plan = "Premium" if state.is_premium else state.plan_label
+            plan_shown = self._plan_label_localized(actual_plan, is_ar)
             free_unlimited_mode = bool(getattr(state, "free_unlimited_mode", False))
-            # In global Free launch mode, hide the Free label but never hide
-            # the user's actual Premium status.
+            # A real Premium subscription is always visible, independent of launch mode.
+            # Only hide the Free label while the product is globally free and unlimited.
             show_plan = bool(state.is_premium or (not free_unlimited_mode and state.plan_label != "Free"))
             if first_name:
                 label = first_name + (" · " + plan_shown if show_plan else "")
@@ -1542,10 +1575,19 @@ class MainWindow(QMainWindow):
                 display_name = display_name[:16] + "…"
             name_lbl.setText(display_name)
             free_unlimited_mode = bool(getattr(state, "free_unlimited_mode", False))
-            plan_lbl.setText(
-                self._plan_label_localized(state.plan_label, is_ar)
-                if (state.is_premium or not free_unlimited_mode) else ""
+            actual_plan = "Premium" if state.is_premium else state.plan_label
+            show_plan = bool(state.is_premium or not free_unlimited_mode)
+            plan_lbl.setText(self._plan_label_localized(actual_plan, is_ar) if show_plan else "")
+            plan_lbl.setVisible(show_plan)
+            # When Free is intentionally hidden during the free launch, center the
+            # account name in the card instead of leaving an empty second line.
+            name_lbl.setAlignment(
+                Qt.AlignmentFlag.AlignCenter if not show_plan else Qt.AlignmentFlag.AlignVCenter
             )
+            acct_text_layout = getattr(self, "home_acct_text_layout", None)
+            if acct_text_layout is not None:
+                acct_text_layout.setAlignment(Qt.AlignmentFlag.AlignCenter if not show_plan
+                                              else Qt.AlignmentFlag.AlignVCenter)
             plan_color = "#d6a328" if state.is_premium else "#4f8ee8"
             plan_lbl.setStyleSheet(
                 f"color: {plan_color}; font-size: 11pt; font-weight: 800; background: transparent;"
@@ -1565,7 +1607,12 @@ class MainWindow(QMainWindow):
         else:
             name_lbl.setText("الرجاء تسجيل الدخول" if is_ar else "Please sign in")
             plan_lbl.setText("")
+            plan_lbl.setVisible(False)
             plan_lbl.setStyleSheet("")
+            name_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+            acct_text_layout = getattr(self, "home_acct_text_layout", None)
+            if acct_text_layout is not None:
+                acct_text_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
             button.setStyleSheet("")
             self._home_avatar_pixmap = None
             self._home_avatar_url_loaded = ""
@@ -1783,6 +1830,120 @@ class MainWindow(QMainWindow):
             reason = self.license_service.state.reason
             if reason:
                 self.show_status("Free mode · " + reason)
+
+    def _open_update_center(self):
+        """Manually check release information from the prominent Home action."""
+        self._check_app_update_info(manual=True)
+
+    def _check_app_update_info(self, manual=False):
+        service = getattr(self, "license_service", None)
+        worker = getattr(self, "_update_info_worker", None)
+        if manual:
+            self._update_manual_check = True
+        if self._close_after_cancel:
+            return
+        if service is None:
+            if manual:
+                QMessageBox.information(
+                    self, "Engo",
+                    "خدمة التحديثات غير متاحة في هذا التشغيل." if
+                    str(self.settings.value("interface_language", "en", type=str)).lower().startswith("ar")
+                    else "The update service is unavailable in this session."
+                )
+                self._update_manual_check = False
+            return
+        if _qt_thread_is_running(worker):
+            return
+        worker = ServiceActionWorker(service.get_app_update_info, self)
+        self._update_info_worker = worker
+        worker.completed.connect(self._app_update_info_completed)
+        worker.finished.connect(lambda current=worker: self._update_info_thread_finished(current))
+        worker.start()
+
+    def _update_info_thread_finished(self, worker):
+        if getattr(self, "_update_info_worker", None) is worker:
+            self._update_info_worker = None
+        worker.deleteLater()
+        self._maybe_finish_pending_close()
+
+    def _app_update_info_completed(self, data, error):
+        self._update_info = data if not error and isinstance(data, dict) else {}
+        manual_request = bool(self._update_manual_check)
+        self._update_manual_check = False
+        info = self._update_info
+        url = str(info.get("update_url") or "").strip() if isinstance(info, dict) else ""
+        update_available = bool(
+            isinstance(info, dict) and info.get("enabled")
+            and info.get("update_available") and url.startswith("https://")
+        )
+        if update_available:
+            if manual_request or not self._update_prompt_shown:
+                self._update_prompt_shown = True
+                QTimer.singleShot(0, self._show_update_available_dialog)
+        elif manual_request:
+            is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
+            if error:
+                QMessageBox.warning(
+                    self, "Engo",
+                    ("تعذر التحقق من وجود تحديث:
+" if is_ar else "Could not check for updates:
+") + str(error)
+                )
+            else:
+                QMessageBox.information(
+                    self, "Engo",
+                    "أنت تستخدم أحدث إصدار من ENGO." if is_ar else "You're using the latest version of ENGO."
+                )
+
+    def _show_update_available_dialog(self):
+        """Show one clear update prompt as soon as a newer release is discovered."""
+        info = getattr(self, "_update_info", {})
+        if not isinstance(info, dict) or not info.get("enabled") or not info.get("update_available"):
+            return
+        url = str(info.get("update_url") or "").strip()
+        target = QUrl(url)
+        if not (target.isValid() and target.scheme().lower() == "https" and target.host()):
+            return
+        is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
+        latest_version = str(info.get("latest_version") or "").strip()
+        custom_message = str(info.get("message_ar" if is_ar else "message_en") or "").strip()
+        current_version = str(getattr(getattr(self, "license_service", None), "state", None).app_version
+                               if getattr(getattr(self, "license_service", None), "state", None) is not None
+                               and getattr(self.license_service.state, "app_version", None) else APP_VERSION)
+        title = "يتوفر تحديث جديد لبرنامج ENGO" if is_ar else "A new ENGO update is available"
+        message = custom_message or (
+            "يتوفر إصدار أحدث من ENGO. يُفضّل تثبيته للاستفادة من التحسينات والإصلاحات."
+            if is_ar else
+            "A newer version of ENGO is available. Install it to get the latest improvements and fixes."
+        )
+        if latest_version:
+            message += (
+                f"
+
+الإصدار الحالي: {current_version}
+الإصدار الجديد: {latest_version}"
+                if is_ar else
+                f"
+
+Current version: {current_version}
+New version: {latest_version}"
+            )
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle(title)
+        box.setText(message)
+        update_button = box.addButton(
+            "تحديث الآن" if is_ar else "Update now",
+            QMessageBox.ButtonRole.AcceptRole
+        )
+        later_button = box.addButton(
+            "لاحقًا" if is_ar else "Later",
+            QMessageBox.ButtonRole.RejectRole
+        )
+        box.setDefaultButton(later_button)
+        box.exec()
+        if box.clickedButton() is update_button:
+            QDesktopServices.openUrl(target)
 
     # The licensing server / engo_licensing.core always answer in English. Map the
     # known fixed strings to Arabic here instead of concatenating raw English text
@@ -3261,6 +3422,11 @@ class MainWindow(QMainWindow):
             self.files_merge_btn.setText("⇧  دمج ملفات PDF" if language == "ar" else "⇧  Merge PDFs")
             tip = "دمج ملفين PDF أو أكثر في ملف واحد" if language == "ar" else "Combine two or more PDF files into one PDF"
             self.files_merge_btn.setToolTip(tip)
+        if hasattr(self, "home_update_center_btn"):
+            self.home_update_center_btn.setText("✦  مركز التحديثات" if language == "ar" else "✦  Update Center")
+            tip = "التحقق من تحديثات ENGO ومعلومات الإصدارات" if language == "ar" else "Check for Engo updates and release information"
+            self.home_update_center_btn.setToolTip(tip)
+            self.home_update_center_btn.setAccessibleName(tip)
         if hasattr(self, "home_settings_btn"):
             self.home_settings_btn.setText("الإعدادات" if language == "ar" else "Settings")
             tip = "الإعدادات" if language == "ar" else "Settings"
@@ -4119,7 +4285,7 @@ class MainWindow(QMainWindow):
         QPushButton#translationClose:hover {{ background:#583a44; border-color:#986575; }}
         QLabel#aiTitle {{ color: #f1f5ff; font-size: 10pt; font-weight: 800; }}
         QLabel#aiMuted, QLabel#aiBusyLabel {{ color: #8f9db2; font-size: 7.5pt; }}
-        QLabel#aiContextLabel {{ color: #b7c6dd; background: #202b3b; border: 1px solid #33445d; border-radius: 7px; padding: 7px; font-size: 7.5pt; }}
+        QLabel#aiContextLabel {{ color: #ffffff; background: #202b3b; border: 1px solid #33445d; border-radius: 7px; padding: 7px; font-size: 7.5pt; }}
         QLabel#aiModelLabel {{ color: #8798b2; font-size: 7pt; }}
         QLabel#aiSectionTitle {{ color: #8795aa; font-size: 7pt; letter-spacing: 1px; font-weight: 800; padding-top: 2px; }}
         QPushButton#aiQuickAction {{ text-align: left; background: #232b38; border: 1px solid #34445a; border-radius: 7px; padding: 6px 7px; min-height: 27px; font-size: 7.5pt; }}
@@ -4336,7 +4502,7 @@ class MainWindow(QMainWindow):
         QCheckBox::indicator:unchecked {{ background:{t['input']}; border:1px solid {t['border_strong']}; }}
         QCheckBox::indicator:checked {{ background:{t['accent']}; border:1px solid {t['accent']}; }}
         /* Make the enabled PDF-context toggle visibly use the active theme accent. */
-        QCheckBox#aiIncludeContext:checked {{ color:{t['accent']}; font-weight:600; }}
+        QCheckBox#aiIncludeContext:checked {{ color:{t['text']}; font-weight:600; }}
         QCheckBox#aiIncludeContext::indicator:checked {{
             background:{t['accent']}; border:1px solid {t['accent']}; border-radius:4px;
         }}
@@ -4400,9 +4566,9 @@ class MainWindow(QMainWindow):
             """
             if current_ui_theme == "dark":
                 theme_stylesheet += f"""
-                    QPushButton#aiSend:enabled {{ background:{t['raised']}; color:{t['text']}; border-color:{t['border']}; }}
-                    QPushButton#aiSend:enabled:hover {{ background:{t['hover']}; border-color:{t['border_strong']}; }}
-                    QPushButton#aiSend:enabled:pressed {{ background:{t['pressed']}; }}
+                    QPushButton#aiSend:enabled {{ background:#4f7fe8; color:#ffffff; border-color:#6792f3; }}
+                    QPushButton#aiSend:enabled:hover {{ background:#6491f5; border-color:#82a5f5; }}
+                    QPushButton#aiSend:enabled:pressed {{ background:#3d68c5; }}
                 """
         else:
             theme_stylesheet += f"""
