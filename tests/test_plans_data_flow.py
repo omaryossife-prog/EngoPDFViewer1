@@ -309,6 +309,11 @@ def test_pending_text_chat_settlements_retry_after_restart():
     assert "self._queue_pending_text_chat_settlement(rid, result_kind)" in host
     assert "self._retry_pending_text_chat_settlements()" in host
     assert "QTimer.singleShot(1400, window._retry_pending_text_chat_settlements)" in main
+    # main.py is the executable launcher and must expose the same settlement methods.
+    assert "def _retry_pending_text_chat_settlements(self):" in main
+    assert "def _dispatch_text_chat_settlement(self, reservation_id, outcome):" in main
+    assert "_engo_usage_reservation_id = str(_usage_reservation_id or \"\").strip()" in main
+    assert "self._settle_ai_usage_reservation(self._ai_worker, \"failure\")" in main
 
 def test_text_chat_usage_is_not_reserved_when_signed_license_denies_access():
     usage = (ROOT / "supabase" / "functions" / "usage-consume" / "index.ts").read_text(encoding="utf-8")
