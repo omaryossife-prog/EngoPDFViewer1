@@ -174,9 +174,12 @@ class LicenseConfig:
             oauth_timeout = 180
         redirect = str(setting("ENGO_OAUTH_REDIRECT_URI", "oauth_redirect_uri")).strip()
         google_desktop_client_id = str(setting("ENGO_GOOGLE_DESKTOP_CLIENT_ID", "google_desktop_client_id")).strip()
-        # The Google Desktop OAuth client secret is exchanged only by a
-        # Supabase Edge Function. Never load it from the packaged client config.
-        google_desktop_client_secret = ""
+        # Keep compatibility with the previously working Desktop OAuth setup.
+        # The Desktop client secret is read from local config/environment and is
+        # used only for Google's token exchange; it is never sent to Supabase.
+        google_desktop_client_secret = str(setting(
+            "ENGO_GOOGLE_DESKTOP_CLIENT_SECRET", "google_desktop_client_secret"
+        )).strip()
         version = str(app_version or setting("ENGO_APP_VERSION", "app_version", APP_VERSION_FALLBACK)).strip()
         signer = str(setting("ENGO_SIGNER_THUMBPRINT", "expected_signer_thumbprint")).replace(" ", "").upper()
         if url and not url.startswith("https://") and not url.startswith("http://127.0.0.1"):
@@ -702,19 +705,47 @@ class LicenseService:
         return self._session or session
 
     def _exchange_google_desktop_code(self, code: str, verifier: str, redirect_uri: str) -> dict[str, Any]:
-        """Exchange a Google Desktop authorization code on the trusted server.
+        """Exchange a Google Desktop authorization code using PKCE.
 
-        The client secret stays in Supabase Edge Function secrets; the desktop
-        sends only the one-time code, its PKCE verifier and its loopback URI.
+        Preserve the previously working flow: use the Desktop OAuth client's
+        own optional secret locally when Google requires it. The secret is sent
+        only to Google's token endpoint, never to the Engo/Supabase server.
         """
-        result = self._edge("google-oauth-exchange", {
+        form = {
             "client_id": self.config.google_desktop_client_id,
-            "code": str(code or ""),
-            "code_verifier": str(verifier or ""),
-            "redirect_uri": str(redirect_uri or ""),
-        })
-        if not str(result.get("id_token") or "").strip():
-            raise LicenseError("Google sign-in did not return an OpenID ID token")
+            "code": code,
+            "code_verifier": verifier,
+            "grant_type": "authorization_code",
+            "redirect_uri": redirect_uri,
+        }
+        desktop_secret = str(self.config.google_desktop_client_secret or "").strip()
+        if desktop_secret:
+            form["client_secret"] = desktop_secret
+        payload = urllib.parse.urlencode(form).encode("ascii")
+        request = urllib.request.Request(
+            "https://oauth2.googleapis.com/token", data=payload,
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.config.request_timeout) as response:
+                result = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            try:
+                detail = exc.read().decode("utf-8", errors="replace")[:800]
+            except Exception:
+                detail = str(exc.reason)
+            if "client_secret is missing" in detail.lower() and not desktop_secret:
+                raise ConfigurationError(
+                    "Google requires the Desktop OAuth client's own client_secret. "
+                    "Set google_desktop_client_secret in engo_license.json. "
+                    "Do not use the Web application's secret."
+                ) from exc
+            raise NetworkError(f"Google token exchange failed (HTTP {exc.code}): {detail}") from exc
+        except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+            raise NetworkError(f"Could not exchange Google sign-in code: {exc}") from exc
+        if not isinstance(result, dict):
+            raise LicenseError("Google returned invalid token data")
         return result
 
     def _login_google_via_supabase(self) -> dict[str, Any]:
