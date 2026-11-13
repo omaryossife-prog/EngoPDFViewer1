@@ -89,6 +89,7 @@ class ServiceActionWorker(QThread):
 class EngoSplashScreen(QWidget):
     retry_requested = pyqtSignal()
     continue_free_requested = pyqtSignal()
+    cancel_requested = pyqtSignal()
 
     _STAGES = {
         "starting": ("جاري تشغيل Engo", "Starting Engo"),
@@ -157,11 +158,26 @@ class EngoSplashScreen(QWidget):
                 font-weight:750;
             }}
             QPushButton#freeButton:hover {{ background:{t['accent_hover']}; border-color:{t['accent_hover']}; }}
+            QPushButton#splashClose {{
+                color:{muted}; background:transparent; border:1px solid transparent;
+                border-radius:7px; min-width:30px; max-width:30px;
+                min-height:30px; max-height:30px; padding:0; font-size:19pt; font-weight:500;
+            }}
+            QPushButton#splashClose:hover {{ color:{txt}; background:{raised}; border-color:{bdr}; }}
         """)
         outer.addWidget(self.card)
         layout = QVBoxLayout(self.card)
-        layout.setContentsMargins(42, 32, 42, 28)
+        layout.setContentsMargins(42, 16, 42, 28)
         layout.setSpacing(10)
+        top_row = QHBoxLayout()
+        top_row.setContentsMargins(0, 0, -28, 0)
+        top_row.addStretch(1)
+        self.close_button = QPushButton("×")
+        self.close_button.setObjectName("splashClose")
+        self.close_button.setToolTip("إلغاء فتح البرنامج وإغلاقه" if self.language == "ar" else "Cancel startup and close Engo")
+        self.close_button.clicked.connect(self.cancel_requested.emit)
+        top_row.addWidget(self.close_button)
+        layout.addLayout(top_row)
         layout.addStretch(1)
 
         self.logo = QLabel("E")
