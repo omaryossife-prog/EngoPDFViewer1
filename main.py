@@ -10721,6 +10721,8 @@ def main():
             return
         launch_state["started"] = True
         state = _state or service.state
+        if not state.verified and not state.reason:
+            state = service._free_state("Continuing in Free mode")
         # Guests have no signed account entitlement payload. Fetch only the
         # public Free-plan app-theme switch so the welcome wizard follows the
         # same database setting as signed-in Free accounts.
@@ -10732,8 +10734,6 @@ def main():
                     state.entitlements["app_themes"] = {"enabled": True, "limit": None}
             except Exception:
                 pass
-        if not state.verified and not state.reason:
-            service._free_state("Continuing in Free mode")
         window = MainWindow(license_service=service)
         if getattr(window, "_needs_first_run_setup", False):
             splash.hide()
