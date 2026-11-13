@@ -918,6 +918,7 @@ class SignInWelcomeDialog(QDialog):
         self.setMinimumSize(520, 560)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft if self.is_ar else Qt.LayoutDirection.LeftToRight)
         t = _get_theme_tokens(theme)
+        self._theme_tokens = t
         self.setStyleSheet(f"QDialog#engoSignInWelcome {{ background:{t['window']}; color:{t['text']}; }}")
 
         user = getattr(state, "user", {}) or {}
@@ -995,6 +996,32 @@ class SignInWelcomeDialog(QDialog):
         page_html = self._html_template
         for token, value in values.items():
             page_html = page_html.replace(token, html_escape(str(value), quote=True))
+
+        # Match the HTML success page to the exact theme selected in Engo.
+        # This also applies to a customized HTML page loaded from Supabase.
+        theme = self._theme_tokens
+        page_theme_css = f"""
+        <style id="engo-theme-sync">
+          html, body {{ background:{theme['window']} !important; color:{theme['text']} !important; }}
+          body {{ background:{theme['window']} !important; }}
+          .glow {{ display:none !important; }}
+          .card {{ background:{theme['panel']} !important; border-color:{theme['border']} !important;
+                   box-shadow:0 18px 48px rgba(0,0,0,.22) !important; }}
+          .card:before {{ background:{theme['accent']} !important; }}
+          .brand-sub, .subtitle {{ color:{theme['muted']} !important; }}
+          .email {{ color:{theme['accent']} !important; }}
+          .rule {{ background:{theme['border']} !important; }}
+          .status {{ color:{theme['text']} !important; }}
+          .success-ring {{ background:{theme['panel_alt']} !important; border-color:{theme['accent']} !important; }}
+          .avatar {{ border-color:{theme['accent']} !important; }}
+          a.continue {{ background:{theme['accent']} !important; color:{theme['window']} !important; }}
+        </style>
+        """
+        if "</head>" in page_html:
+            page_html = page_html.replace("</head>", page_theme_css + "</head>", 1)
+        else:
+            page_html = page_theme_css + page_html
+
         if not self._avatar_pixmap.isNull():
             self.page.document().addResource(
                 QTextDocument.ResourceType.ImageResource,
@@ -1234,7 +1261,7 @@ class AccountDialog(QDialog):
         sc_lay.setContentsMargins(0, 4, 0, 4)
         from engo_base import google_brand_icon
         self.signin_button = QPushButton(
-            "تسجيل الدخول باستخدام Google" if is_ar
+            "\u2003تسجيل الدخول باستخدام جوجل" if is_ar
             else "Sign in with Google"
         )
         self.signin_button.setObjectName("acctGoogleBtn")
@@ -1242,6 +1269,7 @@ class AccountDialog(QDialog):
         self.signin_button.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         self.signin_button.setIcon(google_brand_icon(22))
         self.signin_button.setIconSize(QSize(22, 22))
+        self.signin_button.setStyleSheet("QPushButton#acctGoogleBtn { padding-left: 10px; }")
         self.signin_button.clicked.connect(self._start_login)
         sc_lay.addWidget(self.signin_button, 0, Qt.AlignmentFlag.AlignHCenter)
         root.addWidget(self.signin_container)
