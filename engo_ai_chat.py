@@ -881,17 +881,28 @@ class AIChatPanel(QFrame):
                 QTimer.singleShot(0, self._render_transcript)
 
     def showEvent(self, event):
-        """Reflow cached messages after the panel receives its real splitter width.
-
-        The chat can be restored while hidden during application startup. In that
-        state QScrollArea.viewport().width() may still be 0, which used to make
-        every restored assistant message keep the 250 px fallback width. The
-        delayed passes below run after Qt has applied the initial window geometry
-        and after the normal chat-panel reveal animation.
-        """
+        """Reflow cached messages and always resume at the latest chat message."""
         super().showEvent(event)
+        page_key = self._active_transcript_page_key
         for delay_ms in (0, 110, 270):
             QTimer.singleShot(delay_ms, self._reflow_after_show)
+        # The panel may have been hidden while the user was reading an older
+        # message. Reopening it always resumes at the newest message.
+        for delay_ms in (0, 120, 300, 520):
+            QTimer.singleShot(
+                delay_ms,
+                lambda key=page_key: self._scroll_to_latest_if_active(key),
+            )
+
+    def _scroll_to_latest_if_active(self, page_key=None):
+        if (not self.isVisible() or page_key is None
+                or self._active_transcript_page_key != page_key
+                or not hasattr(self, "transcript")):
+            return
+        self._scroll_chat_to_bottom()
+        entry = self._transcript_pages.get(page_key)
+        if entry is not None:
+            entry["scroll"] = int(self.transcript.verticalScrollBar().value())
 
     def _reflow_after_show(self):
         if not self.isVisible() or not hasattr(self, "transcript"):
@@ -2117,18 +2128,13 @@ class AIChatPanel(QFrame):
             self._render_transcript()
         else:
             page_key = key
-            if previous_page_key != key:
-                # Re-opening/switching to a saved chat should show its newest
-                # message, not a stale scroll position from the last visit.
-                for delay in (0, 60, 150):
-                    QTimer.singleShot(delay, lambda k=page_key:
-                                      self._scroll_chat_to_bottom()
-                                      if self._active_transcript_page_key == k else None)
-            else:
-                saved_scroll = int(entry.get("scroll", 0))
-                QTimer.singleShot(0, lambda k=page_key, v=saved_scroll:
-                                   self.transcript.verticalScrollBar().setValue(v)
-                                   if self._active_transcript_page_key == k else None)
+            # Re-activating any chat page always opens at its newest message,
+            # including the same cached chat after the chat section was hidden.
+            for delay in (0, 60, 150, 270):
+                QTimer.singleShot(
+                    delay,
+                    lambda k=page_key: self._scroll_to_latest_if_active(k),
+                )
             self._update_chat_jump_button()
         # Bound retained pages to avoid accumulating widgets indefinitely.
         while len(self._transcript_pages) > self._transcript_page_cache_limit:
