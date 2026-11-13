@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="{{LANG}}" dir="{{DIR}}">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark"><title>{{PAGE_TITLE}}</title>
+<style>
+:root{--line:#2b4568;--text:#f2f6ff;--muted:#a9bdd9;--blue:#76a9ff}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:"Segoe UI","Cairo",Tahoma,Arial,sans-serif;color:var(--text)}
+body{min-height:100vh;display:grid;place-items:center;padding:28px;background:radial-gradient(ellipse at 50% 0%,rgba(48,116,205,.27),transparent 55%),linear-gradient(145deg,#0a1321,#101d30 58%,#0a1422)}
+.shell{width:min(760px,100%);position:relative}.glow{position:absolute;inset:8% 12%;background:rgba(62,139,255,.18);filter:blur(70px)}
+.card{position:relative;overflow:hidden;border:1px solid rgba(126,169,225,.28);border-radius:28px;padding:clamp(26px,5vw,54px);background:linear-gradient(150deg,rgba(25,43,68,.97),rgba(15,28,47,.98));box-shadow:0 24px 70px rgba(0,0,0,.42)}
+.card:before{content:"";position:absolute;inset:0 0 auto;height:4px;background:linear-gradient(90deg,#5c96f4,#54c5e8,#16b981)}
+.brand{display:flex;align-items:center;gap:14px;justify-content:center;margin-bottom:28px}.logo{width:54px;height:54px;flex:0 0 54px;filter:drop-shadow(0 7px 16px rgba(65,145,255,.28))}
+.brand-name{font-size:21px;font-weight:850}.brand-sub{font-size:11px;color:var(--muted);margin-top:3px;letter-spacing:2.1px;text-transform:uppercase}
+.success-ring{width:118px;height:118px;margin:0 auto 22px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,rgba(22,185,129,.2),rgba(76,143,242,.17));border:1px solid rgba(113,183,255,.45);box-shadow:0 0 0 10px rgba(91,153,238,.055),0 0 45px rgba(57,139,255,.16)}
+.check{width:62px;height:62px;border-radius:20px;background:linear-gradient(145deg,#1bc58c,#0d9e70);display:grid;place-items:center;box-shadow:0 10px 26px rgba(10,178,124,.25)}.check svg{width:34px;height:34px}
+.avatar{width:86px;height:86px;border-radius:50%;object-fit:cover;border:3px solid var(--blue);box-shadow:0 0 0 6px rgba(118,169,255,.12);margin:0 auto 15px;display:block;background:#203550}.avatar.empty{display:none}
+h1{font-size:clamp(24px,4vw,34px);text-align:center;margin:0 0 12px;font-weight:850;line-height:1.35}.subtitle{text-align:center;color:var(--muted);font-size:15px;line-height:1.9;margin:0 auto;max-width:520px}
+.email{text-align:center;color:#86b5ff;font-size:13px;margin-top:9px;direction:ltr}.rule{height:1px;background:linear-gradient(90deg,transparent,var(--line),transparent);margin:28px 0 22px}
+.status{display:flex;align-items:center;justify-content:center;gap:9px;color:#c8d8ef;font-size:13px}.status-dot{width:8px;height:8px;border-radius:50%;background:#19c58d;box-shadow:0 0 12px rgba(25,197,141,.7)}
+.actions{display:flex;justify-content:center;margin-top:28px}a.continue{display:inline-block;text-decoration:none;text-align:center;border-radius:13px;padding:15px 42px;min-width:190px;background:linear-gradient(135deg,#82b4ff,#5b94ed);color:#10213a;font-size:15px;font-weight:850;box-shadow:0 10px 24px rgba(63,130,226,.25)}
+.footer{text-align:center;color:#7289a8;font-size:11px;margin-top:20px;letter-spacing:.4px}@media(max-width:520px){body{padding:14px}.card{border-radius:22px;padding:28px 20px}.logo{width:46px;height:46px;flex-basis:46px}.brand-name{font-size:19px}}
+</style></head>
+<body><main class="shell"><div class="glow"></div><section class="card" aria-live="polite">
+<header class="brand">
+<svg class="logo" viewBox="0 0 100 100" role="img" aria-label="Engo logo">
+<defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#8bc0ff"/><stop offset="1" stop-color="#397de0"/></linearGradient><linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f9fcff"/><stop offset="1" stop-color="#c9e2ff"/></linearGradient></defs>
+<rect x="7" y="7" width="86" height="86" rx="25" fill="#102a4c" stroke="#5da0fa" stroke-width="3"/><rect x="17" y="17" width="66" height="66" rx="18" fill="url(#lg)"/><path d="M37 29h28v9H47v8h16v9H47v8h18v9H37z" fill="url(#pg)"/></svg>
+<div><div class="brand-name">Engo PDF</div><div class="brand-sub">Viewer &amp; AI Study Agent</div></div></header>
+<div class="success-ring"><div class="check"><svg viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.5 4.5L19.5 7" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+<img id="profile" class="avatar {{AVATAR_CLASS}}" src="{{AVATAR_DATA_URI}}" alt="Profile photo">
+<h1>{{WELCOME_TITLE}}</h1><p class="subtitle">{{WELCOME_SUBTITLE}}</p><div class="email">{{EMAIL}}</div><div class="rule"></div>
+<div class="status"><span class="status-dot"></span><span>{{STATUS_TEXT}}</span></div>
+<div class="actions"><a class="continue" href="engo://continue">{{CONTINUE_TEXT}}</a></div>
+</section><div class="footer">ENGO · YOUR STUDY SPACE</div></main></body></html>
