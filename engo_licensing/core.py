@@ -154,8 +154,13 @@ class LicenseConfig:
                 continue
 
         def setting(env_name: str, json_name: str, default: Any = "") -> Any:
+            # Empty environment variables must not mask valid values from
+            # engo_license.json (common when launch scripts export optional
+            # settings as empty strings).
             env_value = os.environ.get(env_name)
-            return env_value if env_value is not None else values.get(json_name, default)
+            if env_value is not None and str(env_value).strip():
+                return env_value
+            return values.get(json_name, default)
 
         url = str(setting("ENGO_SUPABASE_URL", "supabase_url")).strip().rstrip("/")
         # Supabase's current public key is called a Publishable key. Keep the old
