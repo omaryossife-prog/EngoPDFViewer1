@@ -523,12 +523,13 @@ class FirstRunSetupDialog(QDialog):
     google_sign_in_requested = pyqtSignal()
     guest_continue_requested = pyqtSignal()
 
-    def __init__(self, parent=None, is_premium: bool = False):
+    def __init__(self, parent=None, is_premium: bool = False, free_theme_access: bool = False):
         super().__init__(parent)
         self.selected_language = None
         self.selected_theme = None
         self.account_choice = ""
         self._is_premium = bool(is_premium)
+        self._can_use_premium_themes = bool(is_premium or free_theme_access)
         self._preview_theme = "dark"
         self._theme_transition_animation = None
         self.setProperty("engoOwnThemePreview", True)
@@ -554,7 +555,7 @@ class FirstRunSetupDialog(QDialog):
         mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
         mark.setFixedSize(56, 56)
         logo_path = resource_path("engopdfviewer.ico")
-        logo_pixmap = QPixmap(str(logo_path))
+        logo_pixmap = QIcon(str(logo_path)).pixmap(QSize(56, 56))
         mark.setProperty("hasLogo", not logo_pixmap.isNull())
         if not logo_pixmap.isNull():
             mark.setPixmap(logo_pixmap.scaled(
@@ -649,7 +650,7 @@ class FirstRunSetupDialog(QDialog):
         theme_labels = {"light": "Light", "dark": "Dark", "midnight": "Midnight",
                         "grass": "Grass", "pink": "Pink", "orange": "Orange"}
         for position, value in enumerate(("light", "dark", "midnight", "grass", "pink", "orange")):
-            is_locked = value not in FREE_UI_THEMES and not self._is_premium
+            is_locked = value not in FREE_UI_THEMES and not self._can_use_premium_themes
             card = ThemePreviewButton(
                 value, theme_labels[value], theme_page, QSize(142, 80), locked=is_locked
             )
@@ -730,7 +731,7 @@ class FirstRunSetupDialog(QDialog):
 
     def _choose_theme(self, theme):
         value = normalize_ui_theme(theme)
-        if value not in FREE_UI_THEMES and not self._is_premium:
+        if value not in FREE_UI_THEMES and not self._can_use_premium_themes:
             self._show_theme_locked_prompt(value)
             return
         self.selected_theme = value
@@ -836,7 +837,7 @@ class FirstRunSetupDialog(QDialog):
             if is_ar else
             "Sign in with Google to manage your subscription and linked devices, or continue without an account."
         )
-        self.google_signin_button.setText("المتابعة باستخدام Google" if is_ar else "Continue with Google")
+        self.google_signin_button.setText("المتابعة باستخدام" if is_ar else "Continue with Google")
         self.guest_button.setText("المتابعة كزائر" if is_ar else "Continue as guest")
         self.back_button.setText("رجوع" if is_ar else "Back")
         self.back_button.show()
@@ -1003,6 +1004,12 @@ class AppSettingsDialog(QDialog):
         self.license_service = license_service if license_service is not None else getattr(parent, "license_service", None)
         state = getattr(self.license_service, "state", None)
         self._is_premium = bool(getattr(state, "is_premium", False))
+        _theme_entitlement = getattr(state, "entitlements", {}).get("app_themes", {}) if state else {}
+        self._can_use_premium_themes = bool(
+            self._is_premium
+            or getattr(state, "free_unlimited_mode", False)
+            or (isinstance(_theme_entitlement, dict) and _theme_entitlement.get("enabled"))
+        )
         self.setObjectName("appSettingsDialog")
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft if self.language == "ar" else Qt.LayoutDirection.LeftToRight)
         self.setWindowTitle("إعدادات البرنامج" if self.language == "ar" else "Engo · Application settings")
@@ -1224,7 +1231,7 @@ class AppSettingsDialog(QDialog):
         for label, value in theme_options:
             self.theme_combo.addItem(label, value)
         saved_theme = normalize_ui_theme(settings.value("ui_theme", "dark", type=str))
-        if saved_theme not in FREE_UI_THEMES and not self._is_premium:
+        if saved_theme not in FREE_UI_THEMES and not self._can_use_premium_themes:
             # A theme that used to be free (or was set before this account lost
             # Premium) must not silently keep applying after Save.
             saved_theme = "dark"
@@ -1254,7 +1261,7 @@ class AppSettingsDialog(QDialog):
             "orange": "برتقالي" if is_ar else "Orange",
         }
         for position, theme_value in enumerate(("light", "dark", "midnight", "grass", "pink", "orange")):
-            is_locked = theme_value not in FREE_UI_THEMES and not self._is_premium
+            is_locked = theme_value not in FREE_UI_THEMES and not self._can_use_premium_themes
             theme_card = ThemePreviewButton(
                 theme_value, theme_card_labels[theme_value], theme_picker, QSize(132, 73), locked=is_locked
             )
