@@ -689,6 +689,8 @@ def _classify_provider_model_status(
     if plan_access != "allowed":
         return "unknown", "plan_unknown"
     health_state = str((provider_health or {}).get("state") or "")
+    if health_state == "billing_blocked":
+        return "unavailable", "billing_blocked"
     if health_state == "success":
         return "available", "request_success"
     if health_state == "quota_blocked":
@@ -724,12 +726,44 @@ def _provider_model_status_icon(status: str) -> QIcon:
 
 
 class AIModelSelectorCombo(QComboBox):
-    """Refresh cached status metadata immediately before opening the model list."""
+    """Refresh model status and expand only the open popup to show complete IDs."""
     popupAboutToShow = pyqtSignal()
+
+    def _resize_popup_to_model_names(self):
+        view = self.view()
+        if view is None:
+            return
+        view.setTextElideMode(Qt.TextElideMode.ElideNone)
+        model = view.model()
+        metrics = view.fontMetrics()
+        longest_text = 0
+        for row in range(model.rowCount()):
+            value = model.data(model.index(row, 0), Qt.ItemDataRole.DisplayRole)
+            longest_text = max(longest_text, metrics.horizontalAdvance(str(value or "")))
+
+        popup = view.window()
+        if popup is None:
+            return
+        screen = self.screen() or QApplication.primaryScreen()
+        available = screen.availableGeometry() if screen is not None else QRect(0, 0, 1400, 900)
+        current_geometry = popup.geometry()
+        scrollbar_width = view.verticalScrollBar().sizeHint().width()
+        desired_width = max(
+            self.width(),
+            longest_text + self.iconSize().width() + scrollbar_width + 58,
+        )
+        desired_width = min(desired_width, max(self.width(), available.width() - 16))
+        left = current_geometry.left()
+        if left + desired_width > available.right() + 1:
+            left = max(available.left(), available.right() - desired_width + 1)
+        popup.setMinimumWidth(desired_width)
+        popup.resize(desired_width, current_geometry.height())
+        popup.move(left, current_geometry.top())
 
     def showPopup(self):
         self.popupAboutToShow.emit()
         super().showPopup()
+        self._resize_popup_to_model_names()
 
 
 class AIChatPanel(QFrame):
@@ -2072,10 +2106,21 @@ class AIChatPanel(QFrame):
 
         now = time.time()
         record = None
+        record_key = model_id
         if success:
             record = {"state": "success", "checked_at": now, "expires_at": now + 7 * 86400}
         else:
             lowered = str(error or "").lower()
+            billing_exhausted = any(token in lowered for token in (
+                "insufficient_quota",
+                "you have no credits remaining",
+                "no credits remaining",
+                "billing_hard_limit_reached",
+                "insufficient credits",
+                "insufficient balance",
+                "out of credits",
+                "credit balance is too low",
+            ))
             retry_match = re.search(
                 r"retry\s+in\s+(?:(\d+(?:\.\d+)?)h)?\s*(?:(\d+(?:\.\d+)?)m)?\s*(?:(\d+(?:\.\d+)?)s)?",
                 lowered,
@@ -2095,7 +2140,12 @@ class AIChatPanel(QFrame):
                 "model not found", "unknown model", "unsupported model", "invalid model",
                 "not found for api version", "is not supported for", "http 404",
             ))
-            if quota_zero:
+            if billing_exhausted:
+                # A zero account balance blocks every model for this provider/API key.
+                # Keep it account-scoped until a real request succeeds after billing is fixed.
+                record_key = "_account"
+                record = {"state": "billing_blocked", "checked_at": now, "expires_at": now + 7 * 86400}
+            elif quota_zero:
                 retry_seconds = min(max(retry_seconds, 60.0), 7 * 86400.0)
                 record = {"state": "quota_blocked", "checked_at": now, "expires_at": now + retry_seconds}
             elif model_rejected:
@@ -2116,7 +2166,9 @@ class AIChatPanel(QFrame):
                 records = {}
         except Exception:
             records = {}
-        records[model_id] = record
+        if success:
+            records.pop("_account", None)
+        records[record_key] = record
         if len(records) > 200:
             records = dict(list(records.items())[-200:])
         self.settings.setValue(storage_key, json.dumps(records, ensure_ascii=False))
@@ -2136,6 +2188,10 @@ class AIChatPanel(QFrame):
             ("unknown", "catalog_only"): (
                 "الموديل موجود في قائمة المزوّد، لكن لم ينجح طلب محادثة فعلي به بعد. Engo لم يرسل طلب اختبار ولم يستهلك توكنز في الخلفية.",
                 "The model is listed by the provider, but no real chat request has succeeded with it yet. Engo has not sent a probe or used background tokens.",
+            ),
+            ("unavailable", "billing_blocked"): (
+                "رصيد حساب هذا المزوّد غير كافٍ أو نفد. أضف رصيدًا أو حدّث الفوترة من لوحة المزوّد، ثم أرسل طلبًا ناجحًا لإزالة الحالة الحمراء عن النماذج.",
+                "This provider account has insufficient or exhausted credits. Add credits or update billing, then make a successful request to clear the red status from its models.",
             ),
             ("unavailable", "quota_blocked"): (
                 "المزوّد أكد أن حصة هذا الموديل مستنفدة حاليًا. ستعود الحالة للمراجعة بعد انتهاء مدة الانتظار التي حددها المزوّد.",
@@ -2200,7 +2256,7 @@ class AIChatPanel(QFrame):
         for model_id in model_ids:
             status, reason = _classify_provider_model_status(
                 model_id, catalog_models, catalog_verified, plan_access,
-                provider_health.get(model_id),
+                provider_health.get("_account") or provider_health.get(model_id),
             )
             row = self.model_combo.count()
             self.model_combo.addItem(_provider_model_status_icon(status), model_id, model_id)
