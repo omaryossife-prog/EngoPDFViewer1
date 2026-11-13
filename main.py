@@ -175,14 +175,15 @@ class MainWindow(QMainWindow):
         # A full reset preserves encrypted API keys, but must still reopen the wizard.
         try:
             has_completed_setup = bool(self.settings.value("first_run_complete", False, type=bool))
-            has_legacy_setup = (
-                self.settings.contains("interface_language")
-                and self.settings.contains("ui_theme")
+            # Older installs predate the explicit marker. Treat any saved
+            # preference other than retained API credentials as an existing setup.
+            has_legacy_setup = any(
+                not key.startswith("ai_key_") for key in self.settings.allKeys()
             )
             self._needs_first_run_setup = not (has_completed_setup or has_legacy_setup)
         except Exception:
-            self._needs_first_run_setup = not (
-                self.settings.contains("interface_language") and self.settings.contains("ui_theme")
+            self._needs_first_run_setup = not any(
+                not key.startswith("ai_key_") for key in self.settings.allKeys()
             )
         # PDF linking is an explicit, session-only action.
         # pairs and silently re-linked PDFs when both were opened together; discard
