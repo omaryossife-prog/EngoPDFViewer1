@@ -121,3 +121,13 @@ def test_subscription_period_cards_use_compact_height():
     assert "QPushButton#periodCard" in ui
     assert "padding:4px 2px; min-height:46px; font-size:8pt;" in ui
     assert "button.setMinimumHeight(48)" in ui
+
+
+def test_subscription_price_is_centered_below_a_divider():
+    ui = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
+    cards = ui.index("pl.addLayout(period_cards_row)")
+    divider = ui.index('price_divider.setObjectName("planPriceDivider")', cards)
+    price = ui.index("self.price_label.setAlignment(Qt.AlignmentFlag.AlignCenter)", divider)
+    add_price = ui.index("pl.addWidget(self.price_label)", price)
+    assert cards < divider < price < add_price
+    assert "QFrame#planPriceDivider" in ui
