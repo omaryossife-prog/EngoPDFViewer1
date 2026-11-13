@@ -440,8 +440,30 @@ h1{{font-size:25px;margin:0 0 12px;font-weight:800}}p{{font-size:15px;line-heigh
 <p class="en">Sign-in response received. You can return to Engo now.</p>
 <div class="foot">ENGO PDF VIEWER &amp; AI STUDY AGENT</div></main>
 <script>
-(async()=>{{const endpoint={endpoint},key={api_key};if(!endpoint||!key)return;try{{const r=await fetch(endpoint,{{method:"POST",headers:{{"apikey":key,"Authorization":"Bearer "+key,"Content-Type":"application/json"}},body:"{{}}"}});if(!r.ok)return;const d=await r.json();if(d&&typeof d.image_url==="string"&&d.image_url.startsWith("https://")){{const img=document.getElementById("art");img.onload=()=>{{img.style.display="block";document.getElementById("fallback").style.display="none"}};img.src=d.image_url}}}}catch(_e){{}}}})();
+(async()=>{{
+ const endpoint={endpoint},key={api_key};
+ if(!endpoint||!key)return;
+ try{{
+  const r=await fetch(endpoint,{{method:"POST",headers:{{"apikey":key,"Authorization":"Bearer "+key,"Content-Type":"application/json"}},body:"{{}}"}});
+  if(!r.ok)return;
+  const d=await r.json();
+  if(!d||typeof d.html!=="string")return;
+  let page=d.html;
+  const values={{
+   "{{{{LANG}}}}":"ar","{{{{DIR}}}}":"rtl","{{{{PAGE_TITLE}}}}":"مرحبًا بك في Engo",
+   "{{{{WELCOME_TITLE}}}}":"تم تسجيل الدخول بنجاح",
+   "{{{{WELCOME_SUBTITLE}}}}":"يمكنك العودة إلى برنامج Engo الآن. سيتم إكمال تسجيل الدخول تلقائيًا.",
+   "{{{{EMAIL}}}}":"","{{{{STATUS_TEXT}}}}":"تم استلام تسجيل الدخول بنجاح",
+   "{{{{CONTINUE_TEXT}}}}":"يمكنك العودة إلى Engo الآن",
+   "{{{{AVATAR_DATA_URI}}}}":"","{{{{AVATAR_CLASS}}}}":"empty"
+  }};
+  for(const [k,v] of Object.entries(values))page=page.split(k).join(v);
+  page=page.replace(/<a class="continue" href="engo:\/\/continue">([\s\S]*?)<\/a>/,"<span class=\"continue\">يمكنك العودة إلى Engo الآن</span>");
+  document.open();document.write(page);document.close();
+ }}catch(_e){{}}
+}})();
 </script></body></html>"""
+        return page.encode("utf-8")</body></html>"""
         return page.encode("utf-8")
 
     def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler API
