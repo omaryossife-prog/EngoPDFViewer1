@@ -641,10 +641,7 @@ class FirstRunSetupDialog(QDialog):
                 value, theme_labels[value], theme_page, QSize(142, 80), locked=is_locked
             )
             if is_locked:
-                card.setToolTip(
-                    "ثيم Premium · يتطلب اشتراكًا مميزًا" if self._preview_theme == "ar"
-                    else "Premium theme · requires a Premium subscription"
-                )
+                card.setToolTip("Premium theme · requires a Premium subscription")
                 card.clicked.connect(lambda _checked=False, key=value: self._show_theme_locked_prompt(key))
             else:
                 card.clicked.connect(lambda _checked=False, key=value: self._choose_theme(key))
@@ -803,6 +800,11 @@ class FirstRunSetupDialog(QDialog):
         for key, card in self.theme_cards.items():
             card.setText(theme_labels[key])
             card.setLayoutDirection(Qt.LayoutDirection.RightToLeft if is_ar else Qt.LayoutDirection.LeftToRight)
+            if card.locked:
+                card.setToolTip(
+                    "ثيم Premium · يتطلب اشتراكًا مميزًا" if is_ar
+                    else "Premium theme · requires a Premium subscription"
+                )
         self.back_button.setText("رجوع" if is_ar else "Back")
         self.back_button.show()
         self.next_button.show()
