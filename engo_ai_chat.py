@@ -27,6 +27,7 @@ from engo_ai_core import (
     AIChatStore,
     AI_DEFAULT_MODELS,
     AI_PROVIDER_LABELS,
+    _get_provider_key,
 )
 from engo_base import (
     APP_NAME,
