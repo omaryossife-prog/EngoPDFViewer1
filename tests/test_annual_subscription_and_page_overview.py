@@ -32,7 +32,7 @@ def test_annual_subscription_is_available_from_the_client_and_admin():
     admin = (ROOT / "engo_admin.py").read_text(encoding="utf-8")
     edge = (ROOT / "supabase" / "functions" / "subscription-request" / "index.ts").read_text(encoding="utf-8")
     assert 'PERIODS = ("monthly", "quarterly", "semiannual", "annual")' in ui
-    assert '("annual", self._tr("سنوي\\\\n12 شهر", "Annual\\\\n12 months"))' in ui
+    assert '("annual", self._tr("سنوي\\n12 شهر", "Annual\\n12 months"))' in ui
     assert 'self.period_cards["monthly"].setChecked(True)' in ui
     assert 'self.period_group.setExclusive(True)' in ui
     core = (ROOT / "engo_licensing" / "core.py").read_text(encoding="utf-8")
@@ -60,7 +60,7 @@ def test_plan_comparison_restores_grouped_free_and_single_premium_header():
     assert 'self._tr("مميز", "Premium")' in ui
     assert 'self._tr("متاح بلا حدود", "Available without limits")' in ui
     assert "self.comparison_table.setItem(1, 4, item)" in ui
-    assert "Premium\\\\nUnavailable" not in ui
+    assert "Premium\\nUnavailable" not in ui
     assert "self.comparison_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)" in ui
     assert "self.comparison_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)" in ui
     assert "self.comparison_table.setFixedHeight(total_height + 2)" in ui
@@ -100,7 +100,7 @@ def test_subscription_periods_are_four_selectable_side_by_side_cards():
     assert 'period_cards_row.addWidget(button, 1)' in ui
     for period in ("monthly", "quarterly", "semiannual", "annual"):
         assert f'("{period}", self._tr(' in ui
-        assert f'self.period_cards["{period}"] = button' in ui
+        assert 'self.period_cards[period] = button' in ui
 
 
 def test_payment_button_shows_busy_state_and_restores_after_request():
