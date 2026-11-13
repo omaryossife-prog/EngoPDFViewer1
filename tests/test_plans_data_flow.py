@@ -106,7 +106,16 @@ def test_provider_model_catalog_is_marked_verified_only_after_success():
     failed = source.split('    def _on_models_failed(self, provider, message):', 1)[1].split('    def _on_models_worker_finished', 1)[0]
     assert 'ai_models_catalog_verified_{provider}", True' in loaded
     assert 'ai_models_catalog_checked_at_{provider}", time.time()' in loaded
+    assert 'ai_models_catalog_key_fingerprint_{provider}' in loaded
     assert 'ai_models_catalog_verified_{provider}", False' in failed
+
+
+def test_provider_model_catalog_is_bound_to_the_current_api_key():
+    chat = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    core = (ROOT / "engo_ai_core.py").read_text(encoding="utf-8")
+    assert 'ai_models_catalog_key_fingerprint_{provider}' in chat
+    assert 'cached_fingerprint != fingerprint' in chat
+    assert 'hashlib.sha256(' in core
 
 
 def test_provider_model_status_is_ui_only_and_keeps_application_version_unchanged():
