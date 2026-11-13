@@ -132,7 +132,7 @@ def test_plan_comparison_shows_requested_table_only_feature_statuses():
     assert '"translations": "limited"' in ui
     assert '"page_themes": "limited"' in ui
     assert '"smart_theme": "unavailable"' in ui
-    assert 'premium_unlimited_overrides = {"smart_theme"}' in ui
+    assert 'premium_unlimited_overrides = {"smart_theme", "open_other_formats"}' in ui
     assert "do not alter the actual entitlement data or runtime feature enforcement" in ui
 
 
