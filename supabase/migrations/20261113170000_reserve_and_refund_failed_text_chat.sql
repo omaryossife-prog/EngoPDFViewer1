@@ -172,7 +172,7 @@ declare
     v_reservation public.usage_reservations%rowtype;
     v_used bigint;
 begin
-    if p_outcome not in ('success', 'failure') then
+    if p_outcome is null or p_outcome not in ('success', 'failure') then
         raise exception 'Invalid text-chat settlement outcome';
     end if;
 
