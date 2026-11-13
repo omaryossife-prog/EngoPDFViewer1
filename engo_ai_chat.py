@@ -361,6 +361,11 @@ class ChatImagePreviewDialog(QDialog):
 
         self.image_scroll = QScrollArea(self)
         self.image_scroll.setObjectName("chatImageOnlyScroll")
+        # Panning is a physical mouse gesture, so keep the image canvas in LTR
+        # coordinates even when the surrounding Arabic dialog uses RTL layout.
+        # Otherwise Qt may reverse horizontal scroll direction and the hand
+        # appears to drag the image against the pointer.
+        self.image_scroll.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         self.image_scroll.setWidgetResizable(False)
         self.image_scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -373,6 +378,7 @@ class ChatImagePreviewDialog(QDialog):
             f"QScrollArea#chatImageOnlyScroll QWidget#qt_scrollarea_viewport {{ background:{tokens['window']}; border:0; }}"
         )
         self.image_label = ChatImageCanvas(self, self.image_scroll)
+        self.image_label.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         self.image_label.setStyleSheet(
             f"QLabel {{ background:{tokens['window']}; color:{tokens['text']}; border:0; }}"
         )
