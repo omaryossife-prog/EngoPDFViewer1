@@ -569,10 +569,10 @@ class FirstRunSetupDialog(QDialog):
         copy.setSpacing(2)
         title = QLabel("Welcome to (Engo) مرحبًا بك في ")
         title.setObjectName("firstRunTitle")
-        subtitle = QLabel("Let's set up your study space in three quick steps")
-        subtitle.setObjectName("firstRunSubtitle")
+        self.subtitle_label = QLabel("Let's set up your study space in three quick steps")
+        self.subtitle_label.setObjectName("firstRunSubtitle")
         copy.addWidget(title)
-        copy.addWidget(subtitle)
+        copy.addWidget(self.subtitle_label)
         hero_layout.addWidget(mark)
         hero_layout.addLayout(copy, 1)
         root.addWidget(hero)
@@ -790,6 +790,10 @@ class FirstRunSetupDialog(QDialog):
     def _apply_wizard_language(self, language):
         is_ar = language == "ar"
         self.step_label.setText("الخطوة ١ من ٣ · اللغة" if is_ar else "STEP 1 OF 3  ·  LANGUAGE")
+        self.subtitle_label.setText(
+            "لنجهّز مساحة الدراسة الخاصة بك في ثلاث خطوات سريعة"
+            if is_ar else "Let's set up your study space in three quick steps"
+        )
         self.language_heading.setText("اختر لغة واجهة Engo" if is_ar else "Choose your interface language")
         self.language_caption.setText("يمكنك تغيير اللغة لاحقًا من الإعدادات." if is_ar else "You can change this later in Settings.")
         # Keep each language card in its own language, without duplicate headings.
