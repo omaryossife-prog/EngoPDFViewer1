@@ -131,3 +131,23 @@ def test_chat_imports_provider_key_helper_before_model_catalog_check():
     imports = source.split("from engo_ai_core import (", 1)[1].split(")", 1)[0]
     assert "_get_provider_key" in imports
     assert "current_key = _get_provider_key(self.settings, provider)" in source
+
+def test_model_selector_expands_popup_without_resizing_the_closed_control():
+    source = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    selector = source.split("class AIModelSelectorCombo", 1)[1].split("class AIChatPanel", 1)[0]
+    assert "view.setTextElideMode(Qt.TextElideMode.ElideNone)" in selector
+    assert "metrics.horizontalAdvance" in selector
+    assert "popup.resize(desired_width, current_geometry.height())" in selector
+    assert "self.model_combo.setMaximumWidth(225)" in source
+
+
+def test_exhausted_provider_credits_mark_all_provider_models_red_until_success():
+    source = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    assert '"you have no credits remaining"' in source
+    assert '"insufficient_quota"' in source
+    assert 'record_key = "_account"' in source
+    assert '"state": "billing_blocked"' in source
+    assert 'provider_health.get("_account") or provider_health.get(model_id)' in source
+    assert 'if health_state == "billing_blocked":' in source
+    assert 'records.pop("_account", None)' in source
+
