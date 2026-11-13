@@ -10603,7 +10603,47 @@ def main():
                     first_run.account_choice = "google"
                     first_run.accept()
 
+            def continue_first_run_as_guest():
+                if not service.state.authenticated:
+                    first_run.account_choice = "guest"
+                    first_run.accept()
+                    return
+                # Reset keeps the protected account session; an explicit guest
+                # choice must therefore sign out before opening the main window.
+                first_run.google_signin_button.setEnabled(False)
+                first_run.guest_button.setEnabled(False)
+                first_run.back_button.setEnabled(False)
+                first_run.guest_button.setText(
+                    "جارٍ تسجيل الخروج…" if first_run.selected_language == "ar"
+                    else "Signing out…"
+                )
+                worker = ServiceActionWorker(service.logout, first_run)
+                first_run._guest_logout_worker = worker
+
+                def guest_logout_completed(_result, error):
+                    first_run._guest_logout_worker = None
+                    if error:
+                        first_run.google_signin_button.setEnabled(True)
+                        first_run.guest_button.setEnabled(True)
+                        first_run.back_button.setEnabled(True)
+                        first_run.guest_button.setText(
+                            "المتابعة كزائر" if first_run.selected_language == "ar"
+                            else "Continue as guest"
+                        )
+                        QMessageBox.warning(
+                            first_run,
+                            "الحساب" if first_run.selected_language == "ar" else "Account",
+                            error,
+                        )
+                        return
+                    first_run.account_choice = "guest"
+                    first_run.accept()
+
+                worker.completed.connect(guest_logout_completed)
+                worker.start()
+
             first_run.google_sign_in_requested.connect(request_first_run_google_sign_in)
+            first_run.guest_continue_requested.connect(continue_first_run_as_guest)
             if first_run.exec() != QDialog.DialogCode.Accepted:
                 window.close()
                 splash.permit_close()
