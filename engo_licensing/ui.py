@@ -452,7 +452,18 @@ class PlansDialog(QDialog):
         self.account_data = account_data if isinstance(account_data, dict) else {}
         self._worker: ServiceActionWorker | None = None
         self._selected_billing_period = "monthly"
-        self._is_premium_current = bool(self.service.state.is_premium)
+        # The plans dialog is opened only after a fresh account-overview response.
+        # Use its subscription row as the source of truth for the UI badge: the
+        # signed LicenseState can legitimately still describe the last device
+        # heartbeat (or Free mode) while the account subscription has changed.
+        subscription = self.account_data.get("subscription")
+        if isinstance(subscription, dict):
+            self._is_premium_current = bool(
+                str(subscription.get("plan_id") or "").strip().lower() == "premium"
+                and str(subscription.get("status") or "").strip().lower() == "active"
+            )
+        else:
+            self._is_premium_current = bool(self.service.state.is_premium)
         self.period_cards: dict[str, QPushButton] = {}
         self._payment_button_text = self._tr(
             "زيادة مدة الاشتراك", "Extend subscription"
