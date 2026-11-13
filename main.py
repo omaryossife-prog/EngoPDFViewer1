@@ -1757,6 +1757,7 @@ class MainWindow(QMainWindow):
         "Account is suspended or unavailable": "الحساب موقوف أو غير متاح.",
         "Invalid usage amount": "قيمة استخدام غير صالحة.",
         "This feature is not available on the current plan.": "هذه الميزة غير متاحة في خطتك الحالية.",
+        "Opening images and Office documents requires an active Premium subscription.": "فتح الصور وملفات Word وPowerPoint يتطلب اشتراكًا مميزًا نشطًا.",
     }
 
     def _document_feature_scope(self, tab=None):
