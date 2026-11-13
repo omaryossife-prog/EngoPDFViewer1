@@ -154,7 +154,8 @@ class LicenseConfig:
                 loaded = json.loads(path.read_text(encoding="utf-8"))
                 if isinstance(loaded, dict):
                     for key, value in loaded.items():
-                        values.setdefault(key, value)
+                        if key not in values or values[key] in (None, ""):
+                            values[key] = value
             except Exception:
                 continue
 
