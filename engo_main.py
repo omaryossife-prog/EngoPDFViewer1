@@ -2023,13 +2023,16 @@ class MainWindow(QMainWindow):
             if raw_text in ("update_required", "untrusted_build"):
                 QTimer.singleShot(0, self._show_unsupported_build_dialog)
                 return
+            if raw_text == "offline_feature_unavailable":
+                text = (
+                    "الميزة اتقفلت لأن جهازك غير متصل بالإنترنت. اتصل بالإنترنت وحاول مرة أخرى."
+                    if is_ar else
+                    "This feature is locked because your device is offline. Connect to the internet and try again."
+                )
             else:
                 text_en = denied_message or raw_text or "This feature is not available on the current plan."
-                text = self._FEATURE_DENIED_MESSAGES_AR.get(text_en, text_en) if is_ar else (
-                    "This feature is locked because your device is offline. Connect to the internet and try again."
-                    if raw_text == "offline_feature_unavailable" else text_en
-                )
-                message = ("تم قفل الميزة: " + text) if is_ar else ("Feature locked: " + text)
+                text = self._FEATURE_DENIED_MESSAGES_AR.get(text_en, text_en) if is_ar else text_en
+            message = ("تم قفل الميزة: " + text) if is_ar else ("Feature locked: " + text)
             QMessageBox.information(self, "Engo", message)
 
         worker.completed.connect(finished)
