@@ -2005,12 +2005,23 @@ class AIChatPanel(QFrame):
 
     def _model_catalog_is_fresh(self, provider: str) -> bool:
         verified = bool(self.settings.value(f"ai_models_catalog_verified_{provider}", False, type=bool))
+        current_key = _get_provider_key(self.settings, provider)
+        if not verified or not current_key:
+            return False
+        fingerprint = hashlib.sha256(
+            str(current_key).encode("utf-8", errors="replace")
+        ).hexdigest()[:20]
+        cached_fingerprint = str(
+            self.settings.value(f"ai_models_catalog_key_fingerprint_{provider}", "", type=str) or ""
+        )
+        if not cached_fingerprint or cached_fingerprint != fingerprint:
+            return False
         try:
             checked_at = float(self.settings.value(f"ai_models_catalog_checked_at_{provider}", 0.0, type=float) or 0.0)
         except (TypeError, ValueError):
             checked_at = 0.0
         age_seconds = time.time() - checked_at if checked_at > 0 else float("inf")
-        return verified and 0 <= age_seconds <= 7 * 24 * 60 * 60
+        return 0 <= age_seconds <= 7 * 24 * 60 * 60
 
     def _provider_model_health_key(self, provider: str, api_key: str | None = None) -> str:
         secret = str(api_key if api_key is not None else _get_provider_key(self.settings, provider) or "").strip()
