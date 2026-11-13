@@ -1063,6 +1063,16 @@ def make_icon(name: str, color: str = "#b7c6dc", size: int = 18) -> QIcon:
     elif name == "send":
         path([(3, 3), (22, 11), (3, 21), (7, 12), (3, 3)], close=True)
         line(7, 12, 22, 11)
+    elif name == "tune":
+        # Modern adjustment sliders: a lighter, less generic settings symbol.
+        line(3, 6, 6.5, 6); line(11.5, 6, 21, 6)
+        line(3, 12, 13.5, 12); line(18.5, 12, 21, 12)
+        line(3, 18, 4.5, 18); line(9.5, 18, 21, 18)
+        for x, y in ((9, 6), (16, 12), (7, 18)):
+            painter.drawEllipse(QRectF(x - 2.25, y - 2.25, 4.5, 4.5))
+            painter.setBrush(QColor(color))
+            painter.drawEllipse(QRectF(x - 0.65, y - 0.65, 1.3, 1.3))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
     elif name == "settings":
         painter.drawEllipse(QRectF(7, 7, 10, 10)); painter.drawEllipse(QRectF(10, 10, 4, 4))
         for angle in range(0, 360, 45):
