@@ -1975,6 +1975,13 @@ class MainWindow(QMainWindow):
 
         def finished(result, error, current=worker):
             if self._close_after_cancel:
+                if (
+                    feature_key == "text_chat" and not error
+                    and isinstance(result, dict)
+                    and result.get("allowed") is True
+                    and result.get("tracked") is True
+                ):
+                    self._dispatch_text_chat_settlement(result.get("reservation_id"), "failure")
                 return
             if error:
                 service._free_state(str(error), authenticated=service.state.authenticated)
@@ -8504,12 +8511,16 @@ class MainWindow(QMainWindow):
         if mode != "teach":
             self._teaching_payload = None
         if self._ai_worker and self._ai_worker.isRunning():
+            if _usage_reservation_id:
+                self._dispatch_text_chat_settlement(_usage_reservation_id, "failure")
             self.ai_panel.append_message_for(path, "assistant", "An AI request is already running. Please wait for it to finish.")
             self.ai_panel.set_busy(False)
             return
         provider = self.ai_panel.provider_combo.currentData()
         api_key = _get_provider_key(self.settings, provider)
         if not api_key:
+            if _usage_reservation_id:
+                self._dispatch_text_chat_settlement(_usage_reservation_id, "failure")
             self.ai_panel.append_message_for(path, "assistant",
                 f"No API key is configured for {AI_PROVIDER_LABELS.get(provider, provider)}. Open Application Settings → AI settings, add the key, then send your question again.")
             self.ai_panel.set_busy(False)
