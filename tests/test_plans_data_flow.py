@@ -224,6 +224,18 @@ def test_google_brand_icon_is_used_in_first_run_and_account_dialogs():
     assert "🔵" not in account
 
 
+
+def test_first_run_google_starts_oauth_and_guest_choice_signs_out_existing_session():
+    main = (ROOT / "main.py").read_text(encoding="utf-8")
+    dialogs = (ROOT / "engo_app_dialogs.py").read_text(encoding="utf-8")
+    assert "QTimer.singleShot(0, account_dialog._start_login)" in main
+    assert "first_run.google_sign_in_requested.connect(request_first_run_google_sign_in)" in main
+    assert "first_run.guest_continue_requested.connect(continue_first_run_as_guest)" in main
+    assert "ServiceActionWorker(service.logout, first_run)" in main
+    assert 'first_run.account_choice = "guest"' in main
+    assert "guest_continue_requested = pyqtSignal()" in dialogs
+    assert "self.guest_continue_requested.emit()" in dialogs
+
 def test_startup_splash_can_be_cancelled_before_main_window_opens():
     ui = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
     main = (ROOT / "main.py").read_text(encoding="utf-8")
