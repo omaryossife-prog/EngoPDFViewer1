@@ -1166,6 +1166,17 @@ class MainWindow(QMainWindow):
         self.home_update_center_btn = QPushButton()
         self.home_update_center_btn.setObjectName("homeUpdateCenter")
         self.home_update_center_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._home_update_content_layout = QHBoxLayout(self.home_update_center_btn)
+        self._home_update_content_layout.setContentsMargins(0, 0, 0, 0)
+        self._home_update_content_layout.setSpacing(7)
+        self._home_update_content_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.home_update_icon_label = QLabel()
+        self.home_update_icon_label.setFixedSize(18, 18)
+        self.home_update_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.home_update_text_label = QLabel()
+        self.home_update_text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._home_update_content_layout.addWidget(self.home_update_icon_label)
+        self._home_update_content_layout.addWidget(self.home_update_text_label)
         self.home_update_center_btn.clicked.connect(self._open_update_center)
         settings_index = side.indexOf(self.home_settings_btn)
         side.insertWidget(settings_index if settings_index >= 0 else side.count() - 1,
@@ -1849,13 +1860,33 @@ class MainWindow(QMainWindow):
                 if is_ar else "Open details for the latest ENGO update"
             )
 
-            button.setText(label)
-            button.setIcon(make_icon("update", tokens["text"], 18))
-            button.setIconSize(QSize(18, 18))
+            # Use an explicit centered icon+label group, matching the Settings
+            # button instead of relying on platform-specific QPushButton icon placement.
+            button.setText("")
+            button.setIcon(QIcon())
             button.setLayoutDirection(
                 Qt.LayoutDirection.RightToLeft if is_ar
                 else Qt.LayoutDirection.LeftToRight
             )
+            content_layout = getattr(self, "_home_update_content_layout", None)
+            if content_layout is not None:
+                content_layout.setDirection(
+                    QBoxLayout.Direction.RightToLeft if is_ar
+                    else QBoxLayout.Direction.LeftToRight
+                )
+            icon_label = getattr(self, "home_update_icon_label", None)
+            if icon_label is not None:
+                icon_pixmap = make_icon("update", tokens["text"], 18).pixmap(QSize(18, 18))
+                icon_label.setPixmap(icon_pixmap)
+            text_label = getattr(self, "home_update_text_label", None)
+            if text_label is not None:
+                text_label.setText(label)
+                text_label.setStyleSheet(
+                    f"color:{tokens['text']}; background:transparent; border:0; "
+                    "font-size:10.5pt; font-weight:800;"
+                )
+            else:
+                button.setText(label)
             button.setProperty("homeActionHeight", True)
             button.setFixedHeight(30)
             button.setSizePolicy(
