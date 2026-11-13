@@ -12,7 +12,7 @@ from collections import OrderedDict, deque
 from pathlib import Path
 import pymupdf as fitz  # use the maintained import name; keep fitz alias for existing calls
 from PIL import Image, ImageOps, ImageChops, ImageFilter
-from PyQt6.QtCore import QObject, Qt, QSize, QSizeF, QRect, QRectF, QPoint, QPointF, QEvent, QTimer, QPropertyAnimation, QParallelAnimationGroup, QVariantAnimation, QEasingCurve, QSettings, QUrl, QThread, QRunnable, QThreadPool, QMarginsF, QStandardPaths, QDir, pyqtSignal, QBuffer, QByteArray, QIODevice, QMimeData, QSignalBlocker
+from PyQt6.QtCore import QObject, Qt, QSize, QSizeF, QRect, QRectF, QPoint, QPointF, QEvent, QEventLoop, QTimer, QPropertyAnimation, QParallelAnimationGroup, QVariantAnimation, QEasingCurve, QSettings, QUrl, QThread, QRunnable, QThreadPool, QMarginsF, QStandardPaths, QDir, pyqtSignal, QBuffer, QByteArray, QIODevice, QMimeData, QSignalBlocker
 from PyQt6.QtGui import QColor, QPalette, QImage, QPixmap, QIcon, QFileSystemModel, QPainter, QPen, QBrush, QKeySequence, QShortcut, QAction, QCursor, QPolygonF, QPainterPath, QPainterPathStroker, QDesktopServices, QPdfWriter, QPageSize, QTextDocument, QTextCursor, QFont, QDrag, QContextMenuEvent, QMouseEvent
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton, QToolButton, QBoxLayout,
@@ -3814,6 +3814,8 @@ class DocumentTab(QWidget):
         for i in range(self.page_count):
             page = self.doc.load_page(i)
             self.page_sizes.append((float(page.rect.width), float(page.rect.height)))
+            if (i + 1) % 8 == 0:
+                self._pump_opening_dialog_events()
         self.current_page = 0
         self.dark_mode = bool(dark_mode)
         self.smart_page_theme = bool(smart_page_theme)
@@ -3920,6 +3922,16 @@ class DocumentTab(QWidget):
         self.scroll.verticalScrollBar().valueChanged.connect(self._on_scroll)
         self.scroll.horizontalScrollBar().valueChanged.connect(lambda _: self.canvas.update())
         self.scroll.viewport().installEventFilter(self)
+
+    def _pump_opening_dialog_events(self):
+        """Keep the compact busy popup animated during synchronous PDF setup."""
+        try:
+            owner = self.window()
+            dialog = getattr(owner, "_operation_loading_dialog", None)
+            if dialog is not None and dialog.isVisible():
+                QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+        except (RuntimeError, AttributeError):
+            pass
 
     def _select_all_annotations_on_current_page(self):
         if self.doc is None or getattr(self.doc, "is_closed", True):
@@ -5064,6 +5076,9 @@ class DocumentTab(QWidget):
                 item.setData(Qt.ItemDataRole.UserRole, i)
                 item.setSizeHint(QSize(item_w, item_h))
                 self.thumbnails.addItem(item)
+                # Thumbnail rendering is synchronous; pump paint/timer events so
+                # the startup-style indeterminate bar keeps moving while pages load.
+                self._pump_opening_dialog_events()
             self.thumbnails.setIconSize(QSize(icon_w, icon_h))
         except Exception:
             pass
