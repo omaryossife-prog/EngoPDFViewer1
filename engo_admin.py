@@ -1407,28 +1407,10 @@ class AdminMainWindow(QMainWindow):
         self.connection_label.setStyleSheet("color:#e07070;")
         settings_btn = QPushButton("إعدادات الاتصال")
         settings_btn.clicked.connect(self._open_settings)
-        self.updates_shortcut_btn = QPushButton("✦  إدارة التحديثات")
-        self.updates_shortcut_btn.setObjectName("adminUpdateCenter")
-        self.updates_shortcut_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.updates_shortcut_btn.setToolTip("فتح إعدادات إصدارات ENGO وإشعارات التحديث")
-        self.updates_shortcut_btn.setStyleSheet(
-            "QPushButton#adminUpdateCenter { background:#285fc4; color:#ffffff; "
-            "border:1px solid #5b8bea; border-radius:8px; padding:6px 12px; font-weight:800; }"
-            "QPushButton#adminUpdateCenter:hover { background:#3474df; border-color:#8eb0f4; }"
-            "QPushButton#adminUpdateCenter:pressed { background:#214d9f; }"
-        )
-        self.updates_shortcut_btn.clicked.connect(
-            lambda: self.tabs.setCurrentWidget(self.updates_tab)
-        )
-        settings_stack = QVBoxLayout()
-        settings_stack.setContentsMargins(0, 0, 0, 0)
-        settings_stack.setSpacing(4)
-        settings_stack.addWidget(self.updates_shortcut_btn)
-        settings_stack.addWidget(settings_btn)
         top_bar.addWidget(title)
         top_bar.addStretch(1)
         top_bar.addWidget(self.connection_label)
-        top_bar.addLayout(settings_stack)
+        top_bar.addWidget(settings_btn)
         root.addLayout(top_bar)
 
         self.tabs = QTabWidget()
