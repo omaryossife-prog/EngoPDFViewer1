@@ -3336,7 +3336,8 @@ class AIChatPanel(QFrame):
             self.send_btn.setEnabled(can_send)
             self.send_btn.setDefault(can_send)
             active_theme = str(self.settings.value("ui_theme", "dark", type=str) or "dark").lower()
-            send_icon_color = "#ffffff" if can_send or active_theme != "light" else "#8291a6"
+            active_tokens = engo_ui_theme_tokens(normalize_ui_theme(active_theme))
+            send_icon_color = active_tokens["text"] if can_send else active_tokens["muted"]
             self.send_btn.setIcon(make_icon("send", send_icon_color, 16))
         # QSS selectors use the object name, so force a polish after switching it.
         style = self.send_btn.style()
