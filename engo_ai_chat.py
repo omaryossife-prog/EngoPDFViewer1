@@ -904,9 +904,9 @@ class AIChatPanel(QFrame):
             self.provider_combo.setToolTip("اختر خدمة الذكاء الاصطناعي التي ستستقبل سؤالك" if is_ar else "Choose which AI service receives your question")
         if hasattr(self, "model_combo"):
             self.model_combo.setToolTip(
-                "اختر نموذج المحادثة. الأخضر: المزوّد أظهره والخطة تسمح بالمحادثة. الأصفر: لم يكتمل التحقق أو أصبحت القائمة قديمة. الأحمر: المحادثة غير متاحة في الخطة أو النموذج غير موجود في آخر قائمة للمزوّد."
+                "اختر نموذج المحادثة. الأخضر: نجح طلب فعلي بهذا المفتاح والموديل مؤخرًا. الأصفر: الموديل ظاهر بالقائمة لكن لم ينجح استخدامه بعد، أو عليه تقييد مؤقت. الأحمر: الخطة تمنع المحادثة أو الحصة مستنفدة أو المزوّد رفض الموديل."
                 if is_ar else
-                "Choose a chat model. Green: listed by the provider and included in your plan. Yellow: not fully verified or stale. Red: chat is not enabled on the plan or the model is absent from the provider's latest list."
+                "Choose a chat model. Green: a real request with this key and model recently succeeded. Yellow: listed but not yet proven by a successful request, or temporarily limited. Red: plan access is denied, quota is exhausted, or the provider rejected the model."
             )
         if hasattr(self, "include_context"):
             self.include_context.setText("سياق PDF" if is_ar else "PDF context")
