@@ -10772,6 +10772,8 @@ def main():
             )
 
             def first_run_login_failed(error):
+                if getattr(first_run, "_closing_during_oauth", False):
+                    return
                 first_run.google_signin_button.setEnabled(True)
                 first_run.back_button.setEnabled(True)
                 first_run.guest_button.setEnabled(True)
@@ -10781,6 +10783,10 @@ def main():
                 )))
 
             def first_run_login_successful(state):
+                # If the user explicitly closed the setup while OAuth was pending,
+                # let the deferred shutdown handler finish after the worker settles.
+                if getattr(first_run, "_closing_during_oauth", False):
+                    return
                 account_dialog = getattr(window, "_first_run_account_dialog", None)
                 if account_dialog is not None:
                     account_dialog.accept()
@@ -10861,6 +10867,22 @@ def main():
             first_run.google_sign_in_requested.connect(request_first_run_google_sign_in)
             first_run.guest_continue_requested.connect(continue_first_run_as_guest)
             if first_run.exec() != QDialog.DialogCode.Accepted:
+                pending_account_dialog = getattr(window, "_first_run_account_dialog", None)
+                if pending_account_dialog is not None and getattr(pending_account_dialog, "_login_flow_pending", False):
+                    # Do not destroy QApplication while its OAuth/activation QThread
+                    # is still running. Wait for the complete login chain, then exit.
+                    first_run._closing_during_oauth = True
+
+                    def finish_cancelled_first_run(*_args):
+                        try:
+                            window.close()
+                            splash.permit_close()
+                        finally:
+                            app.quit()
+
+                    pending_account_dialog.login_successful.connect(finish_cancelled_first_run)
+                    pending_account_dialog.login_failed.connect(finish_cancelled_first_run)
+                    return
                 window.close()
                 splash.permit_close()
                 app.quit()
