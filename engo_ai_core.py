@@ -2598,9 +2598,17 @@ class AIRequestWorker(QThread):
 
     @staticmethod
     def _openai_responses_delta(data):
-        if data.get("type") == "error":
-            raise RuntimeError(data.get("message") or data.get("error", {}).get("message") or "OpenAI streaming error")
-        return str(data.get("delta") or "") if data.get("type") == "response.output_text.delta" else ""
+        event_type = str(data.get("type") or "")
+        if event_type in {"error", "response.failed"}:
+            error = data.get("error")
+            if not error and isinstance(data.get("response"), dict):
+                error = data["response"].get("error")
+            if isinstance(error, dict):
+                message = error.get("message") or error.get("code") or str(error)
+            else:
+                message = str(error or data.get("message") or "OpenAI streaming request failed")
+            raise RuntimeError(message)
+        return str(data.get("delta") or "") if event_type == "response.output_text.delta" else ""
 
     @staticmethod
     def _chat_completion_delta(data):
@@ -2620,8 +2628,15 @@ class AIRequestWorker(QThread):
         if data.get("error"):
             error = data["error"]
             raise RuntimeError(error.get("message", str(error)) if isinstance(error, dict) else str(error))
+        prompt_feedback = data.get("promptFeedback") or {}
+        if isinstance(prompt_feedback, dict) and prompt_feedback.get("blockReason"):
+            raise RuntimeError(f"Gemini blocked this prompt: {prompt_feedback['blockReason']}")
         try:
-            parts = data["candidates"][0]["content"]["parts"]
+            candidate = data["candidates"][0]
+            finish_reason = str(candidate.get("finishReason") or "")
+            if finish_reason in {"SAFETY", "RECITATION"}:
+                raise RuntimeError(f"Gemini stopped the response: {finish_reason}")
+            parts = candidate["content"]["parts"]
             return "".join(str(part.get("text", "")) for part in parts if part.get("text"))
         except (KeyError, IndexError, TypeError):
             return ""
