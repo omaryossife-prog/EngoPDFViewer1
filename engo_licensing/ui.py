@@ -452,7 +452,17 @@ class PlansDialog(QDialog):
         self.account_data = account_data if isinstance(account_data, dict) else {}
         self._worker: ServiceActionWorker | None = None
         self._selected_billing_period = "monthly"
-        self._is_premium_current = bool(self.service.state.is_premium)
+        # The signed license state is authoritative when it already confirms
+        # Premium. The account-overview endpoint also returns the latest
+        # authenticated subscription row; use it as a fallback because the
+        # local heartbeat/license snapshot can lag behind a just-renewed plan.
+        subscription = self.account_data.get("subscription")
+        subscription = subscription if isinstance(subscription, dict) else {}
+        overview_is_premium = (
+            str(subscription.get("plan_id") or "").strip().lower() == "premium"
+            and str(subscription.get("status") or "").strip().lower() == "active"
+        )
+        self._is_premium_current = bool(self.service.state.is_premium or overview_is_premium)
         self.period_cards: dict[str, QPushButton] = {}
         self._payment_button_text = self._tr(
             "زيادة مدة الاشتراك", "Extend subscription"
