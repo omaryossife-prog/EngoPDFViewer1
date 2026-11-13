@@ -4314,6 +4314,11 @@ class MainWindow(QMainWindow):
         QCheckBox {{ color:{t['text']}; }}
         QCheckBox::indicator:unchecked {{ background:{t['input']}; border:1px solid {t['border_strong']}; }}
         QCheckBox::indicator:checked {{ background:{t['accent']}; border:1px solid {t['accent']}; }}
+        /* Make the enabled PDF-context toggle visibly use the active theme accent. */
+        QCheckBox#aiIncludeContext:checked {{ color:{t['accent']}; font-weight:600; }}
+        QCheckBox#aiIncludeContext::indicator:checked {{
+            background:{t['accent']}; border:1px solid {t['accent']}; border-radius:4px;
+        }}
 
         /* Chat selectors use the same theme tokens as the rest of Engo. */
         QComboBox#aiChatSelector, QComboBox#aiProviderSelector, QComboBox#aiModelSelector {{
