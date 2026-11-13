@@ -55,3 +55,109 @@ def test_account_overview_tag_usage_snapshot_filters_per_file_tag_features():
     assert 'select("feature_key,scope_key,used")' in edge
     assert '.in("feature_key", ["tags", "tag_units"])' in edge
     assert "tag_usage: tagUsageAvailable ? tagUsage : null" in edge
+
+def test_provider_model_status_requires_a_successful_real_request_for_green():
+    source = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    assert 'if plan_access == "denied":' in source
+    assert 'return "unavailable", "plan"' in source
+    assert 'if plan_access != "allowed":' in source
+    assert 'return "unknown", "plan_unknown"' in source
+    assert 'health_state == "success"' in source
+    assert 'return "available", "request_success"' in source
+    assert 'return "unknown", "catalog_only"' in source
+    assert 'return "available", "provider_catalog"' not in source
+    assert 'return "unavailable", "model_not_listed"' in source
+
+
+def test_provider_model_health_is_scoped_to_the_api_key_without_storing_it():
+    source = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    assert 'hashlib.sha256(secret.encode("utf-8", errors="replace")).hexdigest()[:20]' in source
+    assert 'ai_model_health_v1_{provider}_{fingerprint}' in source
+    assert '_get_provider_key(self.settings, provider)' in source
+    assert 'json.dumps(records, ensure_ascii=False)' in source
+
+
+def test_provider_model_status_uses_only_user_request_results_not_background_probes():
+    chat = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    main = (ROOT / "main.py").read_text(encoding="utf-8")
+    assert 'def record_provider_model_result(' in chat
+    assert 'worker.provider, worker.model, worker.api_key, success=True' in main
+    assert 'success=False, error=str(error)' in main
+    assert 'No background probe requests are sent.' in chat
+
+
+def test_zero_quota_and_retry_after_update_the_model_health_temporarily():
+    source = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    assert 'r"retry\\s+in\\s+' in source
+    assert 'r"\\blimit\\s*:\\s*0\\b"' in source
+    assert '"state": "quota_blocked"' in source
+    assert '"state": "rate_limited"' in source
+    assert 'expires_at' in source
+
+
+def test_chat_model_menu_shows_status_icons_without_changing_model_ids():
+    source = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    assert 'self.model_combo.addItem(_provider_model_status_icon(status), model_id, model_id)' in source
+    assert 'self.model_combo.setItemData(' in source
+    assert 'self.model_combo.popupAboutToShow.connect(self._refresh_provider_model_menu)' in source
+    assert 'class AIModelSelectorCombo(QComboBox):' in source
+    assert 'self.popupAboutToShow.emit()' in source
+    assert 'self.model_combo.setIconSize(QSize(13, 13))' in source
+
+
+def test_provider_model_catalog_is_marked_verified_only_after_success():
+    source = (ROOT / "engo_ai_core.py").read_text(encoding="utf-8")
+    loaded = source.split('    def _on_models_loaded(self, provider, model_ids):', 1)[1].split('    def _on_models_failed', 1)[0]
+    failed = source.split('    def _on_models_failed(self, provider, message):', 1)[1].split('    def _on_models_worker_finished', 1)[0]
+    assert 'ai_models_catalog_verified_{provider}", True' in loaded
+    assert 'ai_models_catalog_checked_at_{provider}", time.time()' in loaded
+    assert 'ai_models_catalog_key_fingerprint_{provider}' in loaded
+    assert 'ai_models_catalog_verified_{provider}", False' in failed
+    assert "import time" in source
+    assert "import hashlib" in source
+
+
+def test_provider_model_catalog_is_bound_to_the_current_api_key():
+    chat = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    core = (ROOT / "engo_ai_core.py").read_text(encoding="utf-8")
+    assert 'ai_models_catalog_key_fingerprint_{provider}' in chat
+    assert 'cached_fingerprint != fingerprint' in chat
+    assert 'hashlib.sha256(' in core
+
+
+def test_provider_model_status_is_ui_only_and_keeps_application_version_unchanged():
+    chat = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    main = (ROOT / "main.py").read_text(encoding="utf-8")
+    assert 'self.model_combo = AIModelSelectorCombo()' in chat
+    assert 'self._chat_text_plan_access()' in chat
+    assert 'APP_VERSION = "2.3.6"' in main
+
+
+def test_chat_imports_provider_key_helper_before_model_catalog_check():
+    source = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    imports = source.split("from engo_ai_core import (", 1)[1].split(")", 1)[0]
+    assert "_get_provider_key" in imports
+    assert "current_key = _get_provider_key(self.settings, provider)" in source
+
+
+def test_model_selector_expands_popup_without_resizing_the_closed_control():
+    source = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    selector = source.split("class AIModelSelectorCombo", 1)[1].split("class AIChatPanel", 1)[0]
+    assert "view.setTextElideMode(Qt.TextElideMode.ElideNone)" in selector
+    assert "metrics.horizontalAdvance" in selector
+    assert "popup.resize(desired_width, current_geometry.height())" in selector
+    assert "self.model_combo.setMaximumWidth(225)" in source
+
+
+def test_exhausted_provider_credits_stay_red_until_a_successful_request():
+    source = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    assert '"you have no credits remaining"' in source
+    assert '"insufficient_quota"' in source
+    assert 'record_key = "_account"' in source
+    assert 'record = {"state": "billing_blocked", "checked_at": now}' in source
+    assert 'if str(record.get("state") or "") == "billing_blocked":' in source
+    assert 'provider_health.get("_account") or provider_health.get(model_id)' in source
+    assert 'if health_state == "billing_blocked":' in source
+    assert 'records.pop("_account", None)' in source
+    assert 'record = {"state": "billing_blocked", "checked_at": now, "expires_at":' not in source
+
