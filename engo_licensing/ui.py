@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import traceback
 import sys
+import json
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -903,7 +904,8 @@ class PlansDialog(QDialog):
 class SignInWelcomeDialog(QDialog):
     """Branded post-login confirmation with the authenticated Google profile."""
 
-    def __init__(self, state: LicenseState, language: str = "en", parent=None, theme: str = "dark"):
+    def __init__(self, state: LicenseState, language: str = "en", parent=None, theme: str = "dark",
+                 image_endpoint: str = "", publishable_key: str = ""):
         super().__init__(parent)
         self.language = "ar" if str(language).lower().startswith("ar") else "en"
         is_ar = self.language == "ar"
@@ -939,6 +941,13 @@ class SignInWelcomeDialog(QDialog):
         root.setContentsMargins(30, 28, 30, 24)
         root.setSpacing(13)
         root.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.artwork_label = QLabel()
+        self.artwork_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.artwork_label.setMinimumHeight(110)
+        self.artwork_label.setMaximumHeight(180)
+        self.artwork_label.setVisible(False)
+        root.addWidget(self.artwork_label)
+
         self.avatar_label = QLabel("E")
         self.avatar_label.setObjectName("signinWelcomeAvatar")
         self.avatar_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -972,9 +981,45 @@ class SignInWelcomeDialog(QDialog):
         root.addWidget(self.continue_button)
 
         self._avatar_manager = QNetworkAccessManager(self)
+        self._image_endpoint = str(image_endpoint or "").strip()
+        self._publishable_key = str(publishable_key or "").strip()
+        if self._image_endpoint.startswith("https://") and self._publishable_key:
+            request = QNetworkRequest(QUrl(self._image_endpoint))
+            request.setRawHeader(b"apikey", self._publishable_key.encode("utf-8"))
+            request.setRawHeader(b"Authorization", ("Bearer " + self._publishable_key).encode("utf-8"))
+            request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/json")
+            artwork_reply = self._avatar_manager.post(request, b"{}")
+            artwork_reply.finished.connect(lambda r=artwork_reply: self._signed_artwork_url_ready(r))
         if avatar_url.startswith("https://"):
             reply = self._avatar_manager.get(QNetworkRequest(QUrl(avatar_url)))
             reply.finished.connect(lambda r=reply: self._load_profile_avatar(r))
+
+    def _signed_artwork_url_ready(self, reply):
+        try:
+            payload = json.loads(bytes(reply.readAll()).decode("utf-8", errors="replace") or "{}")
+            image_url = str(payload.get("image_url") or "").strip() if isinstance(payload, dict) else ""
+            if image_url.startswith("https://"):
+                image_reply = self._avatar_manager.get(QNetworkRequest(QUrl(image_url)))
+                image_reply.finished.connect(lambda r=image_reply: self._load_signin_artwork(r))
+        except Exception:
+            pass
+        finally:
+            reply.deleteLater()
+
+    def _load_signin_artwork(self, reply):
+        try:
+            raw = bytes(reply.readAll())
+            pixmap = QPixmap()
+            if raw and pixmap.loadFromData(raw):
+                scaled = pixmap.scaled(
+                    340, 180,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                self.artwork_label.setPixmap(scaled)
+                self.artwork_label.setVisible(True)
+        finally:
+            reply.deleteLater()
 
     def _load_profile_avatar(self, reply):
         try:
