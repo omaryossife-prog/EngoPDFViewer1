@@ -1536,8 +1536,14 @@ class AccountDialog(QDialog):
             self.service.state.user = user
             self._render_state()
         subscription = data.get("subscription") if isinstance(data.get("subscription"), dict) else {}
-        if self._free_unlimited_mode:
-            self.plan_label.setText(self._tr("الباقة: مجاني · جميع الميزات بلا حدود", "Plan: Free · All features unlimited"))
+        if self._free_unlimited_mode and self.service.state.is_premium:
+            self.plan_label.setText(self._tr("الباقة: مميز", "Plan: Premium"))
+            self.expiry_label.setText(self._tr(
+                "اشتراك Premium مفعّل، مع إتاحة جميع الميزات للجميع حاليًا.",
+                "Premium subscription is active; all features are currently available to everyone."
+            ))
+        elif self._free_unlimited_mode:
+            self.plan_label.setText(self._tr("جميع الميزات متاحة بلا حدود", "All features available without limits"))
             self.expiry_label.setText(self._tr("وضع الإطلاق المجاني مفعّل حاليًا.", "Free launch mode is currently enabled."))
         else:
             ends_raw = subscription.get("ends_at") if subscription else None
