@@ -1672,6 +1672,15 @@ class AISettingsDialog(QDialog):
         self.settings.setValue(f"ai_available_models_{provider}", json.dumps(list(model_ids)))
         self.settings.setValue(f"ai_models_catalog_verified_{provider}", True)
         self.settings.setValue(f"ai_models_catalog_checked_at_{provider}", time.time())
+        worker = self._model_workers.get(provider)
+        catalog_key = str(getattr(worker, "api_key", "") or "").strip()
+        if catalog_key:
+            fingerprint = hashlib.sha256(
+                catalog_key.encode("utf-8", errors="replace")
+            ).hexdigest()[:20]
+            self.settings.setValue(
+                f"ai_models_catalog_key_fingerprint_{provider}", fingerprint
+            )
         source = f"Found {len(model_ids)} available models. Save settings to use them in chat."
         self.model_status[provider].setProperty("engoAiSourceText", source)
         self.model_status[provider].setText(self._ai_tr(source))
