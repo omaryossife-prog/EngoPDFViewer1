@@ -123,6 +123,7 @@ from engo_widgets import (
 from engo_pdf_ops import merge_pdfs
 from engo_licensing import (
     AccountDialog,
+    SignInWelcomeDialog,
     EngoSplashScreen,
     LicenseConfig,
     LicenseService,
@@ -1679,7 +1680,21 @@ class MainWindow(QMainWindow):
         dialog = AccountDialog(self.license_service, language, self, theme=ui_theme)
         self._account_dialog = dialog
         dialog.finished.connect(self._on_account_dialog_closed)
+        dialog.login_successful.connect(self._on_account_login_successful)
         dialog.show()
+
+    def _on_account_login_successful(self, state=None):
+        """Refresh the main window and confirm sign-in even if AccountDialog was closed."""
+        self._on_account_dialog_closed()
+        language = str(self.settings.value("interface_language", "en", type=str) or "en")
+        ui_theme = str(self.settings.value("ui_theme", "dark", type=str) or "dark")
+        welcome = SignInWelcomeDialog(
+            state or self.license_service.state,
+            language=language,
+            parent=self,
+            theme=ui_theme,
+        )
+        welcome.exec()
 
     def _on_account_dialog_closed(self):
         self._refresh_license_button()
@@ -10747,21 +10762,53 @@ def main():
                 free_theme_access=_first_run_free_theme_access,
             )
 
-            def request_first_run_google_sign_in():
-                account_dialog = AccountDialog(
-                    service,
+            def first_run_login_failed(error):
+                first_run.google_signin_button.setEnabled(True)
+                first_run.back_button.setEnabled(True)
+                first_run.guest_button.setEnabled(True)
+                first_run.account_caption.setText(str(error or (
+                    "تعذر تسجيل الدخول. حاول مرة أخرى." if first_run.selected_language == "ar"
+                    else "Sign-in failed. Please try again."
+                )))
+
+            def first_run_login_successful(state):
+                account_dialog = getattr(window, "_first_run_account_dialog", None)
+                if account_dialog is not None:
+                    account_dialog.accept()
+                welcome = SignInWelcomeDialog(
+                    state or service.state,
                     language=first_run.selected_language or "en",
                     parent=first_run,
                     theme=first_run.selected_theme or ui_theme,
                 )
-                # Start OAuth as soon as the user chooses Google on the
-                # welcome page, including when switching from a previously saved
-                # account. AccountDialog handles activation/heartbeat and errors.
+                welcome.exec()
+                first_run.account_choice = "google"
+                first_run.accept()
+                window._first_run_account_dialog = None
+
+            def request_first_run_google_sign_in():
+                # Keep the OAuth worker owned by the main application, not by a
+                # dialog that the user may close while the browser is open.
+                account_dialog = getattr(window, "_first_run_account_dialog", None)
+                if account_dialog is None:
+                    account_dialog = AccountDialog(
+                        service,
+                        language=first_run.selected_language or "en",
+                        parent=window,
+                        theme=first_run.selected_theme or ui_theme,
+                    )
+                    account_dialog.login_successful.connect(first_run_login_successful)
+                    account_dialog.login_failed.connect(first_run_login_failed)
+                    window._first_run_account_dialog = account_dialog
+                first_run.google_signin_button.setEnabled(False)
+                first_run.back_button.setEnabled(False)
+                first_run.guest_button.setEnabled(False)
+                first_run.account_caption.setText(
+                    "جارٍ تسجيل الدخول باستخدام Google…"
+                    if first_run.selected_language == "ar"
+                    else "Signing in with Google…"
+                )
                 QTimer.singleShot(0, account_dialog._start_login)
-                account_dialog.exec()
-                if service.state.authenticated:
-                    first_run.account_choice = "google"
-                    first_run.accept()
 
             def continue_first_run_as_guest():
                 if not service.state.authenticated:
