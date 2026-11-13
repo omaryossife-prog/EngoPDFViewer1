@@ -519,7 +519,19 @@ class PlansDialog(QDialog):
             self.period_cards[period] = button
         self.period_cards["monthly"].setChecked(True)
         pl.addLayout(period_cards_row)
-        self.price_label=QLabel("—"); self.price_label.setObjectName("planHeading"); pl.addWidget(self.price_label)
+        price_divider = QFrame()
+        price_divider.setObjectName("planPriceDivider")
+        price_divider.setFrameShape(QFrame.Shape.HLine)
+        price_divider.setFrameShadow(QFrame.Shadow.Plain)
+        price_divider.setFixedHeight(1)
+        price_divider.setStyleSheet(
+            f"QFrame#planPriceDivider {{ border:0; border-top:1px solid {t['border_strong']}; }}"
+        )
+        pl.addWidget(price_divider)
+        self.price_label = QLabel("—")
+        self.price_label.setObjectName("planHeading")
+        self.price_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pl.addWidget(self.price_label)
         self.payment_button=QPushButton(self._payment_button_text); self.payment_button.setObjectName("planPrimary")
         self.payment_button.clicked.connect(self._request_payment); pl.addWidget(self.payment_button)
         root.addWidget(premium)
