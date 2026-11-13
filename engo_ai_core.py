@@ -13,6 +13,7 @@ import urllib.error
 import urllib.parse
 import socket
 import threading
+import time
 from pathlib import Path
 import pymupdf as fitz  # use the maintained import name; keep fitz alias for existing calls
 from PIL import Image, ImageOps, ImageChops, ImageFilter
