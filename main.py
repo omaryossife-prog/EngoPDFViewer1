@@ -10886,6 +10886,9 @@ def main():
 
                     pending_account_dialog.login_successful.connect(finish_cancelled_first_run)
                     pending_account_dialog.login_failed.connect(finish_cancelled_first_run)
+                    # Keep the hidden main window and its AccountDialog alive until
+                    # the background OAuth/activation sequence has fully settled.
+                    app._engo_main_window = window
                     return
                 window.close()
                 splash.permit_close()
