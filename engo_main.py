@@ -2007,7 +2007,10 @@ class MainWindow(QMainWindow):
             # Both flags are mandatory. Per-file tag quotas may be counted locally
             # only from the last protected, signed entitlement/usage snapshot.
             if isinstance(result, dict) and result.get("allowed") is True and result.get("tracked") is True:
-                continuation()
+                if feature_key == "text_chat":
+                    continuation(result.get("reservation_id"))
+                else:
+                    continuation()
                 self._refresh_license_button()
                 if result.get("used") is not None and result.get("limit") is not None:
                     if result.get("offline"):
@@ -8492,7 +8495,10 @@ class MainWindow(QMainWindow):
         tab.canvas.set_ai_focus(page_index, step.get("box"), step.get("label"))
         tab.canvas.update()
 
-    def send_ai_request(self, path, question, selected_images, include_context, mode, current_page_index=0, _usage_checked=False):
+    def send_ai_request(
+        self, path, question, selected_images, include_context, mode,
+        current_page_index=0, _usage_checked=False, _usage_reservation_id=None,
+    ):
         if self._speech_worker and self._speech_worker.isRunning():
             self._speech_worker.cancel()
         if mode != "teach":
@@ -8511,8 +8517,10 @@ class MainWindow(QMainWindow):
         if not _usage_checked:
             self._request_feature_access(
                 "text_chat",
-                lambda: self.send_ai_request(path, question, selected_images, include_context, mode,
-                                             current_page_index, True),
+                lambda reservation_id=None: self.send_ai_request(
+                    path, question, selected_images, include_context, mode,
+                    current_page_index, True, reservation_id,
+                ),
             )
             return
         model = str(self.ai_panel.model_combo.currentData() or self.ai_panel.model_combo.currentText() or
@@ -8540,6 +8548,9 @@ class MainWindow(QMainWindow):
         worker = AIRequestWorker(path, provider, model, api_key, question, history, include_context,
                                  selected_images, mode, current_page_index,
                                  supplemental_documents=supplemental_documents, pdf_snapshots=pdf_snapshots)
+        worker._engo_usage_reservation_id = str(_usage_reservation_id or "").strip()
+        # Retry any failed settlements retained from an earlier offline shutdown.
+        self._retry_pending_text_chat_settlements()
         # Leave output sizing to AIRequestWorker._response_token_budget():
         # brief questions should stay brief; explicit long-form tasks still get a larger budget.
         worker.streamed.connect(self._on_ai_delta)
@@ -8564,7 +8575,113 @@ class MainWindow(QMainWindow):
         self.show_status("Stop requested for AI response…")
         worker.cancel()
 
+    def _queue_pending_text_chat_settlement(self, reservation_id, outcome):
+        reservation_id = str(reservation_id or "").strip()
+        outcome = str(outcome or "").strip().lower()
+        if not reservation_id or outcome not in {"success", "failure"}:
+            return
+        key = "pending_text_chat_settlements_json"
+        try:
+            raw = self.settings.value(key, "[]", type=str)
+            pending = json.loads(raw) if isinstance(raw, str) else []
+            if not isinstance(pending, list):
+                pending = []
+        except Exception:
+            pending = []
+        if not any(
+            isinstance(item, dict) and str(item.get("reservation_id") or "") == reservation_id
+            for item in pending
+        ):
+            pending.append({"reservation_id": reservation_id, "outcome": outcome})
+        self.settings.setValue(key, json.dumps(pending[-250:], ensure_ascii=False))
+        self.settings.sync()
+
+    def _remove_pending_text_chat_settlement(self, reservation_id):
+        reservation_id = str(reservation_id or "").strip()
+        key = "pending_text_chat_settlements_json"
+        try:
+            raw = self.settings.value(key, "[]", type=str)
+            pending = json.loads(raw) if isinstance(raw, str) else []
+            if not isinstance(pending, list):
+                pending = []
+        except Exception:
+            pending = []
+        remaining = [
+            item for item in pending
+            if not isinstance(item, dict) or str(item.get("reservation_id") or "") != reservation_id
+        ]
+        if remaining:
+            self.settings.setValue(key, json.dumps(remaining, ensure_ascii=False))
+        else:
+            self.settings.remove(key)
+        self.settings.sync()
+
+    def _dispatch_text_chat_settlement(self, reservation_id, outcome):
+        reservation_id = str(reservation_id or "").strip()
+        outcome = str(outcome or "").strip().lower()
+        service = getattr(self, "license_service", None)
+        if not reservation_id or outcome not in {"success", "failure"}:
+            return
+        if service is None or not service.state.authenticated:
+            self._queue_pending_text_chat_settlement(reservation_id, outcome)
+            return
+
+        settlement_worker = ServiceActionWorker(
+            lambda rid=reservation_id, result=outcome: service.settle_text_chat_usage(rid, result),
+            self,
+        )
+        self._license_gate_workers.append(settlement_worker)
+
+        def settlement_completed(result, error, rid=reservation_id, result_kind=outcome):
+            if error:
+                self._queue_pending_text_chat_settlement(rid, result_kind)
+                return
+            self._remove_pending_text_chat_settlement(rid)
+            if result_kind == "failure" and isinstance(result, dict) and result.get("used") is not None:
+                self.show_status(f"Failed AI request refunded · Usage {result['used']}")
+
+        settlement_worker.completed.connect(settlement_completed)
+        settlement_worker.finished.connect(
+            lambda current=settlement_worker: self._license_gate_thread_finished(current)
+        )
+        settlement_worker.start()
+
+    def _settle_ai_usage_reservation(self, worker, outcome):
+        if worker is None:
+            return
+        reservation_id = str(getattr(worker, "_engo_usage_reservation_id", "") or "").strip()
+        if not reservation_id:
+            return
+        # Clear before dispatch so duplicate callbacks cannot settle the same token twice.
+        worker._engo_usage_reservation_id = ""
+        self._dispatch_text_chat_settlement(reservation_id, outcome)
+
+    def _retry_pending_text_chat_settlements(self):
+        service = getattr(self, "license_service", None)
+        if service is None or not service.state.authenticated:
+            return
+        try:
+            raw = self.settings.value("pending_text_chat_settlements_json", "[]", type=str)
+            pending = json.loads(raw) if isinstance(raw, str) else []
+        except Exception:
+            pending = []
+        if not isinstance(pending, list):
+            return
+        active_ids = {
+            str(getattr(worker, "_engo_settlement_reservation_id", "") or "")
+            for worker in self._license_gate_workers if _qt_thread_is_running(worker)
+        }
+        for item in pending[:50]:
+            if not isinstance(item, dict):
+                continue
+            reservation_id = str(item.get("reservation_id") or "").strip()
+            outcome = str(item.get("outcome") or "").strip().lower()
+            if reservation_id and outcome in {"success", "failure"} and reservation_id not in active_ids:
+                # _dispatch removes the item after successful idempotent settlement.
+                self._dispatch_text_chat_settlement(reservation_id, outcome)
+
     def _on_ai_cancelled(self, path):
+        self._settle_ai_usage_reservation(self._ai_worker, "failure")
         self._speak_next_response = False
         self.ai_panel.append_message_for(path, "assistant", "_Response stopped by user._")
         self.show_status("AI response stopped")
@@ -8575,6 +8692,7 @@ class MainWindow(QMainWindow):
 
     def _on_ai_success(self, path, answer):
         worker = self._ai_worker
+        self._settle_ai_usage_reservation(worker, "success")
         mode = getattr(worker, "mode", "custom") if worker is not None else "custom"
         if mode == "teach" and os.path.abspath(path) == os.path.abspath(self.ai_panel.document_path):
             self._begin_teaching(answer)
@@ -8613,6 +8731,7 @@ class MainWindow(QMainWindow):
         return "**تعذر إكمال طلب AI**\n\nراجع تفاصيل الخطأ أدناه، وتأكد من صحة مفتاح API وإعدادات مزود الخدمة."
 
     def _on_ai_failure(self, path, error):
+        self._settle_ai_usage_reservation(self._ai_worker, "failure")
         self._speak_next_response = False
         friendly = self._friendly_ai_error_message(error)
         # Raw HTML (<details>) is escaped by the chat renderer and Qt cannot collapse it, so it was shown as literal text.
