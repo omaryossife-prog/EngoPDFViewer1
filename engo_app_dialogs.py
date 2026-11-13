@@ -555,6 +555,7 @@ class FirstRunSetupDialog(QDialog):
         mark.setFixedSize(56, 56)
         logo_path = resource_path("engopdfviewer.ico")
         logo_pixmap = QPixmap(str(logo_path))
+        mark.setProperty("hasLogo", not logo_pixmap.isNull())
         if not logo_pixmap.isNull():
             mark.setPixmap(logo_pixmap.scaled(
                 44, 44,
@@ -909,9 +910,9 @@ class FirstRunSetupDialog(QDialog):
             }}
             QFrame#firstRunHero {{ background:{c['panel_alt']}; border:1px solid {c['border']};
                 border-left:4px solid {c['accent']}; border-radius:14px; }}
-            QLabel#firstRunMark {{ background:transparent; color:#ffffff; border-radius:12px;
+            QLabel#firstRunMark {{ background:{c['accent']}; color:#ffffff; border-radius:12px;
                 font-size:22pt; font-weight:850; }}
-            QLabel#firstRunMark[pixmap="true"] {{ background:transparent; }}
+            QLabel#firstRunMark[hasLogo="true"] {{ background:transparent; }}
             QLabel#firstRunTitle {{ color:{c['text']}; font-size:15pt; font-weight:850; }}
             QLabel#firstRunSubtitle {{ color:{c['muted']}; font-size:9pt; }}
             QLabel#firstRunStep {{ color:{c['accent']}; font-size:8pt; font-weight:850;
