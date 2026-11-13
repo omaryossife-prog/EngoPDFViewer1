@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.119.0";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
 // Source-controlled fallback. The first successful request stores this page in
@@ -19,7 +19,19 @@ Deno.serve(async (req: Request) => {
   }
   try {
     const url = Deno.env.get("SUPABASE_URL");
-    const key = Deno.env.get("SUPABASE_SECRET_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    let key = Deno.env.get("SUPABASE_SECRET_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!key) {
+      try {
+        const keyMap = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}") as Record<string, unknown>;
+        const preferred = keyMap.default;
+        const first = Object.values(keyMap).find((value) => typeof value === "string" && value.trim());
+        key = typeof preferred === "string" && preferred.trim()
+          ? preferred.trim()
+          : (typeof first === "string" ? first.trim() : "");
+      } catch {
+        key = "";
+      }
+    }
     if (!url || !key) throw new Error("Server Supabase credentials are not configured");
     const admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 
