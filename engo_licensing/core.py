@@ -563,6 +563,16 @@ class LicenseService:
             raise LicenseError(str(result["error"]))
         return result
 
+    def get_public_theme_settings(self) -> dict[str, Any]:
+        """Fetch the public Free-plan theme entitlement so guest setup follows DB settings."""
+        try:
+            result = self._edge("public-theme-settings")
+            return {
+                "free_app_themes_enabled": bool(result.get("free_app_themes_enabled", False))
+            }
+        except Exception:
+            return {"free_app_themes_enabled": False}
+
     def get_app_update_info(self) -> dict[str, Any]:
         """Fetch public release information; this endpoint contains no account data."""
         return self._edge("app-update-info", {"app_version": self.config.app_version})
