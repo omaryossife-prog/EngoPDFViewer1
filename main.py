@@ -1850,13 +1850,14 @@ class MainWindow(QMainWindow):
             )
 
             button.setText(label)
-            button.setIcon(make_icon("update", accent, 22))
-            button.setIconSize(QSize(22, 22))
+            button.setIcon(make_icon("update", tokens["text"], 18))
+            button.setIconSize(QSize(18, 18))
             button.setLayoutDirection(
                 Qt.LayoutDirection.RightToLeft if is_ar
                 else Qt.LayoutDirection.LeftToRight
             )
-            button.setFixedHeight(46)
+            button.setProperty("homeActionHeight", True)
+            button.setFixedHeight(30)
             button.setSizePolicy(
                 QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
             )
@@ -1864,15 +1865,15 @@ class MainWindow(QMainWindow):
             button.setAccessibleName(label)
             button.setStyleSheet(
                 "QPushButton#homeUpdateCenter { "
-                f"background:{tokens['panel_alt']}; color:{accent}; "
-                f"border:1px solid {accent}; border-radius:10px; "
-                "padding:7px 12px; font-size:12pt; font-weight:850; "
+                f"background:{accent}; color:{tokens['text']}; "
+                f"border:1px solid {accent}; border-radius:7px; "
+                "padding:6px 10px; font-size:10.5pt; font-weight:800; "
                 "text-align:center; }"
                 "QPushButton#homeUpdateCenter:hover { "
-                f"background:{tokens['hover']}; color:{accent_hover}; "
+                f"background:{accent_hover}; color:{tokens['text']}; "
                 f"border-color:{accent_hover}; }}"
                 "QPushButton#homeUpdateCenter:pressed { "
-                f"background:{tokens['pressed']}; color:{accent}; }}"
+                f"background:{tokens['selection']}; color:{tokens['selection_text']}; }}"
             )
         except (AttributeError, RuntimeError, KeyError, TypeError, ValueError):
             # A cosmetic refresh must never interfere with the update action itself.
@@ -4604,10 +4605,21 @@ class MainWindow(QMainWindow):
                     background:{t['pressed']}; }}
             """
             if current_ui_theme == "dark":
+                # Use Dark theme's own light-blue accent instead of the older
+                # saturated royal-blue override so Send matches Engo's palette.
                 theme_stylesheet += f"""
-                    QPushButton#aiSend:enabled {{ background:#4f7fe8; color:#ffffff; border-color:#6792f3; }}
-                    QPushButton#aiSend:enabled:hover {{ background:#6491f5; border-color:#82a5f5; }}
-                    QPushButton#aiSend:enabled:pressed {{ background:#3d68c5; }}
+                    QPushButton#aiSend:enabled {{
+                        background:{t['accent']}; color:{t['text']};
+                        border-color:{t['accent']};
+                    }}
+                    QPushButton#aiSend:enabled:hover {{
+                        background:{t['accent_hover']}; color:{t['text']};
+                        border-color:{t['accent_hover']};
+                    }}
+                    QPushButton#aiSend:enabled:pressed {{
+                        background:{t['selection']}; color:{t['selection_text']};
+                        border-color:{t['accent']};
+                    }}
                 """
         else:
             theme_stylesheet += f"""
@@ -4738,6 +4750,10 @@ class MainWindow(QMainWindow):
                 if hasattr(chat, "stop_audio_btn"):
                     chat.stop_audio_btn.setIcon(make_icon("stop", chat_icon_color, 15))
                     chat.stop_audio_btn.setIconSize(QSize(15, 15))
+                if hasattr(chat, "send_btn") and chat.send_btn.objectName() == "aiSend":
+                    send_icon_color = engo_ui_theme_tokens(current_theme)["text"]
+                    chat.send_btn.setIcon(make_icon("send", send_icon_color, 16))
+                    chat.send_btn.setIconSize(QSize(16, 16))
             except (AttributeError, RuntimeError):
                 pass
 
