@@ -50,16 +50,44 @@ def test_subscription_request_reads_the_server_side_price():
 
 
 
-def test_provider_model_status_is_green_only_when_plan_and_provider_are_verified():
+def test_provider_model_status_requires_a_successful_real_request_for_green():
     source = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
     assert 'if plan_access == "denied":' in source
     assert 'return "unavailable", "plan"' in source
     assert 'if plan_access != "allowed":' in source
     assert 'return "unknown", "plan_unknown"' in source
-    assert 'if not catalog_verified:' in source
-    assert 'return "unknown", "catalog_unknown"' in source
-    assert 'return "available", "provider_catalog"' in source
+    assert 'health_state == "success"' in source
+    assert 'return "available", "request_success"' in source
+    assert 'return "unknown", "catalog_only"' in source
+    assert 'return "available", "provider_catalog"' not in source
     assert 'return "unavailable", "model_not_listed"' in source
+
+
+def test_provider_model_health_is_scoped_to_the_api_key_without_storing_it():
+    source = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    assert 'hashlib.sha256(secret.encode("utf-8", errors="replace")).hexdigest()[:20]' in source
+    assert 'ai_model_health_v1_{provider}_{fingerprint}' in source
+    assert '_get_provider_key(self.settings, provider)' in source
+    assert 'json.dumps(records, ensure_ascii=False)' in source
+
+
+def test_provider_model_status_uses_only_user_request_results_not_background_probes():
+    chat = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    main = (ROOT / "main.py").read_text(encoding="utf-8")
+    assert 'def record_provider_model_result(' in chat
+    assert 'worker.provider, worker.model, worker.api_key, success=True' in main
+    assert 'success=False, error=str(error)' in main
+    assert 'No background probe requests are sent.' in chat
+
+
+def test_zero_quota_and_retry_after_update_the_model_health_temporarily():
+    source = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    assert 'r"retry\\s+in\\s+' in source
+    assert 'r"\\blimit\\s*:\\s*0\\b"' in source
+    assert '"state": "quota_blocked"' in source
+    assert '"state": "rate_limited"' in source
+    assert 'expires_at' in source
+
 
 
 def test_chat_model_menu_shows_status_icons_without_changing_model_ids():
