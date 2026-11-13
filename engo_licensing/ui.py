@@ -1288,6 +1288,9 @@ class AccountDialog(QDialog):
         # Apply it before rendering so the button does not wait for account-overview.
         if state.verified:
             self._free_unlimited_mode = bool(state.free_unlimited_mode)
+        self.expiry_label.setVisible(
+            not (self._free_unlimited_mode and not state.is_premium)
+        )
         self.plans_button.setVisible(state.authenticated and not self._free_unlimited_mode)
 
     def closeEvent(self, event):  # noqa: N802
@@ -1538,14 +1541,19 @@ class AccountDialog(QDialog):
         subscription = data.get("subscription") if isinstance(data.get("subscription"), dict) else {}
         if self._free_unlimited_mode and self.service.state.is_premium:
             self.plan_label.setText(self._tr("الباقة: مميز", "Plan: Premium"))
+            self.expiry_label.setVisible(True)
             self.expiry_label.setText(self._tr(
                 "اشتراك Premium مفعّل، مع إتاحة جميع الميزات للجميع حاليًا.",
                 "Premium subscription is active; all features are currently available to everyone."
             ))
         elif self._free_unlimited_mode:
             self.plan_label.setText(self._tr("جميع الميزات متاحة بلا حدود", "All features available without limits"))
-            self.expiry_label.setText(self._tr("وضع الإطلاق المجاني مفعّل حاليًا.", "Free launch mode is currently enabled."))
+            # The account screen already states that every feature is unlimited;
+            # do not show a redundant free-launch-mode status line underneath it.
+            self.expiry_label.clear()
+            self.expiry_label.hide()
         else:
+            self.expiry_label.setVisible(True)
             ends_raw = subscription.get("ends_at") if subscription else None
             if subscription and not ends_raw:
                 self.expiry_label.setText(self._tr("الاشتراك: مدى الحياة", "Subscription: Lifetime"))
