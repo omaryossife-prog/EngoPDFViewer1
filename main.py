@@ -983,7 +983,7 @@ class MainWindow(QMainWindow):
         acct_row = QHBoxLayout(self.home_account_widget)
         acct_row.setContentsMargins(12, 8, 12, 8)
         acct_row.setSpacing(10)
-        self.home_acct_avatar = QLabel("?")
+        self.home_acct_avatar = QLabel("!")
         self.home_acct_avatar.setFixedSize(36, 36)
         self.home_acct_avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.home_acct_avatar.setObjectName("homeAcctAvatar")
@@ -1609,7 +1609,7 @@ class MainWindow(QMainWindow):
             self._home_avatar_pixmap = None
             self._home_avatar_url_loaded = ""
             if avatar_lbl is not None:
-                avatar_lbl.setText("?")
+                avatar_lbl.setText("!")
 
         self._enforce_premium_settings()
 
@@ -3879,7 +3879,15 @@ class MainWindow(QMainWindow):
                         return False
                     if choice == QMessageBox.StandardButton.Save and not tab.save(False):
                         return False
-            # Tear down linked splitters before closing either PDF, then remove
+            loading_owner = self._begin_operation_loading("session")
+        try:
+            return self._restore_single_window_session_apply(snapshot, valid_entries)
+        finally:
+            self._finish_operation_loading(loading_owner)
+
+    def _restore_single_window_session_apply(self, snapshot, valid_entries):
+        """Apply the prepared session after all user confirmations are complete."""
+        # Tear down linked splitters before closing either PDF, then remove
             # the old tabs cleanly from both the stack and the tab bar.
             for index in range(self.tabs.count()):
                 tab = self.tabs.widget(index)
@@ -5547,8 +5555,14 @@ class MainWindow(QMainWindow):
             "Supported documents (*.pdf *.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff *.gif *.docx *.pptx);;PDF files (*.pdf);;Images (*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff *.gif);;Word documents (*.docx);;PowerPoint presentations (*.pptx)",
             multiple=True, native=True
         )
-        for path in paths:
-            self.open_pdf(path)
+        if not paths:
+            return
+        loading_owner = self._begin_operation_loading("files" if len(paths) > 1 else "file")
+        try:
+            for path in paths:
+                self.open_pdf(path)
+        finally:
+            self._finish_operation_loading(loading_owner)
 
     def _connect_document_tab(self, tab):
         """Bind one document tab's signals to the window that currently owns it."""
@@ -5902,8 +5916,105 @@ class MainWindow(QMainWindow):
             return
         self._open_supported_document(source_path)
 
+    def _begin_operation_loading(self, operation="file"):
+        """Show a compact, theme-aware busy dialog for a synchronous open operation."""
+        existing = getattr(self, "_operation_loading_dialog", None)
+        if existing is not None:
+            try:
+                if existing.isVisible():
+                    return False
+            except RuntimeError:
+                pass
+            self._operation_loading_dialog = None
+
+        is_ar = str(
+            self.settings.value("interface_language", "en", type=str) or "en"
+        ).lower().startswith("ar")
+        theme = normalize_ui_theme(
+            self.settings.value("ui_theme", "dark", type=str)
+        )
+        tokens = engo_ui_theme_tokens(theme)
+        if operation == "session":
+            message = "جاري فتح الجلسة..." if is_ar else "Opening session..."
+        elif operation == "files":
+            message = "جاري فتح الملفات..." if is_ar else "Opening files..."
+        else:
+            message = "جاري فتح الملف..." if is_ar else "Opening file..."
+
+        dialog = QDialog(self)
+        dialog.setObjectName("engoBusyDialog")
+        dialog.setWindowTitle("ENGO")
+        dialog.setWindowFlags(
+            Qt.WindowType.Dialog
+            | Qt.WindowType.CustomizeWindowHint
+            | Qt.WindowType.WindowTitleHint
+        )
+        dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        dialog.setLayoutDirection(
+            Qt.LayoutDirection.RightToLeft if is_ar
+            else Qt.LayoutDirection.LeftToRight
+        )
+        dialog.setFixedSize(340, 126)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(22, 19, 22, 19)
+        layout.setSpacing(15)
+
+        label = QLabel(message)
+        label.setObjectName("engoBusyLabel")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(label)
+
+        progress = QProgressBar()
+        progress.setObjectName("engoBusyProgress")
+        progress.setRange(0, 0)
+        progress.setTextVisible(False)
+        progress.setFixedHeight(7)
+        layout.addWidget(progress)
+
+        dialog.setStyleSheet(
+            f"QDialog#engoBusyDialog {{ background:{tokens['panel']}; "
+            f"border:1px solid {tokens['border']}; border-radius:13px; }}"
+            f"QLabel#engoBusyLabel {{ color:{tokens['text']}; "
+            "background:transparent; border:0; font-size:12pt; font-weight:800; }}"
+            f"QProgressBar#engoBusyProgress {{ background:{tokens['raised']}; "
+            "border:0; border-radius:3px; min-height:7px; max-height:7px; }}"
+            f"QProgressBar#engoBusyProgress::chunk {{ background:{tokens['accent']}; "
+            "border-radius:3px; }}"
+        )
+        self._operation_loading_dialog = dialog
+        try:
+            if self.isVisible():
+                dialog.move(self.frameGeometry().center() - dialog.rect().center())
+        except RuntimeError:
+            pass
+        dialog.show()
+        dialog.raise_()
+        QApplication.processEvents()
+        return True
+
+    def _finish_operation_loading(self, loading_owner):
+        """Close only the busy dialog created by the current operation."""
+        if not loading_owner:
+            return
+        dialog = getattr(self, "_operation_loading_dialog", None)
+        self._operation_loading_dialog = None
+        if dialog is not None:
+            try:
+                dialog.close()
+                dialog.deleteLater()
+            except RuntimeError:
+                pass
+
     def _open_supported_document(self, source_path):
         """Open a supported document after its format entitlement has been approved."""
+        loading_owner = self._begin_operation_loading("file")
+        try:
+            return self._open_supported_document_impl(source_path)
+        finally:
+            self._finish_operation_loading(loading_owner)
+
+    def _open_supported_document_impl(self, source_path):
+        """Perform the actual document preparation and tab creation."""
         if is_office_document(source_path):
             self.open_office_document(source_path)
             return
