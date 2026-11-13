@@ -620,6 +620,7 @@ def _prepare_offline_file_quota(
         "tag_units": {"enabled": True, "limit": 8, "reset_period": "per_file", "plan_id": "free"},
         "text_chat": {"enabled": True, "limit": 2, "reset_period": "daily", "plan_id": "free"},
     }
+    envelope["payload"]["entitlements"][feature_key]["limit"] = feature_limit
     _resign_envelope(envelope, private)
     service._session = {
         "access_token": "access", "refresh_token": "refresh",
@@ -799,3 +800,21 @@ def test_offline_feature_cache_is_persisted_and_cleared_on_logout():
     assert restored._offline_cache["license_envelope"]["signature"] == envelope["signature"]
     restored.logout()
     assert store.value is None
+
+
+
+def test_offline_usage_snapshot_preserves_pending_actions_when_refreshed():
+    store = MemoryOfflineStore()
+    service, envelope, private = make_service_and_envelope(offline_store=store)
+    _prepare_offline_file_quota(
+        service, envelope, private, store, feature_key="tags",
+        scope_key="pdf:scope-1", server_used=1, pending=2,
+    )
+    cached = service._offline_cache
+    assert service._cache_offline_usage_snapshot(
+        [{"feature_key": "tags", "scope_key": "pdf:scope-1", "used": 1}],
+        "user-1",
+    ) is True
+    assert cached["usage"]["tags:pdf:scope-1"]["server_used"] == 1
+    assert cached["usage"]["tags:pdf:scope-1"]["pending"] == 2
+    assert cached["usage_snapshot_complete"] is True
