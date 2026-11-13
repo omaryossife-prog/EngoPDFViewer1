@@ -12,7 +12,7 @@ const DEFAULT_HTML = "<!doctype html>\n<html lang=\"{{LANG}}\" dir=\"{{DIR}}\">\
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (req.method !== "POST") {
+  if (req.method !== "POST" && req.method !== "GET") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
