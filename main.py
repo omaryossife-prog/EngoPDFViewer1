@@ -1955,7 +1955,10 @@ class MainWindow(QMainWindow):
             if manual_request or not self._update_prompt_shown:
                 self._update_prompt_shown = True
                 QTimer.singleShot(0, self._show_update_available_dialog)
-        elif manual_request:
+            else:
+                self._continue_startup_after_update()
+            return
+        if manual_request:
             is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
             if error:
                 message_prefix = "تعذر التحقق من وجود تحديث:" if is_ar else "Could not check for updates:"
@@ -1965,15 +1968,27 @@ class MainWindow(QMainWindow):
                     self, "Engo",
                     "أنت تستخدم أحدث إصدار من ENGO." if is_ar else "You're using the latest version of ENGO."
                 )
+        # On startup, the previous-session prompt must wait until this check
+        # completes, so it never appears behind or on top of the update dialog.
+        self._continue_startup_after_update()
+
+    def _continue_startup_after_update(self):
+        """Show the previous-session prompt only after the update decision is closed."""
+        if not bool(getattr(self, "_startup_session_prompt_pending", False)):
+            return
+        self._startup_session_prompt_pending = False
+        QTimer.singleShot(220, self._offer_restore_last_session)
 
     def _show_update_available_dialog(self):
         """Show one clear update prompt as soon as a newer release is discovered."""
         info = getattr(self, "_update_info", {})
         if not isinstance(info, dict) or not info.get("enabled") or not info.get("update_available"):
+            self._continue_startup_after_update()
             return
         url = str(info.get("update_url") or "").strip()
         target = QUrl(url)
         if not (target.isValid() and target.scheme().lower() == "https" and target.host()):
+            self._continue_startup_after_update()
             return
         is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
         latest_version = str(info.get("latest_version") or "").strip()
@@ -1986,17 +2001,22 @@ class MainWindow(QMainWindow):
             if is_ar else
             "A newer version of ENGO is available. Install it to get the latest improvements and fixes."
         )
-        if latest_version:
-            if is_ar:
-                message += (chr(10) * 2 + f"الإصدار الحالي: {current_version}"
-                            + chr(10) + f"الإصدار الجديد: {latest_version}")
-            else:
-                message += (chr(10) * 2 + f"Current version: {current_version}"
-                            + chr(10) + f"New version: {latest_version}")
+        version_lines = []
+        if is_ar:
+            version_lines.append(f"الإصدار الحالي: {current_version}")
+            if latest_version:
+                version_lines.append(f"الإصدار الجديد: {latest_version}")
+        else:
+            version_lines.append(f"Current version: {current_version}")
+            if latest_version:
+                version_lines.append(f"New version: {latest_version}")
+
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Information)
         box.setWindowTitle(title)
-        box.setText(message)
+        box.setText(chr(10).join(version_lines))
+        box.setInformativeText(message)
+        box.setTextFormat(Qt.TextFormat.PlainText)
         update_button = box.addButton(
             "تحديث الآن" if is_ar else "Update now",
             QMessageBox.ButtonRole.AcceptRole
@@ -2006,9 +2026,13 @@ class MainWindow(QMainWindow):
             QMessageBox.ButtonRole.RejectRole
         )
         box.setDefaultButton(later_button)
-        box.exec()
-        if box.clickedButton() is update_button:
-            QDesktopServices.openUrl(target)
+        try:
+            box.exec()
+            if box.clickedButton() is update_button:
+                QDesktopServices.openUrl(target)
+        finally:
+            # The next startup dialog is queued only after the update prompt closes.
+            self._continue_startup_after_update()
 
     # The licensing server / engo_licensing.core always answer in English. Map the
     # known fixed strings to Arabic here instead of concatenating raw English text
@@ -5983,11 +6007,11 @@ class MainWindow(QMainWindow):
         )
         tokens = engo_ui_theme_tokens(theme)
         if operation == "session":
-            message = "جاري فتح الجلسة..." if is_ar else "Opening session..."
+            message = "جاري الاستعادة..." if is_ar else "Restoring..."
         elif operation == "files":
             message = "جاري فتح الملفات..." if is_ar else "Opening files..."
         else:
-            message = "جاري فتح الملف..." if is_ar else "Opening file..."
+            message = "جاري الفتح..." if is_ar else "Opening..."
 
         dialog = QDialog(self)
         dialog.setObjectName("engoBusyDialog")
@@ -6004,13 +6028,48 @@ class MainWindow(QMainWindow):
         )
         dialog.setFixedSize(340, 126)
         layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(22, 19, 22, 19)
-        layout.setSpacing(15)
+        layout.setContentsMargins(22, 16, 22, 16)
+        layout.setSpacing(11)
+
+        status_row = QHBoxLayout()
+        status_row.setSpacing(10)
+        status_row.addStretch(1)
+        logo_label = QLabel()
+        logo_label.setObjectName("engoBusyLogo")
+        logo_label.setFixedSize(34, 34)
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo_pixmap = QPixmap(resource_path("engopdfviewer.ico"))
+        if not logo_pixmap.isNull():
+            logo_label.setPixmap(logo_pixmap.scaled(
+                QSize(30, 30), Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            ))
+        else:
+            logo_label.setText("E")
+            logo_label.setStyleSheet(
+                f"color:{tokens['accent']}; font-size:22pt; font-weight:900; "
+                f"background:{tokens['panel_alt']}; border-radius:10px;"
+            )
+        logo_effect = QGraphicsOpacityEffect(logo_label)
+        logo_label.setGraphicsEffect(logo_effect)
+        status_row.addWidget(logo_label)
 
         label = QLabel(message)
         label.setObjectName("engoBusyLabel")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(label)
+        status_row.addWidget(label)
+        status_row.addStretch(1)
+        layout.addLayout(status_row)
+
+        logo_pulse = QPropertyAnimation(logo_effect, b"opacity", dialog)
+        logo_pulse.setDuration(820)
+        logo_pulse.setStartValue(0.38)
+        logo_pulse.setKeyValueAt(0.5, 1.0)
+        logo_pulse.setEndValue(0.38)
+        logo_pulse.setLoopCount(-1)
+        logo_pulse.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        dialog._engo_logo_pulse = logo_pulse
+        logo_pulse.start()
 
         progress = QProgressBar()
         progress.setObjectName("engoBusyProgress")
@@ -6023,7 +6082,7 @@ class MainWindow(QMainWindow):
             f"QDialog#engoBusyDialog {{ background:{tokens['panel']}; "
             f"border:1px solid {tokens['border']}; border-radius:13px; }}"
             f"QLabel#engoBusyLabel {{ color:{tokens['text']}; "
-            "background:transparent; border:0; font-size:12pt; font-weight:800; }}"
+            "background:transparent; border:0; font-size:11pt; font-weight:800; }}"
             f"QProgressBar#engoBusyProgress {{ background:{tokens['raised']}; "
             "border:0; border-radius:3px; min-height:7px; max-height:7px; }}"
             f"QProgressBar#engoBusyProgress::chunk {{ background:{tokens['accent']}; "
@@ -11196,6 +11255,11 @@ def main():
             except Exception:
                 pass
         window = MainWindow(license_service=service)
+        # Defer last-session recovery until the startup update check has completed
+        # and its modal prompt (when present) has been answered.
+        window._startup_session_prompt_pending = bool(
+            not startup_paths and not getattr(window, "_needs_first_run_setup", False)
+        )
         if getattr(window, "_needs_first_run_setup", False):
             splash.hide()
             _first_run_entitlement = (getattr(service.state, "entitlements", {}) or {}).get("app_themes", {})
@@ -11340,8 +11404,6 @@ def main():
         QTimer.singleShot(1400, window._retry_pending_text_chat_settlements)
         if startup_paths:
             QTimer.singleShot(120, lambda values=startup_paths: [window.open_pdf(path) for path in values])
-        else:
-            QTimer.singleShot(260, window._offer_restore_last_session)
         if service.state.authenticated:
             QTimer.singleShot(3000, window._start_license_heartbeat)
         if "another device" in str(service.state.reason).lower():
