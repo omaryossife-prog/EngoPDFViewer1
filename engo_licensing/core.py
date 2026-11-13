@@ -412,6 +412,37 @@ class _OAuthHandler(http.server.BaseHTTPRequestHandler):
     callback_result: dict[str, str] = {}
     expected_state: str = ""
     callback_path: str = "/callback"
+    success_image_endpoint: str = ""
+    publishable_key: str = ""
+
+    def _success_page(self) -> bytes:
+        endpoint = json.dumps(str(self.success_image_endpoint or ""))
+        api_key = json.dumps(str(self.publishable_key or ""))
+        page = f"""<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark"><title>Engo | تم استلام تسجيل الدخول</title>
+<style>
+*{{box-sizing:border-box}}body{{margin:0;min-height:100vh;display:grid;place-items:center;padding:28px;background:radial-gradient(ellipse at 50% 0%,#263d61 0%,#151c2a 48%,#0c111b 100%);color:#f5f7fb;font-family:Segoe UI,Tahoma,Arial,sans-serif}}
+.card{{width:min(560px,100%);padding:34px 30px 30px;text-align:center;border:1px solid #34445c;border-radius:24px;background:rgba(22,30,44,.94);box-shadow:0 24px 70px #0008}}
+.brand{{font-size:13px;letter-spacing:5px;font-weight:800;color:#8fb8ff;margin-bottom:20px}}
+.art{{width:min(290px,80%);height:190px;object-fit:contain;display:none;margin:0 auto 20px;border-radius:16px}}
+.fallback{{width:150px;height:150px;margin:0 auto 22px;border-radius:42px;display:grid;place-items:center;background:linear-gradient(145deg,#77a6e8,#345a91);box-shadow:0 14px 34px #477bc955}}
+.check{{font-size:76px;line-height:1;color:white;text-shadow:0 3px 18px #16345c}}
+h1{{font-size:25px;margin:0 0 12px;font-weight:800}}p{{font-size:15px;line-height:1.9;color:#c3ccda;margin:0}}
+.en{{direction:ltr;font-size:13px;color:#8798b2;margin-top:10px}}.foot{{margin-top:25px;color:#7f91aa;font-size:12px}}
+</style></head><body><main class="card">
+<div class="brand">E N G O</div><img id="art" class="art" alt="Engo">
+<div id="fallback" class="fallback"><div class="check">✓</div></div>
+<h1>تم استلام تسجيل الدخول بنجاح</h1>
+<p>يمكنك العودة إلى برنامج Engo الآن. سيتم إكمال تسجيل الدخول داخل البرنامج تلقائيًا.</p>
+<p class="en">Sign-in response received. You can return to Engo now.</p>
+<div class="foot">ENGO PDF VIEWER &amp; AI STUDY AGENT</div></main>
+<script>
+(async()=>{{const endpoint={endpoint},key={api_key};if(!endpoint||!key)return;try{{const r=await fetch(endpoint,{{method:"POST",headers:{{"apikey":key,"Authorization":"Bearer "+key,"Content-Type":"application/json"}},body:"{{}}"}});if(!r.ok)return;const d=await r.json();if(d&&typeof d.image_url==="string"&&d.image_url.startsWith("https://")){{const img=document.getElementById("art");img.onload=()=>{{img.style.display="block";document.getElementById("fallback").style.display="none"}};img.src=d.image_url}}}}catch(_e){{}}}})();
+</script></body></html>"""
+        return page.encode("utf-8")
 
     def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler API
         parsed = urllib.parse.urlparse(self.path)
@@ -421,26 +452,31 @@ class _OAuthHandler(http.server.BaseHTTPRequestHandler):
         query = urllib.parse.parse_qs(parsed.query)
         received_state = str((query.get("state") or [""])[0])
         if not secrets.compare_digest(received_state, self.expected_state):
-            # Ignore a local request with a missing/incorrect nonce. Do not let
-            # a process that can probe the loopback port cancel the real login.
             body = b"Engo sign-in response was not accepted."
+            content_type = "text/plain; charset=utf-8"
             self.send_response(400)
         else:
             type(self).callback_result = {
                 "code": str((query.get("code") or [""])[0]),
                 "error": str((query.get("error_description") or query.get("error") or [""])[0]),
             }
-            body = b"Engo sign-in response received. You may close this window and return to Engo."
-            self.send_response(200 if type(self).callback_result.get("code") else 400)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
+            if type(self).callback_result.get("code"):
+                body = self._success_page()
+                content_type = "text/html; charset=utf-8"
+                self.send_response(200)
+            else:
+                body = b"Google sign-in could not be completed. Return to Engo and try again."
+                content_type = "text/plain; charset=utf-8"
+                self.send_response(400)
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(body)
 
     def log_message(self, _format, *_args):
         return
-
 
 class LicenseService:
     """Application-facing licensing service; all premium grants require a signature."""
@@ -645,6 +681,8 @@ class LicenseService:
 
         handler = type("EngoDesktopOAuthHandler", (_OAuthHandler,), {
             "callback_result": {}, "expected_state": state, "callback_path": "/",
+            "success_image_endpoint": self.config.supabase_url + "/functions/v1/oauth-success-image",
+            "publishable_key": self.config.anon_key,
         })
         server = http.server.HTTPServer(("127.0.0.1", 0), handler)
         server.timeout = self.config.oauth_timeout
@@ -750,7 +788,11 @@ class LicenseService:
         state = secrets.token_urlsafe(32)
         verifier = secrets.token_urlsafe(64)
         challenge = _b64url(hashlib.sha256(verifier.encode("ascii")).digest())
-        handler = type("EngoOAuthHandler", (_OAuthHandler,), {"callback_result": {}, "expected_state": state})
+        handler = type("EngoOAuthHandler", (_OAuthHandler,), {
+            "callback_result": {}, "expected_state": state,
+            "success_image_endpoint": self.config.supabase_url + "/functions/v1/oauth-success-image",
+            "publishable_key": self.config.anon_key,
+        })
         server = http.server.HTTPServer(("127.0.0.1", 0), handler)
         server.timeout = self.config.oauth_timeout
         host, port = server.server_address
