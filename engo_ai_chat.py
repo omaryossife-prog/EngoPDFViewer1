@@ -680,16 +680,26 @@ def _classify_provider_model_status(
     catalog_models: list[str],
     catalog_verified: bool,
     plan_access: str,
+    provider_health: dict | None = None,
 ) -> tuple[str, str]:
-    """Classify a chat model without making a live request or changing selection."""
+    """A catalog listing is not proof of successful inference; use real request history."""
     if plan_access == "denied":
         return "unavailable", "plan"
     if plan_access != "allowed":
         return "unknown", "plan_unknown"
+    health_state = str((provider_health or {}).get("state") or "")
+    if health_state == "success":
+        return "available", "request_success"
+    if health_state == "quota_blocked":
+        return "unavailable", "quota_blocked"
+    if health_state == "model_rejected":
+        return "unavailable", "model_rejected"
+    if health_state in {"rate_limited", "auth_failed"}:
+        return "unknown", health_state
     if not catalog_verified:
         return "unknown", "catalog_unknown"
     if str(model_id or "").strip() in {str(item).strip() for item in catalog_models}:
-        return "available", "provider_catalog"
+        return "unknown", "catalog_only"
     return "unavailable", "model_not_listed"
 
 
