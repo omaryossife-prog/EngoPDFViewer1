@@ -10721,6 +10721,17 @@ def main():
             return
         launch_state["started"] = True
         state = _state or service.state
+        # Guests have no signed account entitlement payload. Fetch only the
+        # public Free-plan app-theme switch so the welcome wizard follows the
+        # same database setting as signed-in Free accounts.
+        if not bool(getattr(state, "is_premium", False)):
+            try:
+                public_theme_settings = service.get_public_theme_settings()
+                if public_theme_settings.get("free_app_themes_enabled"):
+                    state.entitlements = dict(getattr(state, "entitlements", {}) or {})
+                    state.entitlements["app_themes"] = {"enabled": True, "limit": None}
+            except Exception:
+                pass
         if not state.verified and not state.reason:
             service._free_state("Continuing in Free mode")
         window = MainWindow(license_service=service)
