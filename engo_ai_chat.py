@@ -903,7 +903,11 @@ class AIChatPanel(QFrame):
         if hasattr(self, "provider_combo"):
             self.provider_combo.setToolTip("اختر خدمة الذكاء الاصطناعي التي ستستقبل سؤالك" if is_ar else "Choose which AI service receives your question")
         if hasattr(self, "model_combo"):
-            self.model_combo.setToolTip("اختر نموذج هذه المحادثة. حدّث النماذج المتاحة من إعدادات مزود AI." if is_ar else "Choose the model for this chat. Refresh available models in AI provider settings.")
+            self.model_combo.setToolTip(
+                "اختر نموذج المحادثة. الأخضر: المزوّد أظهره والخطة تسمح بالمحادثة. الأصفر: لم يكتمل التحقق أو أصبحت القائمة قديمة. الأحمر: المحادثة غير متاحة في الخطة أو النموذج غير موجود في آخر قائمة للمزوّد."
+                if is_ar else
+                "Choose a chat model. Green: listed by the provider and included in your plan. Yellow: not fully verified or stale. Red: chat is not enabled on the plan or the model is absent from the provider's latest list."
+            )
         if hasattr(self, "include_context"):
             self.include_context.setText("سياق PDF" if is_ar else "PDF context")
             self.include_context.setToolTip("إرفاق نص PDF أو معاينات الصفحات. إجراءات الصفحة الحالية ترفقها دائمًا." if is_ar else "Include PDF text or page previews. Current-page actions always include the current page.")
