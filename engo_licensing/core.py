@@ -38,6 +38,7 @@ APP_VERSION_FALLBACK = "2.3.6"
 KNOWN_FEATURES = (
     "pdf_merge", "app_themes", "smart_theme", "text_chat",
     "voice_chat", "voice_board_docx", "tags", "tag_units", "translations", "ai_search",
+    "open_other_formats",
 )
 
 

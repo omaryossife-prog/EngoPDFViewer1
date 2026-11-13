@@ -1757,6 +1757,7 @@ class MainWindow(QMainWindow):
         "Account is suspended or unavailable": "الحساب موقوف أو غير متاح.",
         "Invalid usage amount": "قيمة استخدام غير صالحة.",
         "This feature is not available on the current plan.": "هذه الميزة غير متاحة في خطتك الحالية.",
+        "Opening images and Office documents requires an active Premium subscription.": "فتح الصور وملفات Word وPowerPoint يتطلب اشتراكًا مميزًا نشطًا.",
     }
 
     def _document_feature_scope(self, tab=None):
@@ -5595,12 +5596,24 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, APP_NAME, str(exc))
 
     def open_pdf(self, path):
+        """Open a PDF for Free users; require Premium for every other supported format."""
         source_path = os.path.abspath(str(path or ""))
-        if is_office_document(source_path):
-            self.open_office_document(source_path)
-            return
         if not is_supported_document(source_path):
             QMessageBox.information(self, APP_NAME, "Please choose a PDF, image, DOCX, or PPTX file.")
+            return
+        if Path(source_path).suffix.lower() != ".pdf":
+            self._request_feature_access(
+                "open_other_formats",
+                lambda value=source_path: self._open_supported_document(value),
+                denied_message="Opening images and Office documents requires an active Premium subscription.",
+            )
+            return
+        self._open_supported_document(source_path)
+
+    def _open_supported_document(self, source_path):
+        """Open a supported document after its format entitlement has been approved."""
+        if is_office_document(source_path):
+            self.open_office_document(source_path)
             return
         try:
             viewer_path = prepare_document_for_viewer(source_path)
@@ -5612,7 +5625,7 @@ class MainWindow(QMainWindow):
             tab = self.tabs.widget(i)
             existing_source = os.path.abspath(str(getattr(tab, "source_path", tab.path))) if isinstance(tab, DocumentTab) else ""
             if isinstance(tab, DocumentTab) and (os.path.normcase(tab.path) == os.path.normcase(viewer_path) or os.path.normcase(existing_source) == os.path.normcase(source_path)):
-                primary = self._linked_primary_for_path(path)
+                primary = self._linked_primary_for_path(source_path)
                 if primary is not None:
                     i = self.tabs.indexOf(primary)
                 self.doc_tabbar.setCurrentIndex(i)
@@ -5654,7 +5667,7 @@ class MainWindow(QMainWindow):
         self.doc_tabbar.setTabIcon(idx, QIcon())
         # If this PDF is the supplementary half of a saved pair, open the
         # primary tab instead so the combined view is what the user sees.
-        primary_target = self._linked_primary_for_path(path)
+        primary_target = self._linked_primary_for_path(source_path)
         target_index = self.tabs.indexOf(primary_target) if primary_target is not None else idx
         self.doc_tabbar.setCurrentIndex(target_index)
         self.tabs.setCurrentIndex(target_index)

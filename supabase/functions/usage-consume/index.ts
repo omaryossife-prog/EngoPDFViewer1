@@ -1,5 +1,5 @@
 import { adminClient, authenticatedUser, badRequest, handleOptions, jsonResponse, makeSignedLicense, readBody, requireText, requireVersion } from "./_shared/common.ts";
-const allowedFeatures = new Set(["pdf_merge","app_themes","smart_theme","text_chat","voice_chat","voice_board_docx","tags","tag_units","translations","ai_search"]);
+const allowedFeatures = new Set(["pdf_merge","app_themes","smart_theme","text_chat","voice_chat","voice_board_docx","tags","tag_units","translations","ai_search","open_other_formats"]);
 Deno.serve(async (req: Request) => {
   const options = await handleOptions(req); if (options) return options;
   try {
@@ -18,6 +18,37 @@ Deno.serve(async (req: Request) => {
     // though the desktop must (correctly) deny the feature without a signed reply.
     const license = await makeSignedLicense(user.id, deviceId, appVersion);
     const context = license.context;
+    if (feature === "open_other_formats") {
+      // This format gate is Premium-only even while the temporary free-unlimited
+      // launch switch is enabled. A verified, active build and live Premium
+      // subscription are both required; the client-side gate is not authoritative.
+      if (context.license_status !== "active") {
+        return jsonResponse({
+          allowed: false, used: null, limit: null,
+          message: "Opening other file formats requires an active Premium subscription.",
+          license: license.envelope,
+        });
+      }
+      const now = new Date().toISOString();
+      const { data: premiumSubscription, error: subscriptionError } = await admin
+        .from("subscriptions")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("plan_id", "premium")
+        .in("status", ["active", "trialing"])
+        .lte("starts_at", now)
+        .or(`ends_at.is.null,ends_at.gt.${now}`)
+        .limit(1)
+        .maybeSingle();
+      if (subscriptionError) throw new Error(subscriptionError.message);
+      if (!premiumSubscription) {
+        return jsonResponse({
+          allowed: false, used: null, limit: null,
+          message: "Opening other file formats requires an active Premium subscription.",
+          license: license.envelope,
+        });
+      }
+    }
     const entitlements = context.entitlements as Record<string, { enabled?: boolean; limit?: number | null }> | undefined;
     const entitlement = entitlements?.[feature];
     const enabled = Boolean(entitlement?.enabled);
