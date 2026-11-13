@@ -2450,7 +2450,10 @@ class AIRequestWorker(QThread):
             raise RuntimeError(err.get("message", str(err)) if isinstance(err, dict) else str(err))
         try:
             text = "\n".join(str(part.get("text", "")) for part in data.get("content", []) if part.get("type") == "text" and part.get("text"))
-            return text.strip() or "Claude returned an empty response."
+            text = text.strip()
+            if not text:
+                raise RuntimeError("Claude returned an empty response.")
+            return text
         except Exception:
             raise RuntimeError("Claude returned an unexpected response format.")
 
@@ -2510,7 +2513,10 @@ class AIRequestWorker(QThread):
             content = data["choices"][0]["message"]["content"]
             if isinstance(content, list):
                 content = "\n".join(str(part.get("text", "")) for part in content if isinstance(part, dict))
-            return str(content).strip() or "The provider returned an empty response."
+            content = str(content).strip()
+            if not content:
+                raise RuntimeError("The provider returned an empty response.")
+            return content
         except Exception:
             raise RuntimeError("DeepSeek returned an unexpected response format.")
 
@@ -2557,7 +2563,11 @@ class AIRequestWorker(QThread):
         try:
             parts_out = data["candidates"][0]["content"]["parts"]
             text = "\n".join(str(part.get("text", "")) for part in parts_out if part.get("text"))
-            return text.strip() or "Gemini returned an empty response."
+            text = text.strip()
+            if not text:
+                finish_reason = str(data.get("candidates", [{}])[0].get("finishReason") or "no text returned")
+                raise RuntimeError(f"Gemini returned no answer ({finish_reason}).")
+            return text
         except Exception:
             if data.get("promptFeedback", {}).get("blockReason"):
                 raise RuntimeError(f"Gemini blocked this prompt: {data['promptFeedback']['blockReason']}")
