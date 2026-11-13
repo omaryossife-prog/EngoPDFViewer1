@@ -23,11 +23,40 @@ Deno.serve(async (req: Request) => {
       if (error) qrImageError = error.message;
       else signedQrUrl = signed?.signedUrl ?? null;
     }
+    // Return the current per-PDF counters for the two offline-capable tag features.
+    // Scope keys are content hashes, not file names or paths.
+    const tagUsage: Array<{ feature_key: string; scope_key: string; used: number }> = [];
+    let tagUsageAvailable = true;
+    try {
+      for (let offset = 0; offset < 100000; offset += 1000) {
+        const { data, error } = await admin.from("usage_counters")
+          .select("feature_key,scope_key,used")
+          .eq("user_id", user.id)
+          .in("feature_key", ["tags", "tag_units"])
+          .neq("scope_key", "")
+          .order("feature_key", { ascending: true })
+          .order("scope_key", { ascending: true })
+          .range(offset, offset + 999);
+        if (error) throw error;
+        const page = data ?? [];
+        tagUsage.push(...page.map((row) => ({
+          feature_key: String(row.feature_key),
+          scope_key: String(row.scope_key ?? ""),
+          used: Number(row.used ?? 0),
+        })));
+        if (page.length < 1000) break;
+      }
+    } catch {
+      // Account details remain available even if quota history cannot be loaded.
+      // The client will keep its previous encrypted snapshot or deny offline use.
+      tagUsageAvailable = false;
+    }
     const freeUnlimited = Boolean((runtimeSettings.data ?? {}).free_unlimited_mode ?? true);
     return jsonResponse({
       profile: profile.data, devices: devices.data ?? [], subscription: subscription.data ?? null,
       prices: prices.data ?? [], payment_settings: { ...(paymentSettings.data ?? {}), qr_image_url: signedQrUrl, qr_image_error: qrImageError },
-      entitlements: entitlements.data ?? [], free_unlimited_mode: freeUnlimited, email: user.email ?? null,
+      entitlements: entitlements.data ?? [], tag_usage: tagUsageAvailable ? tagUsage : null,
+      free_unlimited_mode: freeUnlimited, email: user.email ?? null,
     });
   } catch (error) { return badRequest(error instanceof Error ? error.message : "Could not load account", 400); }
 });
