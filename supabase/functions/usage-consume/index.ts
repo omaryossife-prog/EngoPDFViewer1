@@ -63,6 +63,26 @@ Deno.serve(async (req: Request) => {
         license: license.envelope,
       });
     }
+
+    const freeFeatureIsUnlimited = entitlement?.limit === null || entitlement?.limit === undefined;
+    const validLicense = context.license_status === "active" || (
+      context.license_status === "untrusted_build" &&
+      (Boolean(context.free_unlimited_mode) || (enabled && freeFeatureIsUnlimited))
+    );
+    // Never create a text-chat reservation when the current signed license
+    // denies access. Otherwise the client would receive a denial while the
+    // usage counter had already been incremented.
+    if (feature === "text_chat" && (!validLicense || !enabled)) {
+      return jsonResponse({
+        allowed: false,
+        used: null,
+        limit: entitlement?.limit ?? null,
+        message: !validLicense ? "License is not active" : "This feature is not enabled for the current plan",
+        reservation_id: null,
+        license: license.envelope,
+      });
+    }
+
     // Text chat is a reservation, not a final charge. The desktop settles it
     // as committed only after a non-empty provider answer, or refunds it after
     // an API error / user cancellation. Other metered features remain immediate.
@@ -77,11 +97,6 @@ Deno.serve(async (req: Request) => {
         });
     if (usageResult.error) throw new Error(usageResult.error.message);
     const usage = usageResult.data as Record<string, unknown>;
-    const freeFeatureIsUnlimited = entitlement?.limit === null || entitlement?.limit === undefined;
-    const validLicense = context.license_status === "active" || (
-      context.license_status === "untrusted_build" &&
-      (Boolean(context.free_unlimited_mode) || (enabled && freeFeatureIsUnlimited))
-    );
     const allowed = validLicense && enabled && Boolean(usage?.allowed);
     return jsonResponse({
       allowed,
