@@ -952,6 +952,63 @@ class LicenseService:
         usage[key] = {"server_used": server_used, "pending": pending_after}
         self._save_offline_cache()
 
+    def _sync_pending_offline_usage(
+        self, feature_key: str, scope_key: str, session: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Commit previously accepted offline file usage before reserving new usage."""
+        pending = self._offline_pending_usage(feature_key, scope_key)
+        if pending <= 0:
+            return None
+        user = session.get("user") if isinstance(session.get("user"), dict) else {}
+        expected_user_id = str(user.get("id") or "")
+        access_token = str(session.get("access_token") or "")
+        if not expected_user_id or not access_token:
+            return {"allowed": False, "tracked": False, "message": "offline_feature_unavailable"}
+        while pending > 0:
+            batch = min(1000, pending)
+            response = self._edge("usage-consume", {
+                "device_id": self.device_id,
+                "app_version": self.config.app_version,
+                "feature_key": feature_key,
+                "amount": batch,
+                "scope_key": scope_key,
+            }, access_token)
+            envelope = response.get("license")
+            if not isinstance(envelope, dict):
+                raise SignatureError("Offline usage sync did not include a signed license")
+            payload = self._verify_signed_response(envelope)
+            if str(payload.get("user_id") or "") != expected_user_id:
+                raise SignatureError("Offline usage sync belongs to a different account")
+            self._remember_offline_license(envelope, payload, expected_user_id)
+            self._apply_payload(payload, user)
+            entitlements = payload.get("entitlements")
+            entitlement = entitlements.get(feature_key) if isinstance(entitlements, dict) else None
+            if str(payload.get("license_status") or "") != "active":
+                return {
+                    "allowed": False, "tracked": False,
+                    "message": "The account or this device is not authorized. Feature access is blocked.",
+                }
+            if not isinstance(entitlement, dict) or not bool(entitlement.get("enabled")):
+                return {
+                    "allowed": False, "tracked": True,
+                    "message": "This feature is not enabled for the current plan",
+                    "used": response.get("used"), "limit": response.get("limit"),
+                }
+            if response.get("allowed") is not True:
+                self._record_online_file_usage(
+                    feature_key, scope_key, response, pending, 0, batch, False,
+                )
+                return {
+                    "allowed": False, "tracked": True,
+                    "message": str(response.get("message") or "The usage limit has been reached"),
+                    "used": response.get("used"), "limit": response.get("limit"),
+                }
+            self._record_online_file_usage(
+                feature_key, scope_key, response, pending, 0, batch, True,
+            )
+            pending -= batch
+        return None
+
     def _consume_offline_file_feature(
         self, feature_key: str, amount: int, scope_key: str,
     ) -> dict[str, Any] | None:
@@ -1183,8 +1240,12 @@ class LicenseService:
                 return {"allowed": False, "tracked": False,
                         "message": "Sign in with Google to use this feature. Guest access is disabled."}
 
-            pending_offline = self._offline_pending_usage(feature_key, scope_key)
-            batch_amount = min(1000, amount + pending_offline) if feature_key in self.OFFLINE_FILE_FEATURES else amount
+            if feature_key in self.OFFLINE_FILE_FEATURES:
+                sync_result = self._sync_pending_offline_usage(feature_key, scope_key, session)
+                if sync_result is not None:
+                    return sync_result
+            pending_offline = 0
+            batch_amount = amount
             response = self._edge("usage-consume", {
                 "device_id": self.device_id, "app_version": self.config.app_version,
                 "feature_key": feature_key, "amount": batch_amount,
