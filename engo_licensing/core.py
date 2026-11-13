@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import base64
 import hashlib
+from html import escape as html_escape
 import http.server
 import json
 import os
 import platform
+import re
 import secrets
 import subprocess
 import sys
@@ -443,7 +445,7 @@ class _OAuthHandler(http.server.BaseHTTPRequestHandler):
         for token, value in values.items():
             page = page.replace(token, html_escape(value, quote=True))
         page = re.sub(
-            r'<a\\s+class="continue"[^>]*>.*?</a>',
+            r'<a\s+class="continue"[^>]*>.*?</a>',
             '<span class="continue">You can return to Engo now.</span>',
             page, flags=re.IGNORECASE | re.DOTALL,
         )
