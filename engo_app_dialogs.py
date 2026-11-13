@@ -548,10 +548,21 @@ class FirstRunSetupDialog(QDialog):
         hero_layout = QHBoxLayout(hero)
         hero_layout.setContentsMargins(18, 14, 18, 14)
         hero_layout.setSpacing(13)
-        mark = QLabel("E")
+        # Use the real Engo application mark instead of the temporary letter.
+        mark = QLabel()
         mark.setObjectName("firstRunMark")
         mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        mark.setFixedSize(48, 48)
+        mark.setFixedSize(56, 56)
+        logo_path = resource_path("engopdfviewer.ico")
+        logo_pixmap = QPixmap(str(logo_path))
+        if not logo_pixmap.isNull():
+            mark.setPixmap(logo_pixmap.scaled(
+                44, 44,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            ))
+        else:
+            mark.setText("E")
         copy = QVBoxLayout()
         copy.setSpacing(2)
         title = QLabel("Welcome to (Engo) مرحبًا بك في ")
@@ -898,8 +909,9 @@ class FirstRunSetupDialog(QDialog):
             }}
             QFrame#firstRunHero {{ background:{c['panel_alt']}; border:1px solid {c['border']};
                 border-left:4px solid {c['accent']}; border-radius:14px; }}
-            QLabel#firstRunMark {{ background:{c['accent']}; color:#ffffff; border-radius:12px;
+            QLabel#firstRunMark {{ background:transparent; color:#ffffff; border-radius:12px;
                 font-size:22pt; font-weight:850; }}
+            QLabel#firstRunMark[pixmap="true"] {{ background:transparent; }}
             QLabel#firstRunTitle {{ color:{c['text']}; font-size:15pt; font-weight:850; }}
             QLabel#firstRunSubtitle {{ color:{c['muted']}; font-size:9pt; }}
             QLabel#firstRunStep {{ color:{c['accent']}; font-size:8pt; font-weight:850;
@@ -929,10 +941,24 @@ class FirstRunSetupDialog(QDialog):
                 min-width:230px; min-height:34px; font-weight:750; }}
             QPushButton#firstRunSecondary:hover, QPushButton#firstRunGuestButton:hover {{
                 background:{c['hover']}; border-color:{c['accent']}; }}
-            QPushButton#firstRunGoogleButton {{ background:#ffffff; color:#3c4043;
-                border:1px solid #dadce0; border-radius:9px; padding:5px 22px;
-                min-width:230px; min-height:40px; font-size:10pt; font-weight:750; }}
-            QPushButton#firstRunGoogleButton:hover {{ background:#f8f9fa; border-color:#bdc1c6; }}
+            QPushButton#firstRunGoogleButton,
+            QPushButton#firstRunGoogleButton:enabled,
+            QPushButton#firstRunGoogleButton:disabled {{
+                background:#ffffff; color:#202124;
+                border:1px solid #c7cbd1; border-radius:9px; padding:5px 22px;
+                min-width:230px; min-height:40px; font-size:10pt; font-weight:800;
+                opacity:1;
+            }}
+            QPushButton#firstRunGoogleButton:hover:enabled {{
+                background:#f7f8fa; color:#202124; border-color:#8b95a5;
+            }}
+            QPushButton#firstRunGoogleButton:pressed:enabled {{
+                background:#e9edf3; color:#202124;
+            }}
+            QPushButton#firstRunGoogleButton:disabled {{
+                background:#ffffff; color:#202124; border-color:#c7cbd1;
+            }}
+            QPushButton#firstRunGoogleButton::text {{ color:#202124; }}
         """)
         _engo_apply_windows_caption_theme(self, theme)
         QTimer.singleShot(80, lambda obj=self, current=theme:
