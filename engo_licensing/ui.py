@@ -537,7 +537,8 @@ class PlansDialog(QDialog):
         labels = [
             ("pdf_merge", "دمج ملفات PDF", "Merge PDF files"),
             ("app_themes", "ثيمات البرنامج", "App themes"),
-            ("smart_theme", "القلم الذكي", "Smart pen"),
+            ("page_themes", "ثيمات الصفحات", "Page themes"),
+            ("smart_theme", "الثيم الذكي", "Smart Theme"),
             ("text_chat", "المحادثة النصية", "Text chat"),
             ("voice_chat", "المحادثة الصوتية\nوالحصص الصوتية", "Voice chat and\nvoice lessons"),
             ("voice_board_docx", "تصدير لوحة الشرح الصوتية\nإلى Word", "Export voice lesson\nboard to Word"),
@@ -576,17 +577,29 @@ class PlansDialog(QDialog):
             ("عرض الصور المصغّرة للصفحات", "Page thumbnails"),
             ("التكبير والتصغير وملاءمة الصفحة", "Zoom and fit page"),
             ("تدوير الصفحات", "Rotate pages"),
+            ("كل أدوات التعديل والملاحظات", "All editing and annotation tools"),
         ]
         grouped_features: dict[str, list[tuple[str, str, bool]]] = {
             "limited": [],
             "unlimited": [(label_ar, label_en, True) for label_ar, label_en in basic_features],
             "unavailable": [],
         }
+        # These overrides affect the comparison table presentation only; they do
+        # not alter the actual entitlement data or runtime feature enforcement.
+        free_status_overrides = {
+            "app_themes": "limited",
+            "translations": "limited",
+            "page_themes": "limited",
+            "smart_theme": "unavailable",
+        }
+        premium_unlimited_overrides = {"smart_theme"}
         for key, label_ar, label_en in labels:
             free_row = by_key.get(key, {}).get("free")
             premium_row = by_key.get(key, {}).get("premium")
-            grouped_features[self._free_status(free_row)].append(
-                (label_ar, label_en, self._premium_enabled(premium_row))
+            free_status = free_status_overrides.get(key, self._free_status(free_row))
+            premium_unlimited = key in premium_unlimited_overrides or self._premium_enabled(premium_row)
+            grouped_features[free_status].append(
+                (label_ar, label_en, premium_unlimited)
             )
 
         for free_status in ("unlimited", "limited", "unavailable"):
