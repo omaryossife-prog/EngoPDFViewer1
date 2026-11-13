@@ -908,7 +908,7 @@ class MainWindow(QMainWindow):
         self.home_settings_btn.setFixedHeight(30)
         self.home_settings_btn.setProperty("homeActionHeight", True)
         self.home_settings_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.home_settings_btn.setIcon(make_icon("settings", "#b7c6dc", 18))
+        self.home_settings_btn.setIcon(make_icon("tune", "#b7c6dc", 18))
         self.home_settings_btn.setIconSize(QSize(18, 18))
         self.home_settings_btn.setToolTip("Settings")
         self.home_settings_btn.setAccessibleName("Application settings")
@@ -4658,7 +4658,7 @@ class MainWindow(QMainWindow):
                 "#40516a" if current_theme == "light" else
                 ("#9fc0ff" if current_theme == "midnight" else "#c4d0e2")
             )
-            self.home_settings_btn.setIcon(make_icon("settings", home_icon_color, 18))
+            self.home_settings_btn.setIcon(make_icon("tune", home_icon_color, 18))
             self.home_settings_btn.setIconSize(QSize(18, 18))
         # AI chat header icons were originally assigned pale dark-theme colors
         # at widget construction. Refresh them explicitly after every theme change.
