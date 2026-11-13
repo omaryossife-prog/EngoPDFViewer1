@@ -773,12 +773,13 @@ def test_pending_offline_tag_usage_is_synced_before_next_online_action():
 
     def accept(name, body, token):
         calls.append((name, body, token))
-        return {"allowed": True, "used": 4, "limit": 8, "license": envelope}
+        used = 3 if len(calls) == 1 else 4
+        return {"allowed": True, "used": used, "limit": 8, "license": envelope}
 
     service._edge = accept
     result = service.consume_feature("tags", amount=1, scope_key=scope)
     assert result["allowed"] is True
-    assert calls[0][1]["amount"] == 3
+    assert [call[1]["amount"] for call in calls] == [2, 1]
     assert store.value["usage"]["tags:pdf:sync-me"]["server_used"] == 4
     assert store.value["usage"]["tags:pdf:sync-me"]["pending"] == 0
 
