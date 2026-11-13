@@ -9,6 +9,7 @@ import uuid
 import hashlib
 import re
 import html as html_module
+import time
 from pathlib import Path
 from PIL import Image, ImageOps, ImageChops, ImageFilter
 from PyQt6.QtCore import QObject, Qt, QSize, QSizeF, QRect, QRectF, QPoint, QPointF, QEvent, QTimer, QPropertyAnimation, QParallelAnimationGroup, QVariantAnimation, QEasingCurve, QSettings, QUrl, QThread, QRunnable, QThreadPool, QMarginsF, QStandardPaths, QDir, pyqtSignal, QBuffer, QByteArray, QIODevice, QMimeData, QSignalBlocker
@@ -674,6 +675,70 @@ class AIChatConversationDelegate(QStyledItemDelegate):
         return QSize(max(base.width(), 160), max(34, base.height()))
 
 
+def _classify_provider_model_status(
+    model_id: str,
+    catalog_models: list[str],
+    catalog_verified: bool,
+    plan_access: str,
+) -> tuple[str, str]:
+    """Classify a chat model without making a live request or changing selection."""
+    if plan_access == "denied":
+        return "unavailable", "plan"
+    if plan_access != "allowed":
+        return "unknown", "plan_unknown"
+    if not catalog_verified:
+        return "unknown", "catalog_unknown"
+    if str(model_id or "").strip() in {str(item).strip() for item in catalog_models}:
+        return "available", "provider_catalog"
+    return "unavailable", "model_not_listed"
+
+
+def _provider_model_status_icon(status: str) -> QIcon:
+    """Build a compact green/yellow/red dot icon for a model menu row."""
+    colors = {
+        "available": "#239b62",
+        "unknown": "#d6a328",
+        "unavailable": "#d94848",
+    }
+    color = QColor(colors.get(status, colors["unknown"]))
+    pixmap = QPixmap(14, 14)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setPen(QPen(color.darker(135), 1))
+    painter.setBrush(QBrush(color))
+    painter.drawEllipse(2, 2, 10, 10)
+    painter.end()
+    return QIcon(pixmap)
+
+
+def _classify_provider_model_status(
+    model_id: str,
+    catalog_models: list[str],
+    catalog_verified: bool,
+    plan_access: str,
+) -> tuple[str, str]:
+    """Classify a chat model without making a live request or changing selection."""
+    if plan_access == "denied":
+        return "unavailable", "plan"
+    if plan_access != "allowed":
+        return "unknown", "plan_unknown"
+    if not catalog_verified:
+        return "unknown", "catalog_unknown"
+    if str(model_id or "").strip() in {str(item).strip() for item in catalog_models}:
+        return "available", "provider_catalog"
+    return "unavailable", "model_not_listed"
+
+
+class AIModelSelectorCombo(QComboBox):
+    """Refresh cached status metadata immediately before opening the model list."""
+    popupAboutToShow = pyqtSignal()
+
+    def showPopup(self):
+        self.popupAboutToShow.emit()
+        super().showPopup()
+
+
 class AIChatPanel(QFrame):
     """Compact, per-document AI chat with quick actions and Markdown/PDF export."""
     requestSent = pyqtSignal(str, str, object, bool, str, int)
@@ -1210,7 +1275,7 @@ class AIChatPanel(QFrame):
         self.provider_combo.setToolTip("Choose which AI service receives your question")
         controls.addWidget(self.provider_combo, 2)
 
-        self.model_combo = QComboBox()
+        self.model_combo = AIModelSelectorCombo()
         self.model_combo.setObjectName("aiModelSelector")
         self.model_combo.setEditable(True)
         self.model_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
@@ -1218,10 +1283,12 @@ class AIChatPanel(QFrame):
         self.model_combo.setMaximumWidth(225)
         self.model_combo.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.model_combo.setMinimumContentsLength(1)
+        self.model_combo.setIconSize(QSize(13, 13))
         if self.model_combo.lineEdit() is not None:
             self.model_combo.lineEdit().setMinimumWidth(0)
             self.model_combo.lineEdit().setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        self.model_combo.setToolTip("Choose the model for this chat. Refresh available models in AI provider settings.")
+        self.model_combo.setToolTip("Green: listed by the provider and included in your current chat plan. Yellow: not fully verified. Red: not included in the plan or absent from the provider's latest model list.")
+        self.model_combo.popupAboutToShow.connect(self._refresh_provider_model_menu)
         self.model_combo.currentTextChanged.connect(self._chat_model_changed)
         controls.addWidget(self.model_combo, 3)
 
@@ -1916,31 +1983,118 @@ class AIChatPanel(QFrame):
         self.settings.setValue(f"ai_chat_model_{provider}", model)
         self.settings.setValue(self._chat_model_preference_key(provider), model)
 
-    def _provider_changed(self, _index):
-        provider = str(self.provider_combo.currentData() or "deepseek")
-        self.settings.setValue("ai_provider", provider)
-        self.model_combo.blockSignals(True)
-        self.model_combo.clear()
+    def _chat_text_plan_access(self) -> str:
+        service = getattr(self.main_window, "license_service", None)
+        state = getattr(service, "state", None)
+        if state is None or not bool(getattr(state, "authenticated", False)) or not bool(getattr(state, "verified", False)):
+            return "unknown"
+        if str(getattr(state, "license_status", "")).lower() != "active":
+            return "denied"
+        if bool(getattr(state, "free_unlimited_mode", False)):
+            return "allowed"
+        entitlements = getattr(state, "entitlements", {})
+        entitlement = entitlements.get("text_chat") if isinstance(entitlements, dict) else None
+        if not isinstance(entitlement, dict):
+            return "unknown"
+        if not bool(entitlement.get("enabled")):
+            return "denied"
+        limit = entitlement.get("limit")
+        if limit is not None:
+            try:
+                if int(limit) <= 0:
+                    return "denied"
+            except (TypeError, ValueError):
+                return "unknown"
+        return "allowed"
+
+    def _model_catalog_is_fresh(self, provider: str) -> bool:
+        verified = bool(self.settings.value(f"ai_models_catalog_verified_{provider}", False, type=bool))
+        try:
+            checked_at = float(self.settings.value(f"ai_models_catalog_checked_at_{provider}", 0.0, type=float) or 0.0)
+        except (TypeError, ValueError):
+            checked_at = 0.0
+        age_seconds = time.time() - checked_at if checked_at > 0 else float("inf")
+        return verified and 0 <= age_seconds <= 7 * 24 * 60 * 60
+
+    def _model_status_tooltip(self, status: str, reason: str) -> str:
+        is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
+        messages = {
+            ("available", "provider_catalog"): (
+                "النموذج ظهر في آخر فحص ناجح لقائمة المزوّد، وميزة المحادثة النصية متاحة في خطتك. قد تظل بعض الطلبات خاضعة لصلاحيات مفتاح API أو حدود المزوّد.",
+                "The model appeared in the provider's latest successful catalog check, and text chat is enabled on your plan. Individual requests may still depend on API-key permissions or provider limits.",
+            ),
+            ("unknown", "plan_unknown"): (
+                "تعذّر تأكيد صلاحية المحادثة النصية من ترخيص Engo حاليًا. النقطة الصفراء تعني أن الحالة غير مؤكدة، وليست رفضًا.",
+                "Engo could not currently verify text-chat access from the signed license. Yellow means unknown, not denied.",
+            ),
+            ("unknown", "catalog_unknown"): (
+                "قائمة المزوّد لم يتم التحقق منها حديثًا. حدّث النماذج من إعدادات مزوّد AI لمعرفة هل هذا النموذج متاح لحساب API الحالي.",
+                "The provider catalog has not been verified recently. Refresh models in AI provider settings to check this API account.",
+            ),
+            ("unavailable", "plan"): (
+                "ميزة المحادثة النصية غير متاحة في خطة Engo الحالية، لذلك تم تمييز النماذج بالأحمر.",
+                "Text chat is not enabled on the current Engo plan, so models are marked unavailable.",
+            ),
+            ("unavailable", "model_not_listed"): (
+                "المزوّد لم يُظهر هذا النموذج في آخر فحص ناجح لحساب API الحالي. قد يكون غير متاح أو غير مدعوم لهذا الحساب؛ ومعرّفات النماذج المخصصة قد تحتاج تحققًا يدويًا.",
+                "The provider did not list this model in the latest successful check for the current API account. It may be unavailable or unsupported for this account; custom model IDs need manual verification.",
+            ),
+        }
+        pair = messages.get((status, reason), messages[("unknown", "catalog_unknown")])
+        return pair[0] if is_ar else pair[1]
+
+    def _populate_provider_model_menu(self, provider: str):
         try:
             raw = self.settings.value(f"ai_available_models_{provider}", "[]", type=str)
-            model_ids = json.loads(raw) if isinstance(raw, str) else list(raw or [])
+            cached_models = json.loads(raw) if isinstance(raw, str) else list(raw or [])
+            if not isinstance(cached_models, list):
+                cached_models = []
         except Exception:
-            model_ids = []
+            cached_models = []
+        catalog_models = [str(item).strip() for item in cached_models if str(item or "").strip()]
         saved = str(self.settings.value(self._chat_model_preference_key(provider),
                      self.settings.value(f"ai_chat_model_{provider}",
                      self.settings.value(f"ai_model_{provider}", AI_DEFAULT_MODELS[provider], type=str), type=str), type=str)
                      or AI_DEFAULT_MODELS[provider]).strip()
+        model_ids = list(catalog_models)
         if not model_ids:
-            model_ids = [AI_DEFAULT_MODELS[provider]]
+            model_ids.append(AI_DEFAULT_MODELS[provider])
+        if saved and saved not in model_ids:
+            model_ids.append(saved)
+
+        plan_access = self._chat_text_plan_access()
+        catalog_verified = self._model_catalog_is_fresh(provider)
+        self.model_combo.blockSignals(True)
+        self.model_combo.clear()
         for model_id in model_ids:
-            self.model_combo.addItem(str(model_id), str(model_id))
+            status, reason = _classify_provider_model_status(
+                model_id, catalog_models, catalog_verified, plan_access
+            )
+            row = self.model_combo.count()
+            self.model_combo.addItem(_provider_model_status_icon(status), model_id, model_id)
+            self.model_combo.setItemData(
+                row, self._model_status_tooltip(status, reason), Qt.ItemDataRole.ToolTipRole
+            )
         idx = self.model_combo.findData(saved)
         if idx >= 0:
             self.model_combo.setCurrentIndex(idx)
         else:
             self.model_combo.setEditText(saved)
         self.model_combo.blockSignals(False)
-        self.model_combo.setToolTip(f"Model for this conversation · {len(model_ids)} model(s) available. Refresh the list in AI provider settings.")
+        self.model_combo.setToolTip(
+            "Green: provider catalog + current Engo plan confirmed. Yellow: not verified or stale. "
+            "Red: chat is not enabled on this plan or the model is absent from the latest provider list. "
+            "Refresh provider models in AI settings; the dot is a pre-check, not a test request."
+        )
+
+    def _refresh_provider_model_menu(self):
+        provider = str(self.provider_combo.currentData() or "deepseek")
+        self._populate_provider_model_menu(provider)
+
+    def _provider_changed(self, _index):
+        provider = str(self.provider_combo.currentData() or "deepseek")
+        self.settings.setValue("ai_provider", provider)
+        self._populate_provider_model_menu(provider)
 
     def _chat_model_changed(self, model_text):
         provider = str(self.provider_combo.currentData() or "deepseek")
