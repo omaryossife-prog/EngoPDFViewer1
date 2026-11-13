@@ -904,163 +904,103 @@ class PlansDialog(QDialog):
 
 
 class SignInWelcomeDialog(QDialog):
-    """Branded HTML post-login page with the authenticated Google profile."""
+    """Branded post-login confirmation with the authenticated Google profile."""
 
-    def __init__(self, state: LicenseState, language: str = "en", parent=None, theme: str = "dark",
-                 image_endpoint: str = "", publishable_key: str = ""):
+    def __init__(self, state: LicenseState, language: str = "en", parent=None, theme: str = "dark", image_endpoint: str = "", publishable_key: str = ""):
         super().__init__(parent)
         self.language = "ar" if str(language).lower().startswith("ar") else "en"
-        self.is_ar = self.language == "ar"
-        self.setWindowTitle("مرحبًا بك في Engo" if self.is_ar else "Welcome to Engo")
+        is_ar = self.language == "ar"
+        self.setWindowTitle("مرحبًا بك في Engo" if is_ar else "Welcome to Engo")
         self.setObjectName("engoSignInWelcome")
         self.setModal(True)
-        self.resize(760, 700)
-        self.setMinimumSize(520, 560)
-        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft if self.is_ar else Qt.LayoutDirection.LeftToRight)
+        self.setMinimumWidth(470)
+        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft if is_ar else Qt.LayoutDirection.LeftToRight)
         t = _get_theme_tokens(theme)
-        self._theme_tokens = t
-        self.setStyleSheet(f"QDialog#engoSignInWelcome {{ background:{t['window']}; color:{t['text']}; }}")
-
+        self.setStyleSheet(f"""
+            QDialog#engoSignInWelcome {{ background:{t['window']}; color:{t['text']}; }}
+            QLabel {{ color:{t['text']}; background:transparent; }}
+            QLabel#signinWelcomeName {{ font-size:20pt; font-weight:850; }}
+            QLabel#signinWelcomeSub {{ color:{t['muted']}; font-size:10pt; }}
+            QLabel#signinWelcomeEmail {{ color:{t['muted']}; font-size:9pt; }}
+            QLabel#signinWelcomeAvatar {{ background:{t['panel_alt']}; color:{t['accent']};
+                border:2px solid {t['accent']}; border-radius:66px; font-size:34pt; font-weight:900; }}
+            QPushButton#signinWelcomeContinue {{ background:{t['accent']}; color:#10213a;
+                border:0; border-radius:10px; min-height:48px; padding:0 30px;
+                font-size:11pt; font-weight:850; }}
+            QPushButton#signinWelcomeContinue:hover {{ background:{t['accent_hover']}; }}
+        """)
         user = getattr(state, "user", {}) or {}
         metadata = user.get("user_metadata") if isinstance(user, dict) else {}
         metadata = metadata if isinstance(metadata, dict) else {}
-        self._display_name = str(
-            metadata.get("full_name") or metadata.get("name") or metadata.get("given_name")
-            or user.get("email") or ("صديقي" if self.is_ar else "there")
-        ).strip()
-        self._email = str(user.get("email") or "").strip()
-        self._avatar_url = str(metadata.get("avatar_url") or metadata.get("picture") or "").strip()
-        self._avatar_data_uri = ""
-        self._avatar_pixmap = QPixmap()
-
-        # Load the editable HTML page from the repository first. The Supabase
-        # copy replaces it automatically when the signed-in success screen opens.
-        html_path = Path(__file__).resolve().parent.parent / "SignInSuccess.html"
-        try:
-            self._html_template = html_path.read_text(encoding="utf-8")
-        except Exception:
-            self._html_template = self._fallback_html()
+        name = str(metadata.get("full_name") or metadata.get("name") or
+                    metadata.get("given_name") or user.get("email") or
+                    ("صديقي" if is_ar else "there")).strip()
+        email = str(user.get("email") or "").strip()
+        avatar_url = str(metadata.get("avatar_url") or metadata.get("picture") or "").strip()
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 12, 12, 12)
-        self.page = QTextBrowser(self)
-        self.page.setObjectName("signinWelcomeHtmlPage")
-        self.page.setFrameShape(QFrame.Shape.NoFrame)
-        self.page.setOpenLinks(False)
-        self.page.setOpenExternalLinks(False)
-        self.page.anchorClicked.connect(self._handle_page_link)
-        self.page.setStyleSheet("QTextBrowser { background: transparent; border: 0; }")
-        root.addWidget(self.page, 1)
-        self._render_page()
+        root.setContentsMargins(30, 28, 30, 24)
+        root.setSpacing(13)
+        root.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.avatar_label = QLabel("E")
+        self.avatar_label.setObjectName("signinWelcomeAvatar")
+        self.avatar_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.avatar_label.setFixedSize(132, 132)
+        root.addWidget(self.avatar_label, 0, Qt.AlignmentFlag.AlignHCenter)
 
-        self._network = QNetworkAccessManager(self)
-        self._image_endpoint = str(image_endpoint or "").strip()
-        self._publishable_key = str(publishable_key or "").strip()
-        if self._image_endpoint.startswith("https://") and self._publishable_key:
-            request = QNetworkRequest(QUrl(self._image_endpoint))
-            request.setRawHeader(b"apikey", self._publishable_key.encode("utf-8"))
-            request.setRawHeader(b"Authorization", ("Bearer " + self._publishable_key).encode("utf-8"))
-            request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/json")
-            page_reply = self._network.post(request, b"{}")
-            page_reply.finished.connect(lambda r=page_reply: self._html_page_ready(r))
-        if self._avatar_url.startswith("https://"):
-            avatar_reply = self._network.get(QNetworkRequest(QUrl(self._avatar_url)))
-            avatar_reply.finished.connect(lambda r=avatar_reply: self._profile_avatar_ready(r))
+        self.name_label = QLabel((f"أهلًا بك يا {name}" if is_ar else f"Welcome, {name}!"))
+        self.name_label.setObjectName("signinWelcomeName")
+        self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.name_label.setWordWrap(True)
+        root.addWidget(self.name_label)
+        self.subtitle_label = QLabel(
+            "تم تسجيل الدخول إلى حساب Engo بنجاح."
+            if is_ar else "You have successfully signed in to your Engo account."
+        )
+        self.subtitle_label.setObjectName("signinWelcomeSub")
+        self.subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.subtitle_label.setWordWrap(True)
+        root.addWidget(self.subtitle_label)
+        if email:
+            email_label = QLabel(email)
+            email_label.setObjectName("signinWelcomeEmail")
+            email_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            root.addWidget(email_label)
 
-    def _fallback_html(self):
-        title = "أهلًا بك في Engo" if self.is_ar else "Welcome to Engo"
-        subtitle = "تم تسجيل الدخول إلى حساب Engo بنجاح." if self.is_ar else "You have successfully signed in to your Engo account."
-        continue_text = "متابعة" if self.is_ar else "Continue"
-        direction = "rtl" if self.is_ar else "ltr"
-        return f"""<!doctype html><html lang="{self.language}" dir="{direction}"><meta charset="utf-8">
-        <body style="background:#0b1422;color:#f2f6ff;font-family:Segoe UI,Tahoma,Arial;text-align:center;padding:50px">
-        <h2 style="color:#76a9ff">Engo PDF</h2><h1>{{{{WELCOME_TITLE}}}}</h1><p>{{{{WELCOME_SUBTITLE}}}}</p>
-        <p>{{{{EMAIL}}}}</p><a href="engo://continue" style="display:inline-block;padding:16px 42px;background:#76a9ff;color:#10213a;border-radius:12px;text-decoration:none;font-weight:bold">{{{{CONTINUE_TEXT}}}}</a>
-        </body></html>"""
+        self.continue_button = QPushButton("متابعة" if is_ar else "Continue")
+        self.continue_button.setObjectName("signinWelcomeContinue")
+        self.continue_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.continue_button.clicked.connect(self.accept)
+        root.addSpacing(8)
+        root.addWidget(self.continue_button)
 
-    def _render_page(self):
-        is_ar = self.is_ar
-        values = {
-            "{{LANG}}": self.language,
-            "{{DIR}}": "rtl" if is_ar else "ltr",
-            "{{PAGE_TITLE}}": "مرحبًا بك في Engo" if is_ar else "Welcome to Engo",
-            "{{WELCOME_TITLE}}": (f"أهلًا بك يا {self._display_name}" if is_ar else f"Welcome, {self._display_name}!"),
-            "{{WELCOME_SUBTITLE}}": ("تم تسجيل الدخول إلى حساب Engo بنجاح." if is_ar
-                                     else "You have successfully signed in to your Engo account."),
-            "{{EMAIL}}": self._email,
-            "{{STATUS_TEXT}}": ("تم تسجيل الدخول بنجاح" if is_ar else "Google sign-in completed successfully"),
-            "{{CONTINUE_TEXT}}": ("متابعة" if is_ar else "Continue"),
-            "{{AVATAR_DATA_URI}}": "engo-profile-avatar.png" if not self._avatar_pixmap.isNull() else "",
-            "{{AVATAR_CLASS}}": "" if self._avatar_data_uri else "empty",
-        }
-        page_html = self._html_template
-        for token, value in values.items():
-            page_html = page_html.replace(token, html_escape(str(value), quote=True))
+        self._avatar_manager = QNetworkAccessManager(self)
+        if avatar_url.startswith("https://"):
+            reply = self._avatar_manager.get(QNetworkRequest(QUrl(avatar_url)))
+            reply.finished.connect(lambda r=reply: self._load_profile_avatar(r))
 
-        # Match the HTML success page to the exact theme selected in Engo.
-        # This also applies to a customized HTML page loaded from Supabase.
-        theme = self._theme_tokens
-        page_theme_css = f"""
-        <style id="engo-theme-sync">
-          html, body {{ background:{theme['window']} !important; color:{theme['text']} !important; }}
-          body {{ background:{theme['window']} !important; }}
-          .glow {{ display:none !important; }}
-          .card {{ background:{theme['panel']} !important; border-color:{theme['border']} !important;
-                   box-shadow:0 18px 48px rgba(0,0,0,.22) !important; }}
-          .card:before {{ background:{theme['accent']} !important; }}
-          .brand-sub, .subtitle {{ color:{theme['muted']} !important; }}
-          .email {{ color:{theme['accent']} !important; }}
-          .rule {{ background:{theme['border']} !important; }}
-          .status {{ color:{theme['text']} !important; }}
-          .success-ring {{ background:{theme['panel_alt']} !important; border-color:{theme['accent']} !important; }}
-          .avatar {{ border-color:{theme['accent']} !important; }}
-          a.continue {{ background:{theme['accent']} !important; color:{theme['window']} !important; }}
-        </style>
-        """
-        if "</head>" in page_html:
-            page_html = page_html.replace("</head>", page_theme_css + "</head>", 1)
-        else:
-            page_html = page_theme_css + page_html
-
-        if not self._avatar_pixmap.isNull():
-            self.page.document().addResource(
-                QTextDocument.ResourceType.ImageResource,
-                QUrl("engo-profile-avatar.png"),
-                self._avatar_pixmap,
-            )
-        self.page.setHtml(page_html)
-
-    def _html_page_ready(self, reply):
-        try:
-            payload = json.loads(bytes(reply.readAll()).decode("utf-8", errors="replace") or "{}")
-            remote_html = str(payload.get("html") or "").strip() if isinstance(payload, dict) else ""
-            if remote_html.startswith("<!doctype") or remote_html.startswith("<html"):
-                self._html_template = remote_html
-                self._render_page()
-        except Exception:
-            pass
-        finally:
-            reply.deleteLater()
-
-    def _profile_avatar_ready(self, reply):
+    def _load_profile_avatar(self, reply):
         try:
             raw = bytes(reply.readAll())
             pixmap = QPixmap()
             if raw and pixmap.loadFromData(raw):
-                self._avatar_pixmap = pixmap
-                self._render_page()
+                size = self.avatar_label.width()
+                scaled = pixmap.scaled(
+                    size, size, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                result = QPixmap(size, size)
+                result.fill(Qt.GlobalColor.transparent)
+                painter = QPainter(result)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                painter.setBrush(QBrush(scaled))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.drawEllipse(0, 0, size, size)
+                painter.end()
+                self.avatar_label.setText("")
+                self.avatar_label.setPixmap(result)
         finally:
             reply.deleteLater()
-
-    def _handle_page_link(self, url):
-        if url.scheme().lower() == "engo" and url.host().lower() == "continue":
-            self.accept()
-            return
-        if url.scheme().lower() in ("http", "https"):
-            from PyQt6.QtGui import QDesktopServices
-            QDesktopServices.openUrl(url)
-
-
 
 
 class AccountDialog(QDialog):
