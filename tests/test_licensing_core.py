@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from engo_licensing.core import (
-    LicenseConfig, LicenseService, NetworkError, SignatureError, canonical_json,
+    LicenseConfig, LicenseService, NetworkError, OfflineError, SignatureError, canonical_json,
     is_expected_free_startup, LicenseState,
 )
 
@@ -21,7 +21,28 @@ class DummyStore:
         pass
 
 
-def make_service_and_envelope():
+class MemoryOfflineStore:
+    def __init__(self, value=None):
+        self.value = value
+
+    def load(self):
+        return self.value
+
+    def save(self, value):
+        self.value = json.loads(json.dumps(value))
+
+    def clear(self):
+        self.value = None
+
+
+def _resign_envelope(envelope, private):
+    envelope["signature"] = base64.b64encode(
+        private.sign(canonical_json(envelope["payload"]))
+    ).decode("ascii")
+    return envelope
+
+
+def make_service_and_envelope(offline_store=None):
     private = Ed25519PrivateKey.generate()
     public_raw = private.public_key().public_bytes(
         serialization.Encoding.Raw, serialization.PublicFormat.Raw
@@ -39,7 +60,10 @@ def make_service_and_envelope():
         supabase_url="https://example.supabase.co", anon_key="public-anon",
         public_key_b64=base64.b64encode(public_raw).decode("ascii"), app_version="2.3.6",
     )
-    service = LicenseService(config=config, secure_store=DummyStore(), device_id="device-1")
+    service = LicenseService(
+        config=config, secure_store=DummyStore(), device_id="device-1",
+        offline_store=offline_store,
+    )
     envelope = {"payload": payload, "signature": base64.b64encode(signature).decode("ascii")}
     return service, envelope, private
 
@@ -579,3 +603,198 @@ def test_google_secret_error_is_reported_from_server_exchange(monkeypatch):
     monkeypatch.setattr(service, "_edge", fail)
     with pytest.raises(LicenseError, match="not configured on the Engo server"):
         service._exchange_google_desktop_code("code", "verifier", "http://127.0.0.1:40001")
+
+
+
+def _prepare_offline_file_quota(
+    service, envelope, private, offline_store, feature_limit=2,
+    feature_key="tags", scope_key="pdf:scope-1", server_used=0, pending=0,
+    snapshot_complete=True, expires_delta=timedelta(minutes=5),
+):
+    now = datetime.now(timezone.utc)
+    envelope["payload"]["issued_at"] = (now - timedelta(minutes=2)).isoformat().replace("+00:00", "Z")
+    envelope["payload"]["expires_at"] = (now + expires_delta).isoformat().replace("+00:00", "Z")
+    envelope["payload"]["plan_id"] = "free"
+    envelope["payload"]["entitlements"] = {
+        "tags": {"enabled": True, "limit": 2, "reset_period": "per_file", "plan_id": "free"},
+        "tag_units": {"enabled": True, "limit": 8, "reset_period": "per_file", "plan_id": "free"},
+        "text_chat": {"enabled": True, "limit": 2, "reset_period": "daily", "plan_id": "free"},
+    }
+    _resign_envelope(envelope, private)
+    service._session = {
+        "access_token": "access", "refresh_token": "refresh",
+        "expires_at": int(time.time()) + 3600, "user": {"id": "user-1"},
+    }
+    service._offline_cache = {
+        "version": 1,
+        "user_id": "user-1",
+        "license_envelope": envelope,
+        "license_cached_at": int(time.time()),
+        "usage_snapshot_complete": snapshot_complete,
+        "usage": {
+            f"{feature_key}:{scope_key}": {
+                "server_used": server_used,
+                "pending": pending,
+            }
+        } if scope_key else {},
+    }
+    service._save_offline_cache()
+    service._free_state("Device is offline", authenticated=True)
+
+
+def test_offline_tags_enforce_last_signed_per_file_limit_and_keep_separate_files(monkeypatch):
+    store = MemoryOfflineStore()
+    service, envelope, private = make_service_and_envelope(offline_store=store)
+    scope = "pdf:scope-1"
+    _prepare_offline_file_quota(
+        service, envelope, private, store, feature_key="tags",
+        scope_key=scope, server_used=1, feature_limit=2,
+    )
+
+    def offline(*_args, **_kwargs):
+        raise OfflineError("Could not contact the Engo account server")
+
+    monkeypatch.setattr(service, "_edge", offline)
+    first = service.consume_feature("tags", scope_key=scope)
+    second = service.consume_feature("tags", scope_key=scope)
+    other_file = service.consume_feature("tags", scope_key="pdf:scope-2")
+
+    assert first["allowed"] is True and first["offline"] is True
+    assert first["used"] == 2 and first["limit"] == 2
+    assert second["allowed"] is False and second["used"] == 2
+    assert other_file["allowed"] is True and other_file["used"] == 1
+    assert store.value["usage"]["tags:pdf:scope-1"]["pending"] == 1
+
+
+def test_offline_tag_units_use_eight_unit_per_file_snapshot(monkeypatch):
+    store = MemoryOfflineStore()
+    service, envelope, private = make_service_and_envelope(offline_store=store)
+    scope = "pdf:scope-units"
+    _prepare_offline_file_quota(
+        service, envelope, private, store, feature_key="tag_units",
+        scope_key=scope, server_used=7, feature_limit=8,
+    )
+
+    monkeypatch.setattr(
+        service, "_edge",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OfflineError("network offline")),
+    )
+    allowed = service.consume_feature("tag_units", scope_key=scope)
+    denied = service.consume_feature("tag_units", scope_key=scope)
+    assert allowed["allowed"] is True and allowed["used"] == 8 and allowed["limit"] == 8
+    assert denied["allowed"] is False and denied["used"] == 8
+
+
+def test_offline_finite_tag_quota_denies_without_complete_usage_snapshot(monkeypatch):
+    store = MemoryOfflineStore()
+    service, envelope, private = make_service_and_envelope(offline_store=store)
+    _prepare_offline_file_quota(
+        service, envelope, private, store, feature_key="tags",
+        scope_key="", snapshot_complete=False,
+    )
+    monkeypatch.setattr(
+        service, "_edge",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OfflineError("network offline")),
+    )
+    result = service.consume_feature("tags", scope_key="pdf:unknown")
+    assert result["allowed"] is False
+    assert result["tracked"] is False
+    assert result["message"] == "offline_feature_unavailable"
+
+
+def test_only_tags_and_tag_units_can_use_offline_cache(monkeypatch):
+    store = MemoryOfflineStore()
+    service, envelope, private = make_service_and_envelope(offline_store=store)
+    _prepare_offline_file_quota(
+        service, envelope, private, store, feature_key="tags",
+        scope_key="pdf:scope-1", snapshot_complete=True,
+    )
+    monkeypatch.setattr(
+        service, "_edge",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OfflineError("network offline")),
+    )
+    result = service.consume_feature("text_chat")
+    assert result["allowed"] is False
+    assert result["tracked"] is False
+    assert result["message"] == "offline_feature_unavailable"
+
+
+def test_expired_signed_license_is_only_reused_for_offline_file_features(monkeypatch):
+    store = MemoryOfflineStore()
+    service, envelope, private = make_service_and_envelope(offline_store=store)
+    old = datetime.now(timezone.utc) - timedelta(hours=2)
+    envelope["payload"]["issued_at"] = (old - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+    envelope["payload"]["expires_at"] = (old + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+    envelope["payload"]["plan_id"] = "free"
+    envelope["payload"]["entitlements"] = {
+        "tags": {"enabled": True, "limit": 2, "reset_period": "per_file"},
+        "text_chat": {"enabled": True, "limit": None, "reset_period": "daily"},
+    }
+    _resign_envelope(envelope, private)
+    service._session = {
+        "access_token": "access", "refresh_token": "refresh",
+        "expires_at": int(time.time()) + 3600, "user": {"id": "user-1"},
+    }
+    service._offline_cache = {
+        "version": 1, "user_id": "user-1", "license_envelope": envelope,
+        "usage_snapshot_complete": True,
+        "usage": {"tags:pdf:scope-1": {"server_used": 0, "pending": 0}},
+    }
+    service._save_offline_cache()
+    monkeypatch.setattr(
+        service, "_edge",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OfflineError("network offline")),
+    )
+    result = service.consume_feature("tags", scope_key="pdf:scope-1")
+    assert result["allowed"] is True and result["offline"] is True
+    with pytest.raises(SignatureError, match="expired"):
+        service._verify_signed_response(envelope)
+
+
+def test_pending_offline_tag_usage_is_synced_before_next_online_action():
+    store = MemoryOfflineStore()
+    service, envelope, private = make_service_and_envelope(offline_store=store)
+    scope = "pdf:sync-me"
+    envelope["payload"]["entitlements"] = {
+        "tags": {"enabled": True, "limit": 8, "reset_period": "per_file"},
+    }
+    _resign_envelope(envelope, private)
+    service._session = {
+        "access_token": "access", "refresh_token": "refresh",
+        "expires_at": int(time.time()) + 3600, "user": {"id": "user-1"},
+    }
+    service._offline_cache = {
+        "version": 1, "user_id": "user-1", "license_envelope": envelope,
+        "usage_snapshot_complete": True,
+        "usage": {"tags:pdf:sync-me": {"server_used": 1, "pending": 2}},
+    }
+    service._save_offline_cache()
+    calls = []
+
+    def accept(name, body, token):
+        calls.append((name, body, token))
+        return {"allowed": True, "used": 4, "limit": 8, "license": envelope}
+
+    service._edge = accept
+    result = service.consume_feature("tags", amount=1, scope_key=scope)
+    assert result["allowed"] is True
+    assert calls[0][1]["amount"] == 3
+    assert store.value["usage"]["tags:pdf:sync-me"]["server_used"] == 4
+    assert store.value["usage"]["tags:pdf:sync-me"]["pending"] == 0
+
+
+def test_offline_feature_cache_is_persisted_and_cleared_on_logout():
+    store = MemoryOfflineStore()
+    service, envelope, private = make_service_and_envelope(offline_store=store)
+    _prepare_offline_file_quota(
+        service, envelope, private, store, feature_key="tags",
+        scope_key="pdf:scope-1", snapshot_complete=True,
+    )
+    restored = LicenseService(
+        config=service.config, secure_store=DummyStore(), device_id="device-1",
+        offline_store=store,
+    )
+    assert restored._offline_cache["user_id"] == "user-1"
+    assert restored._offline_cache["license_envelope"]["signature"] == envelope["signature"]
+    restored.logout()
+    assert store.value is None
