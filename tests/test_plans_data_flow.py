@@ -310,3 +310,20 @@ def test_pending_text_chat_settlements_retry_after_restart():
     assert "self._retry_pending_text_chat_settlements()" in host
     assert "QTimer.singleShot(1400, window._retry_pending_text_chat_settlements)" in main
 
+def test_text_chat_usage_is_not_reserved_when_signed_license_denies_access():
+    usage = (ROOT / "supabase" / "functions" / "usage-consume" / "index.ts").read_text(encoding="utf-8")
+    precheck = usage.index('if (feature === "text_chat" && (!validLicense || !enabled))')
+    reserve = usage.index('admin.rpc("reserve_text_chat_usage_v1"')
+    assert precheck < reserve
+    assert "reservation_id: null" in usage[precheck:reserve]
+    assert 'message: !validLicense ? "License is not active"' in usage[precheck:reserve]
+
+
+def test_abandoned_text_chat_reservations_are_refunded_after_timeout():
+    migration = next((ROOT / "supabase" / "migrations").glob("*refund_stale_text_chat_reservations.sql")).read_text(encoding="utf-8")
+    assert "v_expired public.usage_reservations%rowtype" in migration
+    assert "r.status = 'pending'" in migration
+    assert "r.created_at < pg_catalog.now() - interval '2 hours'" in migration
+    assert "used - v_expired.amount" in migration
+    assert "set status = 'refunded'" in migration
+
