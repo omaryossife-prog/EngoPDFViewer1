@@ -5624,7 +5624,7 @@ class MainWindow(QMainWindow):
             tab = self.tabs.widget(i)
             existing_source = os.path.abspath(str(getattr(tab, "source_path", tab.path))) if isinstance(tab, DocumentTab) else ""
             if isinstance(tab, DocumentTab) and (os.path.normcase(tab.path) == os.path.normcase(viewer_path) or os.path.normcase(existing_source) == os.path.normcase(source_path)):
-                primary = self._linked_primary_for_path(path)
+                primary = self._linked_primary_for_path(source_path)
                 if primary is not None:
                     i = self.tabs.indexOf(primary)
                 self.doc_tabbar.setCurrentIndex(i)
@@ -5666,7 +5666,7 @@ class MainWindow(QMainWindow):
         self.doc_tabbar.setTabIcon(idx, QIcon())
         # If this PDF is the supplementary half of a saved pair, open the
         # primary tab instead so the combined view is what the user sees.
-        primary_target = self._linked_primary_for_path(path)
+        primary_target = self._linked_primary_for_path(source_path)
         target_index = self.tabs.indexOf(primary_target) if primary_target is not None else idx
         self.doc_tabbar.setCurrentIndex(target_index)
         self.tabs.setCurrentIndex(target_index)
