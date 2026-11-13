@@ -521,6 +521,7 @@ class ThemePreviewButton(QToolButton):
 class FirstRunSetupDialog(QDialog):
     """Required three-step setup for a new or reset Engo profile."""
     google_sign_in_requested = pyqtSignal()
+    guest_continue_requested = pyqtSignal()
 
     def __init__(self, parent=None, is_premium: bool = False):
         super().__init__(parent)
@@ -739,7 +740,7 @@ class FirstRunSetupDialog(QDialog):
 
     def _continue_as_guest(self):
         self.account_choice = "guest"
-        self.accept()
+        self.guest_continue_requested.emit()
 
     def _animate_theme_preview(self, theme):
         """Quickly fade the wizard while applying the chosen live theme preview."""
