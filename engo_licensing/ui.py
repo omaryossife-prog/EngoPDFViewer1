@@ -452,7 +452,7 @@ class PlansDialog(QDialog):
             QPushButton#planPrimary {{ background:{t['accent']}; color:white; border-color:{t['accent']}; }}
             QPushButton#periodCard {{ background:{t['raised']}; border:1px solid {t['border_strong']}; border-radius:9px; padding:7px 3px; min-height:58px; font-size:8.5pt; }}
             QPushButton#periodCard:hover {{ background:{t['hover']}; border-color:{t['accent']}; }}
-            QPushButton#periodCard:checked {{ background:{t['selection']}; border:2px solid {t['accent']}; color:{t['text']}; }}
+            QPushButton#periodCard:checked {{ background:{t.get('selection', t['raised'])}; border:2px solid {t['accent']}; color:{t['text']}; }}
             QPushButton:disabled {{ color:{t['muted']}; background:{t['panel_alt']}; }}
             QComboBox {{ background:{t['input']}; color:{t['text']}; border:1px solid {t['border_strong']}; border-radius:7px; padding:6px 9px; min-height:30px; }}
             QPlainTextEdit {{ background:{t['panel_alt']}; border:1px solid {t['border']}; border-radius:8px; color:{t['text']}; padding:8px; }}
