@@ -301,7 +301,7 @@ class OfflineFeatureCacheStore:
                 fd, temp_name = tempfile.mkstemp(prefix=".engo-offline-", dir=str(self.path.parent))
                 try:
                     with os.fdopen(fd, "wb") as stream:
-                        stream.write(b"ENGOFC1\\0" + encrypted)
+                        stream.write(b"ENGOFC1\0" + encrypted)
                         stream.flush()
                         os.fsync(stream.fileno())
                     os.replace(temp_name, self.path)
@@ -327,9 +327,9 @@ class OfflineFeatureCacheStore:
         raw: bytes | None = None
         if os.name == "nt" and self.path.is_file():
             data = self.path.read_bytes()
-            if not data.startswith(b"ENGOFC1\\0"):
+            if not data.startswith(b"ENGOFC1\0"):
                 raise SecureStorageError("Stored offline quota cache has an unknown format")
-            raw = SecureStore._dpapi_decrypt(data[len(b"ENGOFC1\\0"):])
+            raw = SecureStore._dpapi_decrypt(data[len(b"ENGOFC1\0"):])
         else:
             try:
                 import keyring  # type: ignore
