@@ -906,7 +906,7 @@ class PlansDialog(QDialog):
 class SignInWelcomeDialog(QDialog):
     """Branded post-login confirmation with the authenticated Google profile."""
 
-    def __init__(self, state: LicenseState, language: str = "en", parent=None, theme: str = "dark", image_endpoint: str = "", publishable_key: str = ""):
+    def __init__(self, state: LicenseState, language: str = "en", parent=None, theme: str = "dark"):
         super().__init__(parent)
         self.language = "ar" if str(language).lower().startswith("ar") else "en"
         is_ar = self.language == "ar"
