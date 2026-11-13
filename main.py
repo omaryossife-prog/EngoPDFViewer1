@@ -6007,11 +6007,10 @@ class MainWindow(QMainWindow):
         )
         tokens = engo_ui_theme_tokens(theme)
         if operation == "session":
-            message = "جاري الاستعادة..." if is_ar else "Restoring..."
-        elif operation == "files":
-            message = "جاري فتح الملفات..." if is_ar else "Opening files..."
+            message = "جاري فتح الجلسة..." if is_ar else "Opening session..."
         else:
-            message = "جاري الفتح..." if is_ar else "Opening..."
+            # Keep the loading copy short and consistent for single and multi-file opens.
+            message = "جاري فتح الملف..." if is_ar else "Opening file..."
 
         dialog = QDialog(self)
         dialog.setObjectName("engoBusyDialog")
@@ -6026,56 +6025,22 @@ class MainWindow(QMainWindow):
             Qt.LayoutDirection.RightToLeft if is_ar
             else Qt.LayoutDirection.LeftToRight
         )
-        dialog.setFixedSize(340, 126)
+        dialog.setFixedSize(320, 82)
         layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(22, 16, 22, 16)
-        layout.setSpacing(11)
-
-        status_row = QHBoxLayout()
-        status_row.setSpacing(10)
-        status_row.addStretch(1)
-        logo_label = QLabel()
-        logo_label.setObjectName("engoBusyLogo")
-        logo_label.setFixedSize(34, 34)
-        logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo_pixmap = QPixmap(resource_path("engopdfviewer.ico"))
-        if not logo_pixmap.isNull():
-            logo_label.setPixmap(logo_pixmap.scaled(
-                QSize(30, 30), Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            ))
-        else:
-            logo_label.setText("E")
-            logo_label.setStyleSheet(
-                f"color:{tokens['accent']}; font-size:22pt; font-weight:900; "
-                f"background:{tokens['panel_alt']}; border-radius:10px;"
-            )
-        logo_effect = QGraphicsOpacityEffect(logo_label)
-        logo_label.setGraphicsEffect(logo_effect)
-        status_row.addWidget(logo_label)
+        layout.setContentsMargins(20, 14, 20, 14)
+        layout.setSpacing(10)
 
         label = QLabel(message)
         label.setObjectName("engoBusyLabel")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        status_row.addWidget(label)
-        status_row.addStretch(1)
-        layout.addLayout(status_row)
+        layout.addWidget(label)
 
-        logo_pulse = QPropertyAnimation(logo_effect, b"opacity", dialog)
-        logo_pulse.setDuration(820)
-        logo_pulse.setStartValue(0.38)
-        logo_pulse.setKeyValueAt(0.5, 1.0)
-        logo_pulse.setEndValue(0.38)
-        logo_pulse.setLoopCount(-1)
-        logo_pulse.setEasingCurve(QEasingCurve.Type.InOutCubic)
-        dialog._engo_logo_pulse = logo_pulse
-        logo_pulse.start()
-
+        # Match the startup splash: a slim, indeterminate bar in the active accent.
         progress = QProgressBar()
         progress.setObjectName("engoBusyProgress")
         progress.setRange(0, 0)
         progress.setTextVisible(False)
-        progress.setFixedHeight(7)
+        progress.setFixedHeight(4)
         layout.addWidget(progress)
 
         dialog.setStyleSheet(
@@ -6083,8 +6048,8 @@ class MainWindow(QMainWindow):
             f"border:1px solid {tokens['border']}; border-radius:13px; }}"
             f"QLabel#engoBusyLabel {{ color:{tokens['text']}; "
             "background:transparent; border:0; font-size:11pt; font-weight:800; }}"
-            f"QProgressBar#engoBusyProgress {{ background:{tokens['raised']}; "
-            "border:0; border-radius:3px; min-height:7px; max-height:7px; }}"
+            f"QProgressBar#engoBusyProgress {{ background:{tokens['panel']}; "
+            "border:0; border-radius:3px; min-height:4px; max-height:4px; }}"
             f"QProgressBar#engoBusyProgress::chunk {{ background:{tokens['accent']}; "
             "border-radius:3px; }}"
         )
