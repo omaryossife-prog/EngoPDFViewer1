@@ -1373,13 +1373,23 @@ class AppSettingsDialog(QDialog):
             maintenance.addWidget(row)
             return action_button
 
-        maintenance_action(
+        ai_settings_button = maintenance_action(
             "إعدادات الذكاء الاصطناعي" if is_ar else "AI settings",
             "إدارة مزوّدي الذكاء الاصطناعي ومفاتيح API والنماذج وإعدادات الصوت والترجمة." if is_ar
             else "Manage AI providers, API keys, model IDs, voice and translation preferences.",
             "Ai فتح اعدادات" if is_ar else "Open AI settings",
             "settingsMaintenanceButton", self._open_ai_settings_action
         )
+        _ai_account_state = getattr(self.license_service, "state", None)
+        _ai_settings_allowed = bool(getattr(_ai_account_state, "authenticated", False))
+        if not _ai_settings_allowed:
+            ai_settings_button.setEnabled(False)
+            ai_settings_button.setCursor(Qt.CursorShape.ForbiddenCursor)
+            ai_settings_button.setToolTip(
+                "إعدادات الذكاء الاصطناعي متاحة بعد تسجيل الدخول، ولا يمكن فتحها في وضع الزائر."
+                if is_ar else
+                "AI settings are available after signing in and cannot be opened in Guest mode."
+            )
 
         maintenance_action(
             "مسح الكاش" if is_ar else "Clear cache",
