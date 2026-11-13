@@ -144,18 +144,12 @@ class LicenseConfig:
     @classmethod
     def load(cls, app_version: str | None = None) -> "LicenseConfig":
         values: dict[str, Any] = {}
-        # Merge all available config locations instead of stopping at the
-        # first file. The executable directory may contain an older/minimal
-        # config while the per-user AppData config has the Google Desktop
-        # client secret. Earlier paths keep priority; later files only fill
-        # missing settings.
         for path in _candidate_config_paths():
             try:
                 loaded = json.loads(path.read_text(encoding="utf-8"))
                 if isinstance(loaded, dict):
-                    for key, value in loaded.items():
-                        if key not in values or values[key] in (None, ""):
-                            values[key] = value
+                    values.update(loaded)
+                    break
             except Exception:
                 continue
 
