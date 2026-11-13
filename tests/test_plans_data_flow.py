@@ -47,3 +47,11 @@ def test_subscription_request_reads_the_server_side_price():
     assert 'from("subscription_prices")' in source
     assert '.eq("is_active", true)' in source
     assert 'from("payment_transactions").insert' in source
+
+
+
+def test_account_overview_tag_usage_snapshot_filters_per_file_tag_features():
+    edge = (ROOT / "supabase" / "functions" / "account-overview" / "index.ts").read_text(encoding="utf-8")
+    assert 'select("feature_key,scope_key,used")' in edge
+    assert '.in("feature_key", ["tags", "tag_units"])' in edge
+    assert "tag_usage: tagUsageAvailable ? tagUsage : null" in edge
