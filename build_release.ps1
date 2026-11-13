@@ -681,26 +681,14 @@ try {
     New-Item -ItemType Directory -Force -Path $PublicConfigDirectory | Out-Null
     $BuildLicenseConfigPath = Join-Path $PublicConfigDirectory 'engo_license.json'
     $RuntimeConfigObject = Get-Content -LiteralPath $RuntimeLicenseConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    # Google Desktop OAuth token exchange runs in the installed desktop app,
-    # so its Desktop OAuth client secret must travel with the runtime config.
-    # This is NOT the Web OAuth secret or a Supabase service-role key.
-    # Allow CI to inject the same Desktop-only value without committing it.
-    $GoogleDesktopClientSecret = [string]$RuntimeConfigObject.google_desktop_client_secret
-    if (-not [string]::IsNullOrWhiteSpace($env:ENGO_GOOGLE_DESKTOP_CLIENT_SECRET)) {
-        $GoogleDesktopClientSecret = [string]$env:ENGO_GOOGLE_DESKTOP_CLIENT_SECRET
-    }
-    if ([string]::IsNullOrWhiteSpace($GoogleDesktopClientSecret)) {
-        throw 'Google Desktop OAuth client secret is missing. Add google_desktop_client_secret to the local engo_license.json or set ENGO_GOOGLE_DESKTOP_CLIENT_SECRET before building. The release build is stopped to avoid producing an installer with broken Google sign-in.'
-    }
     $AllowedRuntimeFields = @('supabase_url','supabase_publishable_key','supabase_anon_key',
         'license_public_key_b64','request_timeout','oauth_timeout','oauth_redirect_uri',
         'app_version','expected_signer_thumbprint','google_desktop_client_id')
-    $PublicRuntimeConfig = [ordered]@{}
+    $PublicRuntimeConfig = @{}
     foreach ($FieldName in $AllowedRuntimeFields) {
         $Property = $RuntimeConfigObject.PSObject.Properties[$FieldName]
         if ($null -ne $Property) { $PublicRuntimeConfig[$FieldName] = $Property.Value }
     }
-    $PublicRuntimeConfig['google_desktop_client_secret'] = $GoogleDesktopClientSecret
     $PublicRuntimeJson = $PublicRuntimeConfig | ConvertTo-Json -Depth 8
     [System.IO.File]::WriteAllText($BuildLicenseConfigPath, $PublicRuntimeJson, [System.Text.UTF8Encoding]::new($false))
     $NsisScript = Join-Path $ProjectRoot 'installer\EngoInstaller.nsi'
