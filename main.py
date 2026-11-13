@@ -2119,8 +2119,22 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # All windows have closed. Preserve user content by only clearing QSettings
-        # and disposable caches; chat and lesson-board databases remain untouched.
+        # All windows have closed. Sign out before clearing preferences so the
+        # encrypted Supabase refresh token cannot silently restore the old account
+        # when the first-run wizard starts again.
+        service = getattr(self, "license_service", None)
+        if service is not None:
+            try:
+                service.logout()
+            except Exception as exc:
+                app.setQuitOnLastWindowClosed(True)
+                is_ar = getattr(reset_dialog, "language", "en") == "ar"
+                message = (f"تعذر تسجيل الخروج قبل إعادة الضبط: {exc}" if is_ar
+                           else f"Could not sign out before resetting Engo: {exc}")
+                QMessageBox.critical(None, "إعادة ضبط Engo" if is_ar else "Reset Engo", message)
+                return
+
+        # Preserve user content by only clearing QSettings and disposable caches.
         cache_errors = 0
         try:
             # Preserve provider API keys exactly as stored (DPAPI-encrypted QSettings
