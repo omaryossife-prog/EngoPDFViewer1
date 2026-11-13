@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from PyQt6.QtCore import Qt, QRect, QThread, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal, QSize, QUrl
-from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QLinearGradient, QBrush, QPen, QPixmap
+from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QLinearGradient, QBrush, QPen, QPixmap, QTextDocument
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel,
@@ -931,6 +931,7 @@ class SignInWelcomeDialog(QDialog):
         self._email = str(user.get("email") or "").strip()
         self._avatar_url = str(metadata.get("avatar_url") or metadata.get("picture") or "").strip()
         self._avatar_data_uri = ""
+        self._avatar_pixmap = QPixmap()
 
         # Load the editable HTML page from the repository first. The Supabase
         # copy replaces it automatically when the signed-in success screen opens.
@@ -989,12 +990,18 @@ class SignInWelcomeDialog(QDialog):
             "{{EMAIL}}": self._email,
             "{{STATUS_TEXT}}": ("تم تسجيل الدخول بنجاح" if is_ar else "Google sign-in completed successfully"),
             "{{CONTINUE_TEXT}}": ("متابعة" if is_ar else "Continue"),
-            "{{AVATAR_DATA_URI}}": self._avatar_data_uri,
+            "{{AVATAR_DATA_URI}}": "engo-profile-avatar.png" if not self._avatar_pixmap.isNull() else "",
             "{{AVATAR_CLASS}}": "" if self._avatar_data_uri else "empty",
         }
         page_html = self._html_template
         for token, value in values.items():
             page_html = page_html.replace(token, html_escape(str(value), quote=True))
+        if not self._avatar_pixmap.isNull():
+            self.page.document().addResource(
+                QTextDocument.ResourceType.ImageResource,
+                QUrl("engo-profile-avatar.png"),
+                self._avatar_pixmap,
+            )
         self.page.setHtml(page_html)
 
     def _html_page_ready(self, reply):
@@ -1014,7 +1021,7 @@ class SignInWelcomeDialog(QDialog):
             raw = bytes(reply.readAll())
             pixmap = QPixmap()
             if raw and pixmap.loadFromData(raw):
-                self._avatar_data_uri = "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
+                self._avatar_pixmap = pixmap
                 self._render_page()
         finally:
             reply.deleteLater()
