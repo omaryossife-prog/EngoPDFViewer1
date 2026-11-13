@@ -8630,6 +8630,7 @@ class MainWindow(QMainWindow):
             lambda rid=reservation_id, result=outcome: service.settle_text_chat_usage(rid, result),
             self,
         )
+        settlement_worker._engo_settlement_reservation_id = reservation_id
         self._license_gate_workers.append(settlement_worker)
 
         def settlement_completed(result, error, rid=reservation_id, result_kind=outcome):
