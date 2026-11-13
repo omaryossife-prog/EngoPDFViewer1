@@ -545,8 +545,18 @@ class UsersTab(QWidget):
 
     def _on_loaded(self, rows):
         self.rows = rows
-        self.main.users_index = {r["id"]: r["email"] for r in rows}
+        self.main.users_index = {
+            str(r.get("id") or "").strip().lower(): str(r.get("email") or "").strip()
+            for r in rows if str(r.get("id") or "").strip()
+        }
         self._apply_filter()
+        # Devices and payments load in parallel with the user list. Refresh their
+        # tables now that the auth-user ID → email map is ready, avoiding UUIDs or
+        # blank addresses in the email column when the device request wins the race.
+        for tab_name in ("devices_tab", "payments_tab"):
+            tab = getattr(self.main, tab_name, None)
+            if tab is not None:
+                tab._apply_filter()
         if hasattr(self.main, "usage_tab"):
             self.main.usage_tab.load()
         self.main.status(f"تم تحميل {len(rows)} مستخدم")
@@ -690,13 +700,13 @@ class DevicesTab(QWidget):
         text = self.search.text().strip().lower()
         self.filtered = []
         for d in self.rows:
-            email = self.main.users_index.get(d.get("user_id"), "")
+            email = self.main.email_for_user(d.get("user_id"), str(d.get("email") or ""))
             name = d.get("device_name") or ""
             if not text or text in email.lower() or text in name.lower():
                 self.filtered.append(d)
         self.table.setRowCount(len(self.filtered))
         for i, d in enumerate(self.filtered):
-            email = self.main.users_index.get(d.get("user_id"), d.get("user_id", "—"))
+            email = self.main.email_for_user(d.get("user_id"), str(d.get("email") or "—"))
             status_ar = {"active": "نشط", "revoked": "ملغى", "inactive": "غير نشط"}.get(d.get("status"), d.get("status"))
             values = [email, d.get("device_name") or "—", status_ar, d.get("app_version") or "—",
                       _fmt_dt(d.get("last_seen")), _fmt_dt(d.get("activated_at"))]
@@ -814,14 +824,14 @@ class PaymentsTab(QWidget):
         text = self.search.text().strip().lower()
         self.filtered = []
         for p in self.rows:
-            email = self.main.users_index.get(p.get("user_id"), "")
+            email = self.main.email_for_user(p.get("user_id"), str(p.get("email") or ""))
             if not text or text in email.lower():
                 self.filtered.append(p)
         self.table.setRowCount(len(self.filtered))
         status_ar = {"pending": "معلّق", "succeeded": "ناجح", "failed": "فاشل",
                      "refunded": "مسترجع", "cancelled": "ملغى"}
         for i, p in enumerate(self.filtered):
-            email = self.main.users_index.get(p.get("user_id"), p.get("user_id", "—"))
+            email = self.main.email_for_user(p.get("user_id"), str(p.get("email") or "—"))
             metadata = p.get("metadata") if isinstance(p.get("metadata"), dict) else {}
             period = {"monthly": "شهري", "quarterly": "ربع سنوي", "semiannual": "نصف سنوي", "annual": "سنوي"}.get(metadata.get("billing_period"), "—")
             values = [email, p.get("plan_id") or "—",
@@ -1260,7 +1270,7 @@ class UsageStatsTab(QWidget):
         for i,uid in enumerate(ordered):
             feats=totals.get(uid,{})
             other=sum(v for k,v in feats.items() if k not in {"text_chat","voice_chat","tags","tag_units","translations","ai_search"})
-            values=[self.main.users_index.get(uid,uid),self._duration(active.get(uid,0)),
+            values=[self.main.email_for_user(uid,uid),self._duration(active.get(uid,0)),
                     str(feats.get("text_chat",0)),str(feats.get("voice_chat",0)),str(feats.get("tags",0)),
                     f"{feats.get('tag_units',0)} ({len(docs.get(uid,set()))} ملف)",str(feats.get("translations",0)),
                     str(feats.get("ai_search",0)),str(other)]
@@ -1397,10 +1407,28 @@ class AdminMainWindow(QMainWindow):
         self.connection_label.setStyleSheet("color:#e07070;")
         settings_btn = QPushButton("إعدادات الاتصال")
         settings_btn.clicked.connect(self._open_settings)
+        self.updates_shortcut_btn = QPushButton("✦  إدارة التحديثات")
+        self.updates_shortcut_btn.setObjectName("adminUpdateCenter")
+        self.updates_shortcut_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.updates_shortcut_btn.setToolTip("فتح إعدادات إصدارات ENGO وإشعارات التحديث")
+        self.updates_shortcut_btn.setStyleSheet(
+            "QPushButton#adminUpdateCenter { background:#285fc4; color:#ffffff; "
+            "border:1px solid #5b8bea; border-radius:8px; padding:6px 12px; font-weight:800; }"
+            "QPushButton#adminUpdateCenter:hover { background:#3474df; border-color:#8eb0f4; }"
+            "QPushButton#adminUpdateCenter:pressed { background:#214d9f; }"
+        )
+        self.updates_shortcut_btn.clicked.connect(
+            lambda: self.tabs.setCurrentWidget(self.updates_tab)
+        )
+        settings_stack = QVBoxLayout()
+        settings_stack.setContentsMargins(0, 0, 0, 0)
+        settings_stack.setSpacing(4)
+        settings_stack.addWidget(self.updates_shortcut_btn)
+        settings_stack.addWidget(settings_btn)
         top_bar.addWidget(title)
         top_bar.addStretch(1)
         top_bar.addWidget(self.connection_label)
-        top_bar.addWidget(settings_btn)
+        top_bar.addLayout(settings_stack)
         root.addLayout(top_bar)
 
         self.tabs = QTabWidget()
@@ -1466,6 +1494,10 @@ class AdminMainWindow(QMainWindow):
     # --- shared helpers used by every tab ------------------------------
     def status(self, message):
         self.status_bar.showMessage(message, 6000)
+
+    def email_for_user(self, user_id, fallback="—"):
+        key = str(user_id or "").strip().lower()
+        return self.users_index.get(key, fallback)
 
     def run_async(self, fn, on_success, on_error=None, args=(), kwargs=None, busy_label=None):
         if busy_label:
