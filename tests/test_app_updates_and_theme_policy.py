@@ -187,3 +187,51 @@ def test_subscription_price_label_has_arabic_and_english_prefixes():
     assert 'self._tr(f"السعر: {formatted_price}", f"Price: {formatted_price}")' in ui
     assert 'self._tr("السعر: بيانات السعر لم تصل", "Price: data not loaded")' in ui
     assert 'self._tr("السعر: لم يحدد بعد", "Price: not configured yet")' in ui
+
+
+
+def test_offline_feature_access_messages_are_friendly_and_localized():
+    core = (ROOT / "engo_licensing" / "core.py").read_text(encoding="utf-8")
+    main = (ROOT / "engo_main.py").read_text(encoding="utf-8")
+    assert "class OfflineError(NetworkError)" in core
+    assert 'except OfflineError:' in core
+    assert '"offline_feature_unavailable"' in core
+    assert "الميزة اتقفلت لأن جهازك غير متصل بالإنترنت." in main
+    assert "This feature is locked because your device is offline." in main
+    assert "getaddrinfo failed" in main
+
+
+def test_offline_fallback_is_limited_to_per_file_tags_and_tag_units():
+    core = (ROOT / "engo_licensing" / "core.py").read_text(encoding="utf-8")
+    assert 'OFFLINE_FILE_FEATURES = frozenset({"tags", "tag_units"})' in core
+    assert "def _consume_offline_file_feature(" in core
+    assert 'feature_key not in self.OFFLINE_FILE_FEATURES' in core
+    assert "allow_expired=True" in core
+    assert 'self._verify_signed_response(envelope, allow_expired=True)' in core
+    assert "offline_feature_unavailable" in core
+
+
+def test_account_overview_returns_authoritative_per_file_tag_usage_snapshot():
+    edge = (ROOT / "supabase" / "functions" / "account-overview" / "index.ts").read_text(encoding="utf-8")
+    core = (ROOT / "engo_licensing" / "core.py").read_text(encoding="utf-8")
+    assert 'from("usage_counters")' in edge
+    assert '.in("feature_key", ["tags", "tag_units"])' in edge
+    assert '.neq("scope_key", "")' in edge
+    assert "tag_usage: tagUsageAvailable ? tagUsage : null" in edge
+    assert 'result.get("tag_usage")' in core
+
+
+def test_text_chat_reopens_and_reactivates_at_the_latest_message():
+    chat = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    start = chat.index("    def showEvent(self, event):", chat.index("class AIChatPanel"))
+    end = chat.index("    def _reflow_after_show", start)
+    show_event = chat[start:end]
+    assert "self._scroll_to_latest_if_active(key)" in show_event
+    assert "(0, 120, 300, 520)" in show_event
+    assert "def _scroll_to_latest_if_active(self, page_key=None):" in chat
+
+    start = chat.index("    def _activate_transcript_page")
+    end = chat.index("    def _activate_chat_for_document", start)
+    activate = chat[start:end]
+    assert "self._scroll_to_latest_if_active(k)" in activate
+    assert "saved_scroll = int(entry.get(\"scroll\", 0))" not in activate
