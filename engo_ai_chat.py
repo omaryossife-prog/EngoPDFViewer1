@@ -8,6 +8,7 @@ import io
 import uuid
 import hashlib
 import re
+import time
 import html as html_module
 from pathlib import Path
 from PIL import Image, ImageOps, ImageChops, ImageFilter
@@ -26,6 +27,7 @@ from engo_ai_core import (
     AIChatStore,
     AI_DEFAULT_MODELS,
     AI_PROVIDER_LABELS,
+    _get_provider_key,
 )
 from engo_base import (
     APP_NAME,
@@ -674,6 +676,96 @@ class AIChatConversationDelegate(QStyledItemDelegate):
         return QSize(max(base.width(), 160), max(34, base.height()))
 
 
+def _classify_provider_model_status(
+    model_id: str,
+    catalog_models: list[str],
+    catalog_verified: bool,
+    plan_access: str,
+    provider_health: dict | None = None,
+) -> tuple[str, str]:
+    """A catalog listing is not proof of successful inference; use real request history."""
+    if plan_access == "denied":
+        return "unavailable", "plan"
+    if plan_access != "allowed":
+        return "unknown", "plan_unknown"
+    health_state = str((provider_health or {}).get("state") or "")
+    if health_state == "billing_blocked":
+        return "unavailable", "billing_blocked"
+    if health_state == "success":
+        return "available", "request_success"
+    if health_state == "quota_blocked":
+        return "unavailable", "quota_blocked"
+    if health_state == "model_rejected":
+        return "unavailable", "model_rejected"
+    if health_state in {"rate_limited", "auth_failed"}:
+        return "unknown", health_state
+    if not catalog_verified:
+        return "unknown", "catalog_unknown"
+    if str(model_id or "").strip() in {str(item).strip() for item in catalog_models}:
+        return "unknown", "catalog_only"
+    return "unavailable", "model_not_listed"
+
+
+def _provider_model_status_icon(status: str) -> QIcon:
+    """Build a compact green/yellow/red dot icon for a model menu row."""
+    colors = {
+        "available": "#239b62",
+        "unknown": "#d6a328",
+        "unavailable": "#d94848",
+    }
+    color = QColor(colors.get(status, colors["unknown"]))
+    pixmap = QPixmap(14, 14)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setPen(QPen(color.darker(135), 1))
+    painter.setBrush(QBrush(color))
+    painter.drawEllipse(2, 2, 10, 10)
+    painter.end()
+    return QIcon(pixmap)
+
+
+class AIModelSelectorCombo(QComboBox):
+    """Refresh model status and expand only the open popup to show complete IDs."""
+    popupAboutToShow = pyqtSignal()
+
+    def _resize_popup_to_model_names(self):
+        view = self.view()
+        if view is None:
+            return
+        view.setTextElideMode(Qt.TextElideMode.ElideNone)
+        model = view.model()
+        metrics = view.fontMetrics()
+        longest_text = 0
+        for row in range(model.rowCount()):
+            value = model.data(model.index(row, 0), Qt.ItemDataRole.DisplayRole)
+            longest_text = max(longest_text, metrics.horizontalAdvance(str(value or "")))
+
+        popup = view.window()
+        if popup is None:
+            return
+        screen = self.screen() or QApplication.primaryScreen()
+        available = screen.availableGeometry() if screen is not None else QRect(0, 0, 1400, 900)
+        current_geometry = popup.geometry()
+        scrollbar_width = view.verticalScrollBar().sizeHint().width()
+        desired_width = max(
+            self.width(),
+            longest_text + self.iconSize().width() + scrollbar_width + 58,
+        )
+        desired_width = min(desired_width, max(self.width(), available.width() - 16))
+        left = current_geometry.left()
+        if left + desired_width > available.right() + 1:
+            left = max(available.left(), available.right() - desired_width + 1)
+        popup.setMinimumWidth(desired_width)
+        popup.resize(desired_width, current_geometry.height())
+        popup.move(left, current_geometry.top())
+
+    def showPopup(self):
+        self.popupAboutToShow.emit()
+        super().showPopup()
+        self._resize_popup_to_model_names()
+
+
 class AIChatPanel(QFrame):
     """Compact, per-document AI chat with quick actions and Markdown/PDF export."""
     requestSent = pyqtSignal(str, str, object, bool, str, int)
@@ -1221,7 +1313,7 @@ class AIChatPanel(QFrame):
         self.provider_combo.setToolTip("Choose which AI service receives your question")
         controls.addWidget(self.provider_combo, 2)
 
-        self.model_combo = QComboBox()
+        self.model_combo = AIModelSelectorCombo()
         self.model_combo.setObjectName("aiModelSelector")
         self.model_combo.setEditable(True)
         self.model_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
@@ -1229,10 +1321,16 @@ class AIChatPanel(QFrame):
         self.model_combo.setMaximumWidth(225)
         self.model_combo.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.model_combo.setMinimumContentsLength(1)
+        self.model_combo.setIconSize(QSize(13, 13))
         if self.model_combo.lineEdit() is not None:
             self.model_combo.lineEdit().setMinimumWidth(0)
             self.model_combo.lineEdit().setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        self.model_combo.setToolTip("Choose the model for this chat. Refresh available models in AI provider settings.")
+        self.model_combo.setToolTip(
+            "Green: a real chat request with this API key and model recently succeeded. "
+            "Yellow: listed but not yet proven by a successful request, or temporarily limited. "
+            "Red: plan access is denied, the provider rejected the model, or its quota is exhausted."
+        )
+        self.model_combo.popupAboutToShow.connect(self._refresh_provider_model_menu)
         self.model_combo.currentTextChanged.connect(self._chat_model_changed)
         controls.addWidget(self.model_combo, 3)
 
@@ -1927,31 +2025,283 @@ class AIChatPanel(QFrame):
         self.settings.setValue(f"ai_chat_model_{provider}", model)
         self.settings.setValue(self._chat_model_preference_key(provider), model)
 
-    def _provider_changed(self, _index):
-        provider = str(self.provider_combo.currentData() or "deepseek")
-        self.settings.setValue("ai_provider", provider)
-        self.model_combo.blockSignals(True)
-        self.model_combo.clear()
+    def _chat_text_plan_access(self) -> str:
+        service = getattr(self.main_window, "license_service", None)
+        state = getattr(service, "state", None)
+        if state is None or not bool(getattr(state, "authenticated", False)) or not bool(getattr(state, "verified", False)):
+            return "unknown"
+        if str(getattr(state, "license_status", "")).lower() != "active":
+            return "denied"
+        if bool(getattr(state, "free_unlimited_mode", False)):
+            return "allowed"
+        entitlements = getattr(state, "entitlements", {})
+        entitlement = entitlements.get("text_chat") if isinstance(entitlements, dict) else None
+        if not isinstance(entitlement, dict):
+            return "unknown"
+        if not bool(entitlement.get("enabled")):
+            return "denied"
+        limit = entitlement.get("limit")
+        if limit is not None:
+            try:
+                if int(limit) <= 0:
+                    return "denied"
+            except (TypeError, ValueError):
+                return "unknown"
+        return "allowed"
+
+    def _model_catalog_is_fresh(self, provider: str) -> bool:
+        verified = bool(self.settings.value(f"ai_models_catalog_verified_{provider}", False, type=bool))
+        current_key = _get_provider_key(self.settings, provider)
+        if not verified or not current_key:
+            return False
+        fingerprint = hashlib.sha256(
+            str(current_key).encode("utf-8", errors="replace")
+        ).hexdigest()[:20]
+        cached_fingerprint = str(
+            self.settings.value(f"ai_models_catalog_key_fingerprint_{provider}", "", type=str) or ""
+        )
+        if not cached_fingerprint or cached_fingerprint != fingerprint:
+            return False
+        try:
+            checked_at = float(self.settings.value(f"ai_models_catalog_checked_at_{provider}", 0.0, type=float) or 0.0)
+        except (TypeError, ValueError):
+            checked_at = 0.0
+        age_seconds = time.time() - checked_at if checked_at > 0 else float("inf")
+        return 0 <= age_seconds <= 7 * 24 * 60 * 60
+
+    def _provider_model_health_key(self, provider: str, api_key: str | None = None) -> str:
+        secret = str(api_key if api_key is not None else _get_provider_key(self.settings, provider) or "").strip()
+        if not secret:
+            return ""
+        fingerprint = hashlib.sha256(secret.encode("utf-8", errors="replace")).hexdigest()[:20]
+        return f"ai_model_health_v1_{provider}_{fingerprint}"
+
+    def _load_provider_model_health(self, provider: str) -> dict:
+        storage_key = self._provider_model_health_key(provider)
+        if not storage_key:
+            return {}
+        try:
+            raw = self.settings.value(storage_key, "{}", type=str)
+            records = json.loads(raw) if isinstance(raw, str) else {}
+            if not isinstance(records, dict):
+                return {}
+        except Exception:
+            return {}
+        now = time.time()
+        changed = False
+        for model_id, record in list(records.items()):
+            if not isinstance(record, dict):
+                records.pop(model_id, None)
+                changed = True
+                continue
+            # Account billing exhaustion has no time-based expiry. It is cleared
+            # only after a real request succeeds with this same provider API key.
+            if str(record.get("state") or "") == "billing_blocked":
+                continue
+            try:
+                expires_at = float(record.get("expires_at") or 0)
+            except (TypeError, ValueError):
+                expires_at = 0
+            if expires_at <= now:
+                records.pop(model_id, None)
+                changed = True
+        if changed:
+            self.settings.setValue(storage_key, json.dumps(records, ensure_ascii=False))
+        return records
+
+    def record_provider_model_result(
+        self, provider: str, model_id: str, api_key: str, success: bool, error: str = ""
+    ) -> bool:
+        """Persist a user's real request outcome. No background request is ever sent."""
+        provider = str(provider or "").strip().lower()
+        model_id = str(model_id or "").strip()
+        storage_key = self._provider_model_health_key(provider, api_key)
+        if provider not in AI_PROVIDER_LABELS or not model_id or not storage_key:
+            return False
+
+        now = time.time()
+        record = None
+        record_key = model_id
+        if success:
+            record = {"state": "success", "checked_at": now, "expires_at": now + 7 * 86400}
+        else:
+            lowered = str(error or "").lower()
+            billing_exhausted = any(token in lowered for token in (
+                "insufficient_quota",
+                "you have no credits remaining",
+                "no credits remaining",
+                "exceeded your current quota",
+                "billing_hard_limit_reached",
+                "insufficient credits",
+                "insufficient balance",
+                "out of credits",
+                "credit balance is too low",
+            ))
+            retry_match = re.search(
+                r"retry\s+in\s+(?:(\d+(?:\.\d+)?)h)?\s*(?:(\d+(?:\.\d+)?)m)?\s*(?:(\d+(?:\.\d+)?)s)?",
+                lowered,
+            )
+            retry_seconds = 0.0
+            if retry_match:
+                retry_seconds = (
+                    float(retry_match.group(1) or 0) * 3600
+                    + float(retry_match.group(2) or 0) * 60
+                    + float(retry_match.group(3) or 0)
+                )
+            quota_zero = (
+                ("quota exceeded" in lowered or "resource_exhausted" in lowered)
+                and bool(re.search(r"\blimit\s*:\s*0\b", lowered))
+            )
+            model_rejected = any(token in lowered for token in (
+                "model not found", "unknown model", "unsupported model", "invalid model",
+                "not found for api version", "is not supported for", "http 404",
+            ))
+            if billing_exhausted:
+                # A zero account balance blocks every model for this provider/API key.
+                # Keep it account-scoped until a real request succeeds after billing is fixed.
+                record_key = "_account"
+                record = {"state": "billing_blocked", "checked_at": now}
+            elif quota_zero:
+                retry_seconds = min(max(retry_seconds, 60.0), 7 * 86400.0)
+                record = {"state": "quota_blocked", "checked_at": now, "expires_at": now + retry_seconds}
+            elif model_rejected:
+                record = {"state": "model_rejected", "checked_at": now, "expires_at": now + 86400}
+            elif "http 429" in lowered or "rate limit" in lowered or "rate_limit" in lowered:
+                retry_seconds = min(max(retry_seconds, 90.0), 86400.0)
+                record = {"state": "rate_limited", "checked_at": now, "expires_at": now + retry_seconds}
+            elif "http 401" in lowered or "http 403" in lowered or "unauthorized" in lowered:
+                record = {"state": "auth_failed", "checked_at": now, "expires_at": now + 900}
+            else:
+                # Network and server errors do not prove that a model is invalid.
+                return False
+
+        try:
+            raw = self.settings.value(storage_key, "{}", type=str)
+            records = json.loads(raw) if isinstance(raw, str) else {}
+            if not isinstance(records, dict):
+                records = {}
+        except Exception:
+            records = {}
+        if success:
+            records.pop("_account", None)
+        records[record_key] = record
+        if len(records) > 200:
+            records = dict(list(records.items())[-200:])
+        self.settings.setValue(storage_key, json.dumps(records, ensure_ascii=False))
+        self.settings.sync()
+        current_provider = str(self.provider_combo.currentData() or "").strip().lower()
+        if current_provider == provider:
+            self._populate_provider_model_menu(provider)
+        return True
+
+    def _model_status_tooltip(self, status: str, reason: str) -> str:
+        is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
+        messages = {
+            ("available", "request_success"): (
+                "تم إرسال طلب محادثة حقيقي بهذا المفتاح والموديل بنجاح خلال آخر 7 أيام. قد تتغير الحصة أو الصلاحيات لاحقًا.",
+                "A real chat request using this API key and model succeeded within the last 7 days. Quotas and permissions can still change.",
+            ),
+            ("unknown", "catalog_only"): (
+                "الموديل موجود في قائمة المزوّد، لكن لم ينجح طلب محادثة فعلي به بعد. Engo لم يرسل طلب اختبار ولم يستهلك توكنز في الخلفية.",
+                "The model is listed by the provider, but no real chat request has succeeded with it yet. Engo has not sent a probe or used background tokens.",
+            ),
+            ("unavailable", "billing_blocked"): (
+                "رصيد حساب هذا المزوّد غير كافٍ أو نفد. أضف رصيدًا أو حدّث الفوترة من لوحة المزوّد، ثم أرسل طلبًا ناجحًا لإزالة الحالة الحمراء عن النماذج.",
+                "This provider account has insufficient or exhausted credits. Add credits or update billing, then make a successful request to clear the red status from its models.",
+            ),
+            ("unavailable", "quota_blocked"): (
+                "المزوّد أكد أن حصة هذا الموديل مستنفدة حاليًا. ستعود الحالة للمراجعة بعد انتهاء مدة الانتظار التي حددها المزوّد.",
+                "The provider confirmed that this model quota is currently exhausted. Its status returns to unknown after the provider retry window.",
+            ),
+            ("unavailable", "model_rejected"): (
+                "المزوّد رفض هذا الموديل صراحةً في آخر طلب فعلي. راجع اسم الموديل أو صلاحيات مفتاح API.",
+                "The provider explicitly rejected this model in the latest real request. Check the model ID or API-key permissions.",
+            ),
+            ("unknown", "rate_limited"): (
+                "المزوّد فرض حدًا مؤقتًا على الطلبات. هذا لا يؤكد أن الموديل غير مدعوم.",
+                "The provider temporarily rate-limited requests. This does not prove the model is unsupported.",
+            ),
+            ("unknown", "auth_failed"): (
+                "المزوّد رفض مفتاح API أو صلاحياته في آخر محاولة. حالة الموديل غير مؤكدة حتى تصحيح المفتاح.",
+                "The provider rejected the API key or its permissions in the latest attempt. Model availability is unknown until the key is fixed.",
+            ),
+            ("unknown", "plan_unknown"): (
+                "تعذّر تأكيد صلاحية المحادثة النصية من ترخيص Engo حاليًا. النقطة الصفراء تعني أن الحالة غير مؤكدة، وليست رفضًا.",
+                "Engo could not currently verify text-chat access from the signed license. Yellow means unknown, not denied.",
+            ),
+            ("unknown", "catalog_unknown"): (
+                "قائمة المزوّد لم يتم التحقق منها حديثًا. حدّث النماذج من إعدادات مزوّد AI لمعرفة هل هذا النموذج متاح لحساب API الحالي.",
+                "The provider catalog has not been verified recently. Refresh models in AI provider settings to check this API account.",
+            ),
+            ("unavailable", "plan"): (
+                "ميزة المحادثة النصية غير متاحة في خطة Engo الحالية، لذلك تم تمييز النماذج بالأحمر.",
+                "Text chat is not enabled on the current Engo plan, so models are marked unavailable.",
+            ),
+            ("unavailable", "model_not_listed"): (
+                "المزوّد لم يُظهر هذا النموذج في آخر فحص ناجح لحساب API الحالي. قد يكون غير متاح أو غير مدعوم لهذا الحساب؛ ومعرّفات النماذج المخصصة قد تحتاج تحققًا يدويًا.",
+                "The provider did not list this model in the latest successful check for the current API account. It may be unavailable or unsupported for this account; custom model IDs need manual verification.",
+            ),
+        }
+        pair = messages.get((status, reason), messages[("unknown", "catalog_unknown")])
+        return pair[0] if is_ar else pair[1]
+
+    def _populate_provider_model_menu(self, provider: str):
         try:
             raw = self.settings.value(f"ai_available_models_{provider}", "[]", type=str)
-            model_ids = json.loads(raw) if isinstance(raw, str) else list(raw or [])
+            cached_models = json.loads(raw) if isinstance(raw, str) else list(raw or [])
+            if not isinstance(cached_models, list):
+                cached_models = []
         except Exception:
-            model_ids = []
+            cached_models = []
+        catalog_models = [str(item).strip() for item in cached_models if str(item or "").strip()]
         saved = str(self.settings.value(self._chat_model_preference_key(provider),
                      self.settings.value(f"ai_chat_model_{provider}",
                      self.settings.value(f"ai_model_{provider}", AI_DEFAULT_MODELS[provider], type=str), type=str), type=str)
                      or AI_DEFAULT_MODELS[provider]).strip()
+        model_ids = list(catalog_models)
         if not model_ids:
-            model_ids = [AI_DEFAULT_MODELS[provider]]
+            model_ids.append(AI_DEFAULT_MODELS[provider])
+        if saved and saved not in model_ids:
+            model_ids.append(saved)
+
+        plan_access = self._chat_text_plan_access()
+        catalog_verified = self._model_catalog_is_fresh(provider)
+        provider_health = self._load_provider_model_health(provider)
+        self.model_combo.blockSignals(True)
+        self.model_combo.clear()
         for model_id in model_ids:
-            self.model_combo.addItem(str(model_id), str(model_id))
+            status, reason = _classify_provider_model_status(
+                model_id, catalog_models, catalog_verified, plan_access,
+                provider_health.get("_account") or provider_health.get(model_id),
+            )
+            row = self.model_combo.count()
+            self.model_combo.addItem(_provider_model_status_icon(status), model_id, model_id)
+            self.model_combo.setItemData(
+                row, self._model_status_tooltip(status, reason), Qt.ItemDataRole.ToolTipRole
+            )
         idx = self.model_combo.findData(saved)
         if idx >= 0:
             self.model_combo.setCurrentIndex(idx)
         else:
             self.model_combo.setEditText(saved)
         self.model_combo.blockSignals(False)
-        self.model_combo.setToolTip(f"Model for this conversation · {len(model_ids)} model(s) available. Refresh the list in AI provider settings.")
+        is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
+        self.model_combo.setToolTip(
+            "الأخضر: نجح طلب محادثة فعلي بهذا المفتاح والموديل مؤخرًا. الأصفر: الموديل موجود بالقائمة لكن لم ينجح استخدامه بعد، أو عليه تقييد مؤقت. "
+            "الأحمر: الخطة تمنع المحادثة، أو المزوّد رفض الموديل، أو نفد رصيد الحساب/حصة الموديل. نفاد رصيد الحساب يظل أحمر حتى نجاح طلب فعلي بعد الشحن. لا توجد طلبات اختبار في الخلفية."
+            if is_ar else
+            "Green: a real chat request with this API key and model recently succeeded. Yellow: listed but not yet proven by a successful request, or temporarily limited. "
+            "Red: plan access is denied, the provider rejected the model, or account/model quota is exhausted. Account billing status stays red until a real request succeeds after billing is fixed. No background probes are sent."
+        )
+
+    def _refresh_provider_model_menu(self):
+        provider = str(self.provider_combo.currentData() or "deepseek")
+        self._populate_provider_model_menu(provider)
+
+    def _provider_changed(self, _index):
+        provider = str(self.provider_combo.currentData() or "deepseek")
+        self.settings.setValue("ai_provider", provider)
+        self._populate_provider_model_menu(provider)
 
     def _chat_model_changed(self, model_text):
         provider = str(self.provider_combo.currentData() or "deepseek")
