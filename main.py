@@ -1883,12 +1883,8 @@ class MainWindow(QMainWindow):
         elif manual_request:
             is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
             if error:
-                QMessageBox.warning(
-                    self, "Engo",
-                    ("تعذر التحقق من وجود تحديث:
-" if is_ar else "Could not check for updates:
-") + str(error)
-                )
+                message_prefix = "تعذر التحقق من وجود تحديث:" if is_ar else "Could not check for updates:"
+                QMessageBox.warning(self, "Engo", message_prefix + chr(10) + str(error))
             else:
                 QMessageBox.information(
                     self, "Engo",
@@ -1916,17 +1912,12 @@ class MainWindow(QMainWindow):
             "A newer version of ENGO is available. Install it to get the latest improvements and fixes."
         )
         if latest_version:
-            message += (
-                f"
-
-الإصدار الحالي: {current_version}
-الإصدار الجديد: {latest_version}"
-                if is_ar else
-                f"
-
-Current version: {current_version}
-New version: {latest_version}"
-            )
+            if is_ar:
+                message += (chr(10) * 2 + f"الإصدار الحالي: {current_version}"
+                            + chr(10) + f"الإصدار الجديد: {latest_version}")
+            else:
+                message += (chr(10) * 2 + f"Current version: {current_version}"
+                            + chr(10) + f"New version: {latest_version}")
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Information)
         box.setWindowTitle(title)
