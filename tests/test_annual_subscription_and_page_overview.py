@@ -106,7 +106,18 @@ def test_subscription_periods_are_four_selectable_side_by_side_cards():
 def test_payment_button_shows_busy_state_and_restores_after_request():
     ui = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
     assert 'self.payment_button.setText(self._tr("جاري إنشاء طلب الدفع…", "Creating payment request…"))' in ui
-    assert 'self.period_group.setEnabled(False)' in ui
-    assert 'self.period_group.setEnabled(True)' in ui
+    assert 'self._set_period_cards_enabled(False)' in ui
+    assert 'self._set_period_cards_enabled(True)' in ui
+    assert 'def _set_period_cards_enabled(self, enabled: bool):' in ui
+    assert 'for button in self.period_cards.values():' in ui
+    assert 'button.setEnabled(bool(enabled))' in ui
+    assert 'self.period_group.setEnabled(' not in ui
     assert 'self.payment_button.setText(self._payment_button_text)' in ui
     assert 'self._worker.finished.connect(self._payment_worker_finished)' in ui
+
+
+def test_subscription_period_cards_use_compact_height():
+    ui = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
+    assert "QPushButton#periodCard" in ui
+    assert "padding:4px 2px; min-height:46px; font-size:8pt;" in ui
+    assert "button.setMinimumHeight(48)" in ui
