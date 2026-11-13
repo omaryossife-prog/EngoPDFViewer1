@@ -29,6 +29,7 @@ from engo_base import (
     is_supported_document,
     normalize_ui_theme,
     resource_path,
+    google_brand_icon,
 )
 from engo_document import (
     DocumentCanvas,
@@ -518,19 +519,23 @@ class ThemePreviewButton(QToolButton):
 
 
 class FirstRunSetupDialog(QDialog):
-    """Mandatory two-step setup shown only when Engo has no saved local settings."""
-    def __init__(self, parent=None):
+    """Required three-step setup for a new or reset Engo profile."""
+    google_sign_in_requested = pyqtSignal()
+
+    def __init__(self, parent=None, is_premium: bool = False):
         super().__init__(parent)
         self.selected_language = None
         self.selected_theme = None
+        self.account_choice = ""
+        self._is_premium = bool(is_premium)
         self._preview_theme = "dark"
         self._theme_transition_animation = None
         self.setProperty("engoOwnThemePreview", True)
         self.setObjectName("firstRunSetupDialog")
         self.setWindowTitle("Welcome to Engo · First-time setup")
         self.setModal(True)
-        self.setMinimumSize(620, 500)
-        self.resize(700, 560)
+        self.setMinimumSize(620, 540)
+        self.resize(700, 600)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowCloseButtonHint)
 
         root = QVBoxLayout(self)
@@ -550,7 +555,7 @@ class FirstRunSetupDialog(QDialog):
         copy.setSpacing(2)
         title = QLabel("Welcome to (Engo) مرحبًا بك في ")
         title.setObjectName("firstRunTitle")
-        subtitle = QLabel("Let's set up your study space in two quick steps")
+        subtitle = QLabel("Let's set up your study space in three quick steps")
         subtitle.setObjectName("firstRunSubtitle")
         copy.addWidget(title)
         copy.addWidget(subtitle)
@@ -558,7 +563,7 @@ class FirstRunSetupDialog(QDialog):
         hero_layout.addLayout(copy, 1)
         root.addWidget(hero)
 
-        self.step_label = QLabel("STEP 1 OF 2  ·  LANGUAGE")
+        self.step_label = QLabel("STEP 1 OF 3  ·  LANGUAGE")
         self.step_label.setObjectName("firstRunStep")
         root.addWidget(self.step_label)
         self.stack = QStackedWidget(self)
@@ -603,7 +608,7 @@ class FirstRunSetupDialog(QDialog):
         language_layout.addStretch(1)
         self.stack.addWidget(language_page)
 
-        # Step two: visual theme selection.
+        # Step two: the same free/Premium theme gate used by Application Settings.
         theme_page = QWidget()
         theme_page.setObjectName("firstRunThemePage")
         theme_page.setAutoFillBackground(True)
@@ -631,9 +636,19 @@ class FirstRunSetupDialog(QDialog):
         theme_labels = {"light": "Light", "dark": "Dark", "midnight": "Midnight",
                         "grass": "Grass", "pink": "Pink", "orange": "Orange"}
         for position, value in enumerate(("light", "dark", "midnight", "grass", "pink", "orange")):
-            card = ThemePreviewButton(value, theme_labels[value], theme_page, QSize(142, 80))
-            card.clicked.connect(lambda _checked=False, key=value: self._choose_theme(key))
-            self.theme_group.addButton(card)
+            is_locked = value not in FREE_UI_THEMES and not self._is_premium
+            card = ThemePreviewButton(
+                value, theme_labels[value], theme_page, QSize(142, 80), locked=is_locked
+            )
+            if is_locked:
+                card.setToolTip(
+                    "ثيم Premium · يتطلب اشتراكًا مميزًا" if self._preview_theme == "ar"
+                    else "Premium theme · requires a Premium subscription"
+                )
+                card.clicked.connect(lambda _checked=False, key=value: self._show_theme_locked_prompt(key))
+            else:
+                card.clicked.connect(lambda _checked=False, key=value: self._choose_theme(key))
+                self.theme_group.addButton(card)
             self.theme_cards[value] = card
             theme_cards.addWidget(card, position // 3, position % 3)
         for column in range(3):
@@ -644,6 +659,42 @@ class FirstRunSetupDialog(QDialog):
         theme_layout.addWidget(self.theme_tip)
         theme_layout.addStretch(1)
         self.stack.addWidget(theme_page)
+
+        # Step three: sign in with Google or continue as a guest.
+        account_page = QWidget()
+        account_page.setObjectName("firstRunAccountPage")
+        account_page.setAutoFillBackground(True)
+        self.account_page = account_page
+        account_layout = QVBoxLayout(account_page)
+        account_layout.setContentsMargins(8, 8, 8, 8)
+        account_layout.setSpacing(14)
+        self.account_heading = QLabel("Sign in to sync your Engo account")
+        self.account_heading.setObjectName("firstRunPageTitle")
+        self.account_heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.account_caption = QLabel(
+            "Sign in with Google to manage your subscription and linked devices. "
+            "You can also continue without an account."
+        )
+        self.account_caption.setObjectName("firstRunPageCaption")
+        self.account_caption.setWordWrap(True)
+        self.account_caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        account_layout.addStretch(1)
+        account_layout.addWidget(self.account_heading)
+        account_layout.addWidget(self.account_caption)
+        self.google_signin_button = QPushButton("Continue with Google")
+        self.google_signin_button.setObjectName("firstRunGoogleButton")
+        self.google_signin_button.setIcon(google_brand_icon(22))
+        self.google_signin_button.setIconSize(QSize(22, 22))
+        self.google_signin_button.setMinimumHeight(48)
+        self.google_signin_button.clicked.connect(self.google_sign_in_requested.emit)
+        account_layout.addWidget(self.google_signin_button, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.guest_button = QPushButton("Continue as guest")
+        self.guest_button.setObjectName("firstRunGuestButton")
+        self.guest_button.setMinimumHeight(44)
+        self.guest_button.clicked.connect(self._continue_as_guest)
+        account_layout.addWidget(self.guest_button, 0, Qt.AlignmentFlag.AlignHCenter)
+        account_layout.addStretch(1)
+        self.stack.addWidget(account_page)
 
         footer = QHBoxLayout()
         self.back_button = QPushButton("Back")
@@ -668,11 +719,30 @@ class FirstRunSetupDialog(QDialog):
         self.next_button.setEnabled(True)
 
     def _choose_theme(self, theme):
-        self.selected_theme = normalize_ui_theme(theme)
+        value = normalize_ui_theme(theme)
+        if value not in FREE_UI_THEMES and not self._is_premium:
+            self._show_theme_locked_prompt(value)
+            return
+        self.selected_theme = value
         for key, card in self.theme_cards.items():
-            card.setChecked(key == self.selected_theme)
+            if not card.locked:
+                card.setChecked(key == self.selected_theme)
         self.next_button.setEnabled(True)
         self._animate_theme_preview(self.selected_theme)
+
+    def _show_theme_locked_prompt(self, theme):
+        is_ar = self.selected_language == "ar"
+        QMessageBox.information(
+            self,
+            "ثيم Premium" if is_ar else "Premium theme",
+            "هذا الثيم متاح مع اشتراك Engo Premium. يمكنك اختيار أحد الثيمات المجانية الآن، أو الترقية لاحقًا من الحساب."
+            if is_ar else
+            "This theme is available with Engo Premium. Choose one of the free themes now, or upgrade later from your account.",
+        )
+
+    def _continue_as_guest(self):
+        self.account_choice = "guest"
+        self.accept()
 
     def _animate_theme_preview(self, theme):
         """Quickly fade the wizard while applying the chosen live theme preview."""
@@ -706,7 +776,7 @@ class FirstRunSetupDialog(QDialog):
 
     def _apply_wizard_language(self, language):
         is_ar = language == "ar"
-        self.step_label.setText("الخطوة ١ من ٢ · اللغة" if is_ar else "STEP 1 OF 2  ·  LANGUAGE")
+        self.step_label.setText("الخطوة ١ من ٣ · اللغة" if is_ar else "STEP 1 OF 3  ·  LANGUAGE")
         self.language_heading.setText("اختر لغة واجهة Engo" if is_ar else "Choose your interface language")
         self.language_caption.setText("يمكنك تغيير اللغة لاحقًا من الإعدادات." if is_ar else "You can change this later in Settings.")
         # Keep each language card in its own language, without duplicate headings.
@@ -720,10 +790,10 @@ class FirstRunSetupDialog(QDialog):
             return
         is_ar = self.selected_language == "ar"
         self.stack.setCurrentIndex(1)
-        self.step_label.setText("الخطوة ٢ من ٢ · المظهر" if is_ar else "STEP 2 OF 2  ·  APPEARANCE")
+        self.step_label.setText("الخطوة ٢ من ٣ · المظهر" if is_ar else "STEP 2 OF 3  ·  APPEARANCE")
         self.theme_heading.setText("اختر مظهر Engo" if is_ar else "Choose your Engo theme")
         self.theme_caption.setText("شاهد معاينة كل ثيم واختر الشكل الأنسب لك." if is_ar else "Preview each theme and choose the look you prefer.")
-        self.theme_tip.setText("يمكنك تغيير الثيم في أي وقت من الإعدادات." if is_ar else "You can change the theme any time from Settings.")
+        self.theme_tip.setText("الثيمات المقفولة تحتاج اشتراك Premium. يمكنك تغيير الثيم لاحقًا من الإعدادات." if is_ar else "Locked themes require Premium. You can change your theme later in Settings.")
         theme_labels = {"light": ("فاتح" if is_ar else "Light"),
                         "dark": ("داكن" if is_ar else "Dark"),
                         "midnight": ("منتصف الليل" if is_ar else "Midnight"),
@@ -735,30 +805,52 @@ class FirstRunSetupDialog(QDialog):
             card.setLayoutDirection(Qt.LayoutDirection.RightToLeft if is_ar else Qt.LayoutDirection.LeftToRight)
         self.back_button.setText("رجوع" if is_ar else "Back")
         self.back_button.show()
-        self.next_button.setText("ابدأ استخدام Engo" if is_ar else "Start using Engo")
+        self.next_button.show()
+        self.next_button.setText("متابعة" if is_ar else "Continue")
         self.next_button.setEnabled(bool(self.selected_theme))
+
+    def _go_to_account(self):
+        if not (self.selected_language and self.selected_theme):
+            return
+        is_ar = self.selected_language == "ar"
+        self.stack.setCurrentIndex(2)
+        self.step_label.setText("الخطوة ٣ من ٣ · الحساب" if is_ar else "STEP 3 OF 3  ·  ACCOUNT")
+        self.account_heading.setText("سجّل الدخول إلى حساب Engo" if is_ar else "Sign in to your Engo account")
+        self.account_caption.setText(
+            "سجّل باستخدام Google لإدارة اشتراكك والأجهزة المرتبطة، أو تابع كزائر بدون حساب."
+            if is_ar else
+            "Sign in with Google to manage your subscription and linked devices, or continue without an account."
+        )
+        self.google_signin_button.setText("المتابعة باستخدام Google" if is_ar else "Continue with Google")
+        self.guest_button.setText("المتابعة كزائر" if is_ar else "Continue as guest")
+        self.back_button.setText("رجوع" if is_ar else "Back")
+        self.back_button.show()
+        self.next_button.hide()
 
     def _on_next_clicked(self):
         if self.stack.currentIndex() == 0:
             self._go_to_theme()
-        elif self.selected_language and self.selected_theme:
-            self.accept()
+        elif self.stack.currentIndex() == 1:
+            self._go_to_account()
 
     def _go_back(self):
-        if self.stack.currentIndex() == 1:
+        is_ar = self.selected_language == "ar"
+        if self.stack.currentIndex() == 2:
+            self._go_to_theme()
+        elif self.stack.currentIndex() == 1:
             self.stack.setCurrentIndex(0)
             self.back_button.hide()
-            self.next_button.setText("متابعة" if self.selected_language == "ar" else "Continue")
+            self.next_button.show()
+            self.next_button.setText("متابعة" if is_ar else "Continue")
             self.next_button.setEnabled(bool(self.selected_language))
             self._apply_wizard_language(self.selected_language or "en")
-            self.step_label.setText("الخطوة ١ من ٢ · اللغة" if self.selected_language == "ar" else "STEP 1 OF 2  ·  LANGUAGE")
 
     def values(self):
         return {"interface_language": self.selected_language or "en", "ui_theme": self.selected_theme or "dark"}
 
     def reject(self):
         # This is a required first-run step; do not silently continue with an
-        # unconfigured interface. The user can finish setup with two selections.
+        # unconfigured interface. The user can finish setup with the guest choice.
         return
 
     def closeEvent(self, event):
@@ -769,8 +861,6 @@ class FirstRunSetupDialog(QDialog):
         theme = normalize_ui_theme(theme or self._preview_theme)
         self._preview_theme = theme
         c = engo_ui_theme_tokens(theme)
-        # Accent hues differ in brightness across palettes. Use the higher-contrast
-        # foreground for primary actions instead of forcing white on pale accents.
         accent_text = "#ffffff" if theme == "light" else "#17202b"
 
         palette = QPalette(self.palette())
@@ -792,7 +882,7 @@ class FirstRunSetupDialog(QDialog):
             palette.setColor(role, QColor(color))
         self.setPalette(palette)
         self.setAutoFillBackground(True)
-        for widget in (self.stack, self.language_page, self.theme_page, self.theme_cards_widget):
+        for widget in (self.stack, self.language_page, self.theme_page, self.theme_cards_widget, self.account_page):
             widget.setPalette(palette)
             widget.setAutoFillBackground(True)
 
@@ -800,7 +890,7 @@ class FirstRunSetupDialog(QDialog):
             QDialog#firstRunSetupDialog {{ background:{c['window']}; color:{c['text']}; }}
             QDialog#firstRunSetupDialog QWidget {{ color:{c['text']}; }}
             QStackedWidget#firstRunStack {{ background:{c['panel']}; border:1px solid {c['border']}; border-radius:12px; }}
-            QWidget#firstRunLanguagePage, QWidget#firstRunThemePage, QWidget#firstRunThemeCards {{
+            QWidget#firstRunLanguagePage, QWidget#firstRunThemePage, QWidget#firstRunThemeCards, QWidget#firstRunAccountPage {{
                 background:{c['panel']}; color:{c['text']};
             }}
             QFrame#firstRunHero {{ background:{c['panel_alt']}; border:1px solid {c['border']};
@@ -831,13 +921,16 @@ class FirstRunSetupDialog(QDialog):
             QPushButton#firstRunPrimary:hover:enabled {{ background:{c['accent_hover']}; color:{accent_text}; }}
             QPushButton#firstRunPrimary:disabled {{ background:{c['raised']}; color:{c['muted']};
                 border-color:{c['border']}; }}
-            QPushButton#firstRunSecondary {{ background:{c['raised']}; color:{c['text']};
-                border:1px solid {c['border']}; border-radius:8px; padding:8px 15px;
-                min-height:34px; font-weight:700; }}
-            QPushButton#firstRunSecondary:hover {{ background:{c['hover']}; border-color:{c['accent']}; }}
+            QPushButton#firstRunSecondary, QPushButton#firstRunGuestButton {{ background:{c['raised']}; color:{c['text']};
+                border:1px solid {c['border']}; border-radius:9px; padding:8px 18px;
+                min-width:230px; min-height:34px; font-weight:750; }}
+            QPushButton#firstRunSecondary:hover, QPushButton#firstRunGuestButton:hover {{
+                background:{c['hover']}; border-color:{c['accent']}; }}
+            QPushButton#firstRunGoogleButton {{ background:#ffffff; color:#3c4043;
+                border:1px solid #dadce0; border-radius:9px; padding:5px 22px;
+                min-width:230px; min-height:40px; font-size:10pt; font-weight:750; }}
+            QPushButton#firstRunGoogleButton:hover {{ background:#f8f9fa; border-color:#bdc1c6; }}
         """)
-        # Keep the real Windows caption and native window controls in sync with
-        # the same live preview palette (Qt stylesheets cannot paint the caption).
         _engo_apply_windows_caption_theme(self, theme)
         QTimer.singleShot(80, lambda obj=self, current=theme:
                           _engo_apply_windows_caption_theme(obj, current))
