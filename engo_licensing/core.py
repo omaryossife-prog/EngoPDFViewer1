@@ -1218,11 +1218,11 @@ class LicenseService:
             return self._free_state(str(exc), authenticated=bool(self._session))
 
     def consume_feature(self, feature_key: str, amount: int = 1, scope_key: str | None = None) -> dict[str, Any]:
-        """Reserve metered access on the server. Never fall back to local access.
+        """Reserve metered access on the server, with a narrow offline tag exception.
 
-        Every item in KNOWN_FEATURES requires an authenticated Supabase session
-        and a successful, signed server decision. Network, configuration, device,
-        signature, and quota failures are all deny-by-default.
+        All metered features require a signed server decision except tags and
+        tag_units, which may use a protected last-verified entitlement and usage
+        snapshot scoped to the current PDF. No other feature has an offline path.
         """
         feature_key = str(feature_key or "").strip()
         if feature_key not in KNOWN_FEATURES:
