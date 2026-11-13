@@ -1338,12 +1338,9 @@ class AccountDialog(QDialog):
         worker = ServiceActionWorker(action, app)
         self._worker = worker
 
-        def deliver_result(result, error):
-            if self._worker is worker:
-                self._worker = None
-            on_done(result, error)
-
-        worker.completed.connect(deliver_result)
+        # Connect to the dialog's QObject slot/method directly so Qt queues
+        # completion back to the GUI thread (never mutate widgets in QThread.run).
+        worker.completed.connect(on_done)
         worker.finished.connect(worker.deleteLater)
         worker.start()
 
@@ -1382,6 +1379,7 @@ class AccountDialog(QDialog):
                 self.service._free_state("Account is signed in but remains active on another device", authenticated=True)
                 self._render_state()
                 self._set_busy(False, self.service.state.reason)
+                self.login_failed.emit(self.service.state.reason)
             return
         QTimer.singleShot(80, lambda: self._run_action(self.service.heartbeat, self._action_completed))
 
