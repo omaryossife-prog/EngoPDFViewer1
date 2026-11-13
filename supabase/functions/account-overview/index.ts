@@ -27,8 +27,9 @@ Deno.serve(async (req: Request) => {
     // Scope keys are content hashes, not file names or paths.
     const tagUsage: Array<{ feature_key: string; scope_key: string; used: number }> = [];
     let tagUsageAvailable = true;
+    let tagUsageComplete = false;
     try {
-      for (let offset = 0; offset < 100000; offset += 1000) {
+      for (let offset = 0; offset <= 100000; offset += 1000) {
         const { data, error } = await admin.from("usage_counters")
           .select("feature_key,scope_key,used")
           .eq("user_id", user.id)
@@ -39,13 +40,23 @@ Deno.serve(async (req: Request) => {
           .range(offset, offset + 999);
         if (error) throw error;
         const page = data ?? [];
+        if (offset === 100000) {
+          // A non-empty sentinel page means the snapshot exceeded the safety cap.
+          if (page.length > 0) tagUsageAvailable = false;
+          else tagUsageComplete = true;
+          break;
+        }
         tagUsage.push(...page.map((row) => ({
           feature_key: String(row.feature_key),
           scope_key: String(row.scope_key ?? ""),
           used: Number(row.used ?? 0),
         })));
-        if (page.length < 1000) break;
+        if (page.length < 1000) {
+          tagUsageComplete = true;
+          break;
+        }
       }
+      if (!tagUsageComplete) tagUsageAvailable = false;
     } catch {
       // Account details remain available even if quota history cannot be loaded.
       // The client will keep its previous encrypted snapshot or deny offline use.
