@@ -13,6 +13,7 @@ import urllib.error
 import urllib.parse
 import socket
 import threading
+import time
 from pathlib import Path
 import pymupdf as fitz  # use the maintained import name; keep fitz alias for existing calls
 from PIL import Image, ImageOps, ImageChops, ImageFilter
@@ -1647,6 +1648,7 @@ class AISettingsDialog(QDialog):
     def _refresh_provider_models(self, provider):
         key = self.key_edits[provider].text().strip()
         if not key:
+            self.settings.setValue(f"ai_models_catalog_verified_{provider}", False)
             self.model_status[provider].setProperty("engoAiSourceText", "Enter an API key above, then refresh.")
             self.model_status[provider].setText(self._ai_tr("Enter an API key above, then refresh."))
             return
@@ -1654,6 +1656,7 @@ class AISettingsDialog(QDialog):
         if old is not None and old.isRunning():
             return
         button = self.model_refresh_buttons[provider]
+        self.settings.setValue(f"ai_models_catalog_verified_{provider}", False)
         button.setEnabled(False)
         button.setText(self._ai_tr("Loading…"))
         self.model_status[provider].setProperty("engoAiSourceText", "Contacting provider…")
@@ -1667,11 +1670,14 @@ class AISettingsDialog(QDialog):
 
     def _on_models_loaded(self, provider, model_ids):
         self.settings.setValue(f"ai_available_models_{provider}", json.dumps(list(model_ids)))
+        self.settings.setValue(f"ai_models_catalog_verified_{provider}", True)
+        self.settings.setValue(f"ai_models_catalog_checked_at_{provider}", time.time())
         source = f"Found {len(model_ids)} available models. Save settings to use them in chat."
         self.model_status[provider].setProperty("engoAiSourceText", source)
         self.model_status[provider].setText(self._ai_tr(source))
 
     def _on_models_failed(self, provider, message):
+        self.settings.setValue(f"ai_models_catalog_verified_{provider}", False)
         source = f"Could not load models: {message}"
         self.model_status[provider].setProperty("engoAiSourceText", source)
         self.model_status[provider].setText(self._ai_tr(source))
