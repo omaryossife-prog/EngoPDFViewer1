@@ -688,11 +688,12 @@ class PlansDialog(QDialog):
             amount_value = 0.0
         prices_received = isinstance(self.account_data.get("prices"), list)
         if active and amount_value > 0:
-            self.price_label.setText(f"{amount_value:,.2f} {currency}")
+            formatted_price = f"{amount_value:,.2f} {currency}"
+            self.price_label.setText(self._tr(f"السعر: {formatted_price}", f"Price: {formatted_price}"))
         elif not prices_received:
-            self.price_label.setText(self._tr("بيانات السعر لم تصل", "Price data not loaded"))
+            self.price_label.setText(self._tr("السعر: بيانات السعر لم تصل", "Price: data not loaded"))
         else:
-            self.price_label.setText(self._tr("السعر لم يحدد بعد", "Price not configured yet"))
+            self.price_label.setText(self._tr("السعر: لم يحدد بعد", "Price: not configured yet"))
         self.payment_button.setEnabled(active and amount_value > 0 and self.service.state.authenticated)
 
     def _local_qr_pixmap(self) -> QPixmap:
