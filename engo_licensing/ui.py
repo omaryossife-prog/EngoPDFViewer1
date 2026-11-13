@@ -919,7 +919,7 @@ class SignInWelcomeDialog(QDialog):
         self.setStyleSheet(f"""
             QDialog#engoSignInWelcome {{ background:{t['window']}; color:{t['text']}; }}
             QLabel {{ color:{t['text']}; background:transparent; }}
-            QLabel#signinWelcomeName {{ font-size:20pt; font-weight:850; }}
+            QLabel#signinWelcomeName {{ color:{t['text']}; font-size:20pt; font-weight:850; }}
             QLabel#signinWelcomeSub {{ color:{t['muted']}; font-size:10pt; }}
             QLabel#signinWelcomeEmail {{ color:{t['muted']}; font-size:9pt; }}
             QLabel#signinWelcomeAvatar {{ background:{t['panel_alt']}; color:{t['accent']};
@@ -950,6 +950,7 @@ class SignInWelcomeDialog(QDialog):
 
         self.name_label = QLabel((f"أهلًا بك يا {name}" if is_ar else f"Welcome, {name}!"))
         self.name_label.setObjectName("signinWelcomeName")
+        self.name_label.setStyleSheet(f"color: {t['text']};")
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.name_label.setWordWrap(True)
         root.addWidget(self.name_label)
