@@ -1569,7 +1569,15 @@ class MainWindow(QMainWindow):
         longer Premium (subscription ended, was revoked, or device/account lost
         access) — instead of letting it keep applying until Settings is reopened."""
         service = getattr(self, "license_service", None)
-        if service is None or service.state.is_premium:
+        if service is None:
+            return
+        state = service.state
+        app_theme_entitlement = (getattr(state, "entitlements", {}) or {}).get("app_themes", {})
+        free_can_use_app_themes = bool(
+            getattr(state, "free_unlimited_mode", False)
+            or (isinstance(app_theme_entitlement, dict) and app_theme_entitlement.get("enabled"))
+        )
+        if state.is_premium or free_can_use_app_themes:
             return
         is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
         changed_theme = False
@@ -1589,12 +1597,17 @@ class MainWindow(QMainWindow):
                         and str(values.get("ink", "")).lower() == current_ink):
                     fallback = PageThemeDialog.BUILTIN_THEMES["Dark"]
                     self.bg_color, self.ink_color = fallback["bg"], fallback["ink"]
+                    # Premium page appearance must not remain applied after downgrade.
+                    self.dark_mode = False
+                    self.smart_page_theme = False
                     self.settings.setValue("page_bg", self.bg_color)
                     self.settings.setValue("page_ink", self.ink_color)
+                    self.settings.setValue("dark_mode", False)
+                    self.settings.setValue("smart_page_theme", False)
                     for i in range(self.tabs.count()):
                         tab = self.tabs.widget(i)
                         if isinstance(tab, DocumentTab):
-                            tab.set_theme(self.dark_mode, self.bg_color, self.ink_color, self.smart_page_theme)
+                            tab.set_theme(False, self.bg_color, self.ink_color, False)
                     changed_page_theme = True
                     break
         except Exception:
@@ -10713,8 +10726,14 @@ def main():
         window = MainWindow(license_service=service)
         if getattr(window, "_needs_first_run_setup", False):
             splash.hide()
+            _first_run_entitlement = (getattr(service.state, "entitlements", {}) or {}).get("app_themes", {})
+            _first_run_free_theme_access = bool(
+                getattr(service.state, "free_unlimited_mode", False)
+                or (isinstance(_first_run_entitlement, dict) and _first_run_entitlement.get("enabled"))
+            )
             first_run = FirstRunSetupDialog(
-                is_premium=bool(getattr(service.state, "is_premium", False))
+                is_premium=bool(getattr(service.state, "is_premium", False)),
+                free_theme_access=_first_run_free_theme_access,
             )
 
             def request_first_run_google_sign_in():
