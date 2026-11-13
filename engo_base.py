@@ -139,6 +139,35 @@ def normalize_ui_theme(value) -> str:
     return "dark"
 
 
+def google_brand_icon(size: int = 20) -> QIcon:
+    """Create a compact Google-colour G mark without relying on a remote image."""
+    size = max(16, int(size))
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    margin = max(2, round(size * 0.14))
+    ring = QRect(margin, margin, size - margin * 2, size - margin * 2)
+    pen_width = max(2.2, size * 0.18)
+    for color, start_angle in (
+        ("#EA4335", 45),
+        ("#FBBC05", 135),
+        ("#34A853", 225),
+        ("#4285F4", 315),
+    ):
+        pen = QPen(QColor(color), pen_width, Qt.PenStyle.SolidLine,
+                   Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.drawArc(ring, start_angle * 16, 90 * 16)
+    # The right-facing blue bar turns the multicolour ring into Google's G.
+    painter.setPen(QPen(QColor("#4285F4"), pen_width, Qt.PenStyle.SolidLine,
+                        Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+    center_y = size // 2
+    painter.drawLine(QPoint(ring.center().x(), center_y), QPoint(size - margin, center_y))
+    painter.end()
+    return QIcon(pixmap)
+
+
 def engo_theme_qpalette(base_palette: QPalette, theme) -> QPalette:
     """Build the complete Qt palette from the same semantic tokens used by QSS."""
     tokens = engo_ui_theme_tokens(theme)
