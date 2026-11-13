@@ -171,3 +171,11 @@ def test_guest_limited_and_unavailable_features_require_sign_in():
     assert "self.open_account_dialog()" in gate
     assert "service.consume_feature(feature_key" in gate
     assert 'result.get("tracked") is True' in gate
+
+
+
+def test_other_file_format_entitlement_is_seeded_for_free_and_premium():
+    migration = (ROOT / "supabase" / "migrations" / "20261113150000_add_premium_only_other_file_formats.sql").read_text(encoding="utf-8")
+    assert "('free', 'open_other_formats', false, 0, null, 'lifetime')" in migration
+    assert "('premium', 'open_other_formats', true, null, null, 'lifetime')" in migration
+    assert "on conflict (plan_id, feature_key) do update" in migration.lower()
