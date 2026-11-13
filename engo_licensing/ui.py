@@ -1243,10 +1243,12 @@ class AccountDialog(QDialog):
         sc_lay.setContentsMargins(0, 4, 0, 4)
         from engo_base import google_brand_icon
         self.signin_button = QPushButton(
-            "تسجيل الدخول باستخدام" if is_ar
+            "تسجيل الدخول باستخدام Google" if is_ar
             else "Sign in with Google"
         )
         self.signin_button.setObjectName("acctGoogleBtn")
+        # Keep the Google mark on the physical left in both interface languages.
+        self.signin_button.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         self.signin_button.setIcon(google_brand_icon(22))
         self.signin_button.setIconSize(QSize(22, 22))
         self.signin_button.clicked.connect(self._start_login)
