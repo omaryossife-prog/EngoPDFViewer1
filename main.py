@@ -1857,6 +1857,9 @@ class MainWindow(QMainWindow):
                 else Qt.LayoutDirection.LeftToRight
             )
             button.setFixedHeight(46)
+            button.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+            )
             button.setToolTip(tooltip)
             button.setAccessibleName(label)
             button.setStyleSheet(
