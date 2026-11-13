@@ -6027,7 +6027,7 @@ class MainWindow(QMainWindow):
             Qt.LayoutDirection.RightToLeft if is_ar
             else Qt.LayoutDirection.LeftToRight
         )
-        dialog.setFixedSize(330, 58)
+        dialog.setFixedSize(320, 46)
 
         outer_layout = QVBoxLayout(dialog)
         outer_layout.setContentsMargins(1, 1, 1, 1)
@@ -6036,7 +6036,7 @@ class MainWindow(QMainWindow):
         card = QFrame(dialog)
         card.setObjectName("engoBusyCard")
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(15, 7, 15, 7)
+        card_layout.setContentsMargins(14, 5, 14, 5)
         card_layout.setSpacing(4)
 
         label = QLabel(message, card)
