@@ -1095,7 +1095,7 @@ class AccountDialog(QDialog):
         sc_lay.setContentsMargins(0, 4, 0, 4)
         from engo_base import google_brand_icon
         self.signin_button = QPushButton(
-            "تسجيل الدخول باستخدام Google" if is_ar
+            "تسجيل الدخول باستخدام" if is_ar
             else "Sign in with Google"
         )
         self.signin_button.setObjectName("acctGoogleBtn")
