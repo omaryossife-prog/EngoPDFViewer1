@@ -10593,6 +10593,11 @@ def main():
                     parent=first_run,
                     theme=first_run.selected_theme or ui_theme,
                 )
+                if not service.state.authenticated:
+                    # Start OAuth as soon as the user chooses Google on the
+                    # welcome page; AccountDialog handles activation/heartbeat
+                    # and remains available to show any sign-in error or conflict.
+                    QTimer.singleShot(0, account_dialog._start_login)
                 account_dialog.exec()
                 if service.state.authenticated:
                     first_run.account_choice = "google"
