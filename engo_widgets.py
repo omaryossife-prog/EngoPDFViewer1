@@ -1004,6 +1004,12 @@ def make_icon(name: str, color: str = "#b7c6dc", size: int = 18) -> QIcon:
         painter.drawRoundedRect(QRectF(3, 3, 18, 13), 2, 2)
         path([(10, 6.5), (10, 12.5), (15, 9.5)], close=True, fill=True)
         line(12, 16, 12, 20); line(8, 20, 16, 20)
+    elif name == "update":
+        # Clear download-to-tray mark: instantly recognizable as a new app release.
+        line(12, 3, 12, 13)
+        path([(8, 9), (12, 13), (16, 9)])
+        path([(4, 15), (4, 20), (20, 20), (20, 15)])
+        line(8, 16.5, 8, 18.5); line(16, 16.5, 16, 18.5)
     elif name in ("pin", "pin_off"):
         path([(8, 4), (16, 4), (15, 9), (18, 12), (18, 14), (6, 14), (6, 12), (9, 9), (8, 4)])
         line(12, 14, 12, 22)
