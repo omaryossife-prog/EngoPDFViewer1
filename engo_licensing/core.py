@@ -1012,7 +1012,7 @@ class LicenseService:
     def request_subscription_payment(self, billing_period: str) -> dict[str, Any]:
         """Create a pending manual-QR subscription request using server-side pricing."""
         billing_period = str(billing_period or "").strip().lower()
-        if billing_period not in {"monthly", "quarterly", "semiannual"}:
+        if billing_period not in {"monthly", "quarterly", "semiannual", "annual"}:
             raise LicenseError("Invalid subscription period")
         return self._authenticated_edge("subscription-request", {"billing_period": billing_period})
 
