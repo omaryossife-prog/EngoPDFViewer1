@@ -250,3 +250,63 @@ def test_startup_splash_can_be_cancelled_before_main_window_opens():
     assert 'if launch_state["started"] or launch_state["cancelled"]:' in main
     assert 'if launch_state["cancelled"]:' in main
 
+def test_text_chat_usage_is_reserved_until_the_provider_response_is_settled():
+    usage = (ROOT / "supabase" / "functions" / "usage-consume" / "index.ts").read_text(encoding="utf-8")
+    core = (ROOT / "engo_licensing" / "core.py").read_text(encoding="utf-8")
+    migration = next((ROOT / "supabase" / "migrations").glob("*reserve_and_refund_failed_text_chat.sql")).read_text(encoding="utf-8")
+    assert 'feature === "text_chat"' in usage
+    assert 'admin.rpc("reserve_text_chat_usage_v1"' in usage
+    assert 'reservation_id: feature === "text_chat" ? (usage?.reservation_id ?? null) : null' in usage
+    assert 'response.get("reservation_id")' in core
+    assert '"reservation_id": reservation_id or None' in core
+    assert "usage_reservations" in migration
+    assert "status = 'pending'" in migration
+    assert "reserve_text_chat_usage_v1" in migration
+    assert "settle_text_chat_usage_v1" in migration
+    assert "status = 'refunded'" in migration
+    assert "greatest(0, used - v_reservation.amount)" in migration
+
+
+def test_text_chat_settlement_endpoint_is_authenticated_and_one_time():
+    endpoint = (ROOT / "supabase" / "functions" / "usage-settle" / "index.ts").read_text(encoding="utf-8")
+    migration = next((ROOT / "supabase" / "migrations").glob("*reserve_and_refund_failed_text_chat.sql")).read_text(encoding="utf-8")
+    assert "authenticatedUser(req)" in endpoint
+    assert 'requireText(body, "reservation_id", 64)' in endpoint
+    assert 'outcome !== "success" && outcome !== "failure"' in endpoint
+    assert 'admin.rpc("settle_text_chat_usage_v1"' in endpoint
+    assert "status <> 'pending'" in migration
+    assert "already_settled" in migration
+    assert "revoke all on function public.settle_text_chat_usage_v1" in migration
+    assert "to service_role" in migration
+
+
+def test_ai_chat_commits_success_and_refunds_provider_errors_or_cancellation():
+    host = (ROOT / "engo_main.py").read_text(encoding="utf-8")
+    core = (ROOT / "engo_licensing" / "core.py").read_text(encoding="utf-8")
+    assert "continuation(result.get(\"reservation_id\"))" in host
+    assert "_usage_reservation_id" in host
+    assert '_settle_ai_usage_reservation(worker, "success")' in host
+    assert '_settle_ai_usage_reservation(self._ai_worker, "failure")' in host
+    assert "worker._engo_usage_reservation_id = \"\"" in host
+    assert "ServiceActionWorker(" in host
+    assert "pending_text_chat_settlements_json" in host
+    assert "def settle_text_chat_usage(" in core
+    assert 'self._authenticated_edge("usage-settle"' in core
+
+
+def test_text_chat_reservation_must_exist_before_metered_ai_request_starts():
+    core = (ROOT / "engo_licensing" / "core.py").read_text(encoding="utf-8")
+    host = (ROOT / "engo_main.py").read_text(encoding="utf-8")
+    assert "The server did not return a text-chat usage reservation." in core
+    assert "if feature_key == \"text_chat\":" in host
+    assert "worker._engo_usage_reservation_id = str(_usage_reservation_id or \"\").strip()" in host
+
+
+def test_pending_text_chat_settlements_retry_after_restart():
+    host = (ROOT / "engo_main.py").read_text(encoding="utf-8")
+    main = (ROOT / "main.py").read_text(encoding="utf-8")
+    assert "def _retry_pending_text_chat_settlements(self):" in host
+    assert "self._queue_pending_text_chat_settlement(rid, result_kind)" in host
+    assert "self._retry_pending_text_chat_settlements()" in host
+    assert "QTimer.singleShot(1400, window._retry_pending_text_chat_settlements)" in main
+
