@@ -727,6 +727,7 @@ class FirstRunSetupDialog(QDialog):
 
     def _choose_language(self, code):
         self.selected_language = code
+        self._apply_wizard_language(code)
         for key, card in self.language_cards.items():
             card.setChecked(key == code)
         self.next_button.setEnabled(True)
