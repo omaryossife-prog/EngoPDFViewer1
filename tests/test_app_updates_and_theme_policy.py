@@ -235,3 +235,14 @@ def test_text_chat_reopens_and_reactivates_at_the_latest_message():
     activate = chat[start:end]
     assert "self._scroll_to_latest_if_active(k)" in activate
     assert "saved_scroll = int(entry.get(\"scroll\", 0))" not in activate
+
+
+
+def test_tag_unit_assignments_use_the_same_per_pdf_feature_gate():
+    document = (ROOT / "engo_document.py").read_text(encoding="utf-8")
+    start = document.index('                    gate("tag_units",')
+    end = document.index('                    # Fail closed', start)
+    gate = document[start:end]
+    assert 'gate("tag_units"' in gate
+    assert "scope_key=scope_key" in gate
+    assert "t.add_tag_region" in gate
