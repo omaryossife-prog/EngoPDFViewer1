@@ -3879,7 +3879,7 @@ class MainWindow(QMainWindow):
                         return False
                     if choice == QMessageBox.StandardButton.Save and not tab.save(False):
                         return False
-            loading_owner = self._begin_operation_loading("session")
+        loading_owner = self._begin_operation_loading("session")
         try:
             return self._restore_single_window_session_apply(snapshot, valid_entries)
         finally:
@@ -3887,7 +3887,8 @@ class MainWindow(QMainWindow):
 
     def _restore_single_window_session_apply(self, snapshot, valid_entries):
         """Apply the prepared session after all user confirmations are complete."""
-        # Tear down linked splitters before closing either PDF, then remove
+        if self.tabs.count():
+            # Tear down linked splitters before closing either PDF, then remove
             # the old tabs cleanly from both the stack and the tab bar.
             for index in range(self.tabs.count()):
                 tab = self.tabs.widget(index)
