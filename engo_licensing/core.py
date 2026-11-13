@@ -412,57 +412,41 @@ class _OAuthHandler(http.server.BaseHTTPRequestHandler):
     callback_result: dict[str, str] = {}
     expected_state: str = ""
     callback_path: str = "/callback"
-    success_image_endpoint: str = ""
-    publishable_key: str = ""
+    success_html_path: str = ""
 
     def _success_page(self) -> bytes:
-        endpoint = json.dumps(str(self.success_image_endpoint or ""))
-        api_key = json.dumps(str(self.publishable_key or ""))
-        page = f"""<!doctype html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark"><title>Engo | تم استلام تسجيل الدخول</title>
-<style>
-*{{box-sizing:border-box}}body{{margin:0;min-height:100vh;display:grid;place-items:center;padding:28px;background:radial-gradient(ellipse at 50% 0%,#263d61 0%,#151c2a 48%,#0c111b 100%);color:#f5f7fb;font-family:Segoe UI,Tahoma,Arial,sans-serif}}
-.card{{width:min(560px,100%);padding:34px 30px 30px;text-align:center;border:1px solid #34445c;border-radius:24px;background:rgba(22,30,44,.94);box-shadow:0 24px 70px #0008}}
-.brand{{font-size:13px;letter-spacing:5px;font-weight:800;color:#8fb8ff;margin-bottom:20px}}
-.art{{width:min(290px,80%);height:190px;object-fit:contain;display:none;margin:0 auto 20px;border-radius:16px}}
-.fallback{{width:150px;height:150px;margin:0 auto 22px;border-radius:42px;display:grid;place-items:center;background:linear-gradient(145deg,#77a6e8,#345a91);box-shadow:0 14px 34px #477bc955}}
-.check{{font-size:76px;line-height:1;color:white;text-shadow:0 3px 18px #16345c}}
-h1{{font-size:25px;margin:0 0 12px;font-weight:800}}p{{font-size:15px;line-height:1.9;color:#c3ccda;margin:0}}
-.en{{direction:ltr;font-size:13px;color:#8798b2;margin-top:10px}}.foot{{margin-top:25px;color:#7f91aa;font-size:12px}}
-</style></head><body><main class="card">
-<div class="brand">E N G O</div><img id="art" class="art" alt="Engo">
-<div id="fallback" class="fallback"><div class="check">✓</div></div>
-<h1>تم استلام تسجيل الدخول بنجاح</h1>
-<p>يمكنك العودة إلى برنامج Engo الآن. سيتم إكمال تسجيل الدخول داخل البرنامج تلقائيًا.</p>
-<p class="en">Sign-in response received. You can return to Engo now.</p>
-<div class="foot">ENGO PDF VIEWER &amp; AI STUDY AGENT</div></main>
-<script>
-(async()=>{{
- const endpoint={endpoint},key={api_key};
- if(!endpoint||!key)return;
- try{{
-  const r=await fetch(endpoint,{{method:"POST",headers:{{"apikey":key,"Authorization":"Bearer "+key,"Content-Type":"application/json"}},body:"{{}}"}});
-  if(!r.ok)return;
-  const d=await r.json();
-  if(!d||typeof d.html!=="string")return;
-  let page=d.html;
-  const values={{
-   "{{{{LANG}}}}":"ar","{{{{DIR}}}}":"rtl","{{{{PAGE_TITLE}}}}":"مرحبًا بك في Engo",
-   "{{{{WELCOME_TITLE}}}}":"تم تسجيل الدخول بنجاح",
-   "{{{{WELCOME_SUBTITLE}}}}":"يمكنك العودة إلى برنامج Engo الآن. سيتم إكمال تسجيل الدخول تلقائيًا.",
-   "{{{{EMAIL}}}}":"","{{{{STATUS_TEXT}}}}":"تم استلام تسجيل الدخول بنجاح",
-   "{{{{CONTINUE_TEXT}}}}":"يمكنك العودة إلى Engo الآن",
-   "{{{{AVATAR_DATA_URI}}}}":"","{{{{AVATAR_CLASS}}}}":"empty"
-  }};
-  for(const [k,v] of Object.entries(values))page=page.split(k).join(v);
-  page=page.replace(/<a class="continue" href="engo:[/]{2}continue">([\s\S]*?)<\/a>/,"<span class=\"continue\">يمكنك العودة إلى Engo الآن</span>");
-  document.open();document.write(page);document.close();
- }}catch(_e){{}}
-}})();
-</script></body></html>"""
+        """Serve the branded HTML success page directly; never show the legacy image page."""
+        candidates = [
+            Path(self.success_html_path) if self.success_html_path else None,
+            Path(__file__).resolve().parents[1] / "SignInSuccess.html",
+        ]
+        page = ""
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            try:
+                page = candidate.read_text(encoding="utf-8")
+                if page.strip():
+                    break
+            except OSError:
+                continue
+        if not page:
+            page = """<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Engo</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#101a2b;color:#f2f6ff;font:16px Segoe UI,Arial"><main style="padding:36px;text-align:center"><h1>Sign-in response received</h1><p>You can return to Engo now.</p></main></body></html>"""
+        values = {
+            "{{LANG}}": "en", "{{DIR}}": "ltr", "{{PAGE_TITLE}}": "Welcome to Engo",
+            "{{WELCOME_TITLE}}": "Sign-in response received",
+            "{{WELCOME_SUBTITLE}}": "You can return to Engo now. Sign-in will finish automatically inside Engo.",
+            "{{EMAIL}}": "", "{{STATUS_TEXT}}": "Google sign-in response received",
+            "{{CONTINUE_TEXT}}": "You can return to Engo now.",
+            "{{AVATAR_DATA_URI}}": "", "{{AVATAR_CLASS}}": "empty",
+        }
+        for token, value in values.items():
+            page = page.replace(token, html_escape(value, quote=True))
+        page = re.sub(
+            r'<a\\s+class="continue"[^>]*>.*?</a>',
+            '<span class="continue">You can return to Engo now.</span>',
+            page, flags=re.IGNORECASE | re.DOTALL,
+        )
         return page.encode("utf-8")
 
     def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler API
@@ -712,8 +696,7 @@ class LicenseService:
 
         handler = type("EngoDesktopOAuthHandler", (_OAuthHandler,), {
             "callback_result": {}, "expected_state": state, "callback_path": "/",
-            "success_image_endpoint": self.config.supabase_url + "/functions/v1/oauth-success-image",
-            "publishable_key": self.config.anon_key,
+            "success_html_path": str(Path(__file__).resolve().parents[1] / "SignInSuccess.html"),
         })
         server = http.server.HTTPServer(("127.0.0.1", 0), handler)
         server.timeout = self.config.oauth_timeout
@@ -821,8 +804,7 @@ class LicenseService:
         challenge = _b64url(hashlib.sha256(verifier.encode("ascii")).digest())
         handler = type("EngoOAuthHandler", (_OAuthHandler,), {
             "callback_result": {}, "expected_state": state,
-            "success_image_endpoint": self.config.supabase_url + "/functions/v1/oauth-success-image",
-            "publishable_key": self.config.anon_key,
+            "success_html_path": str(Path(__file__).resolve().parents[1] / "SignInSuccess.html"),
         })
         server = http.server.HTTPServer(("127.0.0.1", 0), handler)
         server.timeout = self.config.oauth_timeout
