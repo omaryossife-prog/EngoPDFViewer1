@@ -1825,13 +1825,13 @@ class AppSettingsDialog(QDialog):
         is_ar = self.language == "ar"
         title = "إعادة ضبط Engo" if is_ar else "Reset Engo"
         message = (
-            "سيتم إغلاق Engo وإعادة تشغيله من البداية، وستظهر شاشات الترحيب لاختيار اللغة والثيم كأنك تستخدم البرنامج لأول مرة.\n\n"
-            "سيتم مسح إعدادات البرنامج والملفات الأخيرة والجلسة المحفوظة ومفاتيح API.\n\n"
+            "سيتم إغلاق Engo وإعادة تشغيله من البداية، وستظهر شاشات الترحيب لاختيار اللغة والثيم وتسجيل الدخول أو المتابعة كزائر.\n\n"
+            "سيتم مسح إعدادات البرنامج والملفات الأخيرة والجلسة المحفوظة، مع الاحتفاظ بمفاتيح API.\n\n"
             "ستظل ملفات PDF وتعليقاتها والمحادثات ومرفقاتها ولوحات الشرح محفوظة ولن يتم حذفها.\n\n"
             "هل تريد المتابعة؟"
             if is_ar else
-            "Engo will close and restart from the beginning. The welcome setup will appear so you can choose the interface language and theme as if you were using the app for the first time.\n\n"
-            "Application preferences, recent-file history, the saved session and API keys will be cleared.\n\n"
+            "Engo will close and restart from the beginning. The welcome setup will let you choose the interface language, theme, and Google sign-in or guest access.\n\n"
+            "Application preferences, recent-file history and the saved session will be cleared. Your AI provider API keys will be kept.\n\n"
             "Your PDFs and annotations, conversations and attachments, and lesson boards will be preserved.\n\n"
             "Continue with Reset Engo?"
         )
