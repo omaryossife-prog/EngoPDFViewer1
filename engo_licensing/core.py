@@ -58,6 +58,10 @@ class NetworkError(LicenseError):
     pass
 
 
+class OfflineError(NetworkError):
+    """The device could not reach the account server because network access failed."""
+
+
 class SignatureError(LicenseError):
     pass
 
@@ -279,6 +283,82 @@ class SecureStore:
             pass
 
 
+class OfflineFeatureCacheStore:
+    """Protected local cache for the last verified per-file tag entitlements and usage."""
+
+    SERVICE = "EngoPDFViewer.OfflineFeatureCache"
+    ACCOUNT = "offline-feature-cache-v1"
+
+    def __init__(self, path: Path | None = None):
+        self.path = path or (_app_data_dir() / "offline-feature-cache.dpapi")
+
+    def save(self, value: dict[str, Any]) -> None:
+        raw = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        if os.name == "nt":
+            try:
+                encrypted = SecureStore._dpapi_encrypt(raw)
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                fd, temp_name = tempfile.mkstemp(prefix=".engo-offline-", dir=str(self.path.parent))
+                try:
+                    with os.fdopen(fd, "wb") as stream:
+                        stream.write(b"ENGOFC1\\0" + encrypted)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    os.replace(temp_name, self.path)
+                finally:
+                    try:
+                        os.unlink(temp_name)
+                    except OSError:
+                        pass
+                return
+            except SecureStorageError:
+                # Credential Manager is an acceptable protected fallback.
+                pass
+        try:
+            import keyring  # type: ignore
+            encoded = base64.b64encode(raw).decode("ascii")
+            keyring.set_password(self.SERVICE, self.ACCOUNT, encoded)
+            if keyring.get_password(self.SERVICE, self.ACCOUNT) != encoded:
+                raise RuntimeError("Keyring did not verify the offline cache")
+        except Exception as exc:
+            raise SecureStorageError(f"Protected offline quota storage is unavailable: {exc}") from exc
+
+    def load(self) -> dict[str, Any] | None:
+        raw: bytes | None = None
+        if os.name == "nt" and self.path.is_file():
+            data = self.path.read_bytes()
+            if not data.startswith(b"ENGOFC1\\0"):
+                raise SecureStorageError("Stored offline quota cache has an unknown format")
+            raw = SecureStore._dpapi_decrypt(data[len(b"ENGOFC1\\0"):])
+        else:
+            try:
+                import keyring  # type: ignore
+                stored = keyring.get_password(self.SERVICE, self.ACCOUNT)
+                if stored:
+                    raw = base64.b64decode(stored, validate=True)
+            except Exception:
+                raw = None
+        if raw is None:
+            return None
+        try:
+            value = json.loads(raw.decode("utf-8"))
+            return value if isinstance(value, dict) else None
+        except Exception as exc:
+            raise SecureStorageError("The offline quota cache could not be decoded") from exc
+
+    def clear(self) -> None:
+        if os.name == "nt":
+            try:
+                self.path.unlink(missing_ok=True)
+            except OSError as exc:
+                raise SecureStorageError(f"Could not remove the offline quota cache: {exc}") from exc
+        try:
+            import keyring  # type: ignore
+            keyring.delete_password(self.SERVICE, self.ACCOUNT)
+        except Exception:
+            pass
+
+
 @dataclass
 class LicenseState:
     authenticated: bool = False
@@ -357,10 +437,20 @@ class _OAuthHandler(http.server.BaseHTTPRequestHandler):
 class LicenseService:
     """Application-facing licensing service; all premium grants require a signature."""
 
+    OFFLINE_FILE_FEATURES = frozenset({"tags", "tag_units"})
+
     def __init__(self, config: LicenseConfig | None = None, secure_store: SecureStore | None = None,
-                 device_id: str | None = None):
+                 device_id: str | None = None, offline_store: OfflineFeatureCacheStore | None = None):
         self.config = config or LicenseConfig.load()
         self.secure_store = secure_store or SecureStore()
+        self.offline_store = offline_store or OfflineFeatureCacheStore()
+        try:
+            cached = self.offline_store.load()
+        except Exception:
+            cached = None
+        self._offline_cache: dict[str, Any] = cached if isinstance(cached, dict) else {
+            "version": 1, "usage": {}, "usage_snapshot_complete": False,
+        }
         self.device_id = device_id or self._load_or_create_device_id()
         self.state = LicenseState(device_id=self.device_id, app_version=self.config.app_version)
         self._session: dict[str, Any] | None = None
@@ -418,7 +508,7 @@ class LicenseService:
                 pass
             raise NetworkError(f"Server returned HTTP {exc.code}: {detail or exc.reason}") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            raise NetworkError(f"Could not contact the Engo account server: {exc}") from exc
+            raise OfflineError(f"Could not contact the Engo account server: {exc}") from exc
 
     def _edge(self, name: str, body: dict[str, Any] | None = None,
               access_token: str | None = None) -> dict[str, Any]:
@@ -694,6 +784,11 @@ class LicenseService:
             except Exception:
                 pass
         self.secure_store.clear()
+        try:
+            self.offline_store.clear()
+        except Exception:
+            pass
+        self._offline_cache = {"version": 1, "usage": {}, "usage_snapshot_complete": False}
         self._session = None
         self._last_signed_payload = None
         self.state = LicenseState(device_id=self.device_id, app_version=self.config.app_version,
@@ -714,7 +809,7 @@ class LicenseService:
             raise LicenseError(str(result.get("message") or "This device could not be activated"))
         return result
 
-    def _verify_signed_response(self, envelope: dict[str, Any]) -> dict[str, Any]:
+    def _verify_signed_response(self, envelope: dict[str, Any], allow_expired: bool = False) -> dict[str, Any]:
         payload = envelope.get("payload")
         signature_value = envelope.get("signature")
         if not isinstance(payload, dict) or not isinstance(signature_value, str):
@@ -740,7 +835,7 @@ class LicenseService:
             raise SignatureError("The signed license has invalid timestamps")
         if issued.timestamp() > now.timestamp() + 120:
             raise SignatureError("The signed license was issued in the future")
-        if expires <= now:
+        if expires <= now and not allow_expired:
             raise SignatureError("The signed license has expired")
         if expires <= issued:
             raise SignatureError("The signed license expiry is invalid")
@@ -749,6 +844,185 @@ class LicenseService:
         if str(payload.get("app_version") or "") != self.config.app_version:
             raise SignatureError("The signed license does not match this application version")
         return payload
+
+    def _save_offline_cache(self) -> bool:
+        try:
+            self.offline_store.save(self._offline_cache)
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def _offline_usage_key(feature_key: str, scope_key: str) -> str:
+        return f"{feature_key}:{scope_key}"
+
+    def _remember_offline_license(
+        self, envelope: dict[str, Any], payload: dict[str, Any], user_id: str,
+    ) -> None:
+        """Keep the last verified signed entitlements for the two offline per-file features."""
+        user_id = str(user_id or "").strip()
+        if not user_id or not isinstance(envelope, dict):
+            return
+        previous_user = str(self._offline_cache.get("user_id") or "")
+        if previous_user and previous_user != user_id:
+            self._offline_cache["usage"] = {}
+            self._offline_cache["usage_snapshot_complete"] = False
+        self._offline_cache.update({
+            "version": 1,
+            "user_id": user_id,
+            "license_envelope": envelope,
+            "license_cached_at": int(time.time()),
+        })
+        self._save_offline_cache()
+
+    def _cache_offline_usage_snapshot(self, rows: Any, user_id: str) -> bool:
+        """Cache authoritative per-file usage rows returned by the authenticated account API."""
+        user_id = str(user_id or "").strip()
+        if not user_id or user_id != str(self._offline_cache.get("user_id") or ""):
+            return False
+        if not isinstance(rows, list):
+            return False
+        previous = self._offline_cache.get("usage")
+        previous = previous if isinstance(previous, dict) else {}
+        refreshed: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            feature = str(row.get("feature_key") or "").strip()
+            scope = str(row.get("scope_key") or "").strip()
+            if feature not in self.OFFLINE_FILE_FEATURES or not scope or len(scope) > 128:
+                continue
+            try:
+                server_used = max(0, int(row.get("used") or 0))
+            except (TypeError, ValueError):
+                continue
+            key = self._offline_usage_key(feature, scope)
+            old = previous.get(key) if isinstance(previous.get(key), dict) else {}
+            try:
+                pending = max(0, int(old.get("pending") or 0))
+            except (TypeError, ValueError):
+                pending = 0
+            refreshed[key] = {"server_used": server_used, "pending": pending}
+        # Preserve offline actions not yet reflected in the server's snapshot.
+        for key, old in previous.items():
+            if key in refreshed or not isinstance(old, dict):
+                continue
+            try:
+                pending = max(0, int(old.get("pending") or 0))
+                old_server_used = max(0, int(old.get("server_used") or 0))
+            except (TypeError, ValueError):
+                continue
+            if pending:
+                refreshed[str(key)] = {"server_used": old_server_used, "pending": pending}
+        self._offline_cache["usage"] = refreshed
+        self._offline_cache["usage_snapshot_complete"] = True
+        self._offline_cache["usage_snapshot_at"] = int(time.time())
+        return self._save_offline_cache()
+
+    def _offline_pending_usage(self, feature_key: str, scope_key: str) -> int:
+        if feature_key not in self.OFFLINE_FILE_FEATURES or not scope_key:
+            return 0
+        usage = self._offline_cache.get("usage")
+        record = usage.get(self._offline_usage_key(feature_key, scope_key)) if isinstance(usage, dict) else None
+        try:
+            return max(0, int(record.get("pending") or 0)) if isinstance(record, dict) else 0
+        except (TypeError, ValueError):
+            return 0
+
+    def _record_online_file_usage(
+        self, feature_key: str, scope_key: str, response: dict[str, Any],
+        pending_before: int, requested_amount: int, batch_amount: int, accepted: bool,
+    ) -> None:
+        if feature_key not in self.OFFLINE_FILE_FEATURES or not scope_key:
+            return
+        usage = self._offline_cache.get("usage")
+        if not isinstance(usage, dict):
+            usage = {}
+            self._offline_cache["usage"] = usage
+        key = self._offline_usage_key(feature_key, scope_key)
+        old = usage.get(key) if isinstance(usage.get(key), dict) else {}
+        try:
+            server_used = max(0, int(response.get("used"))) if response.get("used") is not None else max(0, int(old.get("server_used") or 0))
+        except (TypeError, ValueError):
+            server_used = max(0, int(old.get("server_used") or 0))
+        pending_after = (
+            max(0, pending_before + requested_amount - batch_amount)
+            if accepted else max(0, pending_before)
+        )
+        usage[key] = {"server_used": server_used, "pending": pending_after}
+        self._save_offline_cache()
+
+    def _consume_offline_file_feature(
+        self, feature_key: str, amount: int, scope_key: str,
+    ) -> dict[str, Any] | None:
+        """Consume tags/tag_units against the last signed entitlement and per-file usage snapshot.
+
+        None means there is no trustworthy local snapshot; callers must deny access.
+        """
+        if feature_key not in self.OFFLINE_FILE_FEATURES or not scope_key or len(scope_key) > 128:
+            return None
+        try:
+            session = self.get_session(refresh=False)
+        except Exception:
+            session = self._session
+        session_user = session.get("user", {}) if isinstance(session, dict) else {}
+        user_id = str(session_user.get("id") or "") if isinstance(session_user, dict) else ""
+        if not user_id or user_id != str(self._offline_cache.get("user_id") or ""):
+            return None
+        envelope = self._offline_cache.get("license_envelope")
+        if not isinstance(envelope, dict):
+            return None
+        try:
+            payload = self._verify_signed_response(envelope, allow_expired=True)
+        except Exception:
+            return None
+        if str(payload.get("user_id") or "") != user_id:
+            return None
+        if str(payload.get("device_id") or "") != self.device_id:
+            return None
+        if str(payload.get("app_version") or "") != self.config.app_version:
+            return None
+        if str(payload.get("license_status") or "") != "active":
+            return None
+        entitlements = payload.get("entitlements")
+        entitlement = entitlements.get(feature_key) if isinstance(entitlements, dict) else None
+        if not isinstance(entitlement, dict) or not bool(entitlement.get("enabled")):
+            return {"allowed": False, "tracked": True, "message": "This feature is not enabled for the current plan"}
+        raw_limit = entitlement.get("limit")
+        if raw_limit is None:
+            limit = None
+        else:
+            try:
+                limit = max(0, int(raw_limit))
+            except (TypeError, ValueError):
+                return None
+        usage = self._offline_cache.get("usage")
+        usage = usage if isinstance(usage, dict) else {}
+        key = self._offline_usage_key(feature_key, scope_key)
+        record = usage.get(key) if isinstance(usage.get(key), dict) else None
+        snapshot_complete = bool(self._offline_cache.get("usage_snapshot_complete", False))
+        if record is None and limit is not None and not snapshot_complete:
+            return None
+        try:
+            server_used = max(0, int(record.get("server_used") or 0)) if record else 0
+            pending = max(0, int(record.get("pending") or 0)) if record else 0
+        except (TypeError, ValueError):
+            return None
+        used_before = server_used + pending
+        if limit is not None and used_before + amount > limit:
+            return {
+                "allowed": False, "tracked": True,
+                "message": "The usage limit has been reached",
+                "used": used_before, "limit": limit, "offline": True,
+            }
+        usage[key] = {"server_used": server_used, "pending": pending + amount}
+        self._offline_cache["usage"] = usage
+        if not self._save_offline_cache():
+            return None
+        return {
+            "allowed": True, "tracked": True, "message": "offline_cached_usage",
+            "used": used_before + amount, "limit": limit, "offline": True,
+        }
 
     def _apply_payload(self, payload: dict[str, Any], user: dict[str, Any] | None = None) -> LicenseState:
         license_status = str(payload.get("license_status") or "invalid")
@@ -790,9 +1064,12 @@ class LicenseService:
             "device_id": self.device_id, "app_version": self.config.app_version,
         }, str(session["access_token"]))
         payload = self._verify_signed_response(envelope)
-        if str(payload.get("user_id") or "") != str((session.get("user") or {}).get("id") or ""):
+        user = session.get("user") or {}
+        user_id = str(user.get("id") or "")
+        if str(payload.get("user_id") or "") != user_id:
             raise SignatureError("The signed license does not match the authenticated account")
-        state = self._apply_payload(payload, session.get("user") or {})
+        self._remember_offline_license(envelope, payload, user_id)
+        state = self._apply_payload(payload, user)
         if state.license_status != "active":
             state.plan_id = "free"
             state.reason = state.reason or f"License status: {state.license_status}"
@@ -855,7 +1132,14 @@ class LicenseService:
                 return self._free_state("This account is active on another device", authenticated=True)
             stage("subscription")
             stage("entitlements")
-            return self._check_server_license()
+            state = self._check_server_license()
+            # Fetch the authoritative per-PDF usage counters for offline tag limits.
+            # This optional data request must never turn a successful license check into a startup failure.
+            try:
+                self.account_overview()
+            except Exception:
+                pass
+            return state
         except Exception as exc:
             return self._free_state(str(exc), authenticated=bool(self._session))
 
@@ -899,9 +1183,11 @@ class LicenseService:
                 return {"allowed": False, "tracked": False,
                         "message": "Sign in with Google to use this feature. Guest access is disabled."}
 
+            pending_offline = self._offline_pending_usage(feature_key, scope_key)
+            batch_amount = min(1000, amount + pending_offline) if feature_key in self.OFFLINE_FILE_FEATURES else amount
             response = self._edge("usage-consume", {
                 "device_id": self.device_id, "app_version": self.config.app_version,
-                "feature_key": feature_key, "amount": amount,
+                "feature_key": feature_key, "amount": batch_amount,
                 "scope_key": scope_key,
             }, str(session["access_token"]))
             envelope = response.get("license")
@@ -912,7 +1198,9 @@ class LicenseService:
             if not expected_user_id or str(payload.get("user_id") or "") != expected_user_id:
                 raise SignatureError("The signed usage response does not match the authenticated account")
 
-            state = self._apply_payload(payload, session.get("user") or {})
+            user = session.get("user") or {}
+            self._remember_offline_license(envelope, payload, str(user.get("id") or ""))
+            state = self._apply_payload(payload, user)
             license_status = str(payload.get("license_status") or "")
             entitlements = payload.get("entitlements") if isinstance(payload.get("entitlements"), dict) else {}
             entitlement = entitlements.get(feature_key) if isinstance(entitlements, dict) else None
@@ -934,24 +1222,40 @@ class LicenseService:
                 return {"allowed": False, "tracked": False,
                         "message": "The account or this device is not authorized. Feature access is blocked."}
             if not enabled:
+                self._record_online_file_usage(
+                    feature_key, scope_key, response, pending_offline, amount, batch_amount, False,
+                )
                 return {"allowed": False, "tracked": True,
                         "message": "This feature is not enabled for the current plan",
                         "used": response.get("used"), "limit": response.get("limit")}
             if not server_allowed:
+                self._record_online_file_usage(
+                    feature_key, scope_key, response, pending_offline, amount, batch_amount, False,
+                )
                 return {"allowed": False, "tracked": True,
                         "message": str(response.get("message") or "The usage limit has been reached"),
                         "used": response.get("used"), "limit": response.get("limit")}
 
+            self._record_online_file_usage(
+                feature_key, scope_key, response, pending_offline, amount, batch_amount, True,
+            )
             # Only a signed license plus an affirmative server reservation grants access.
             return {
                 "allowed": True, "tracked": True,
                 "message": str(response.get("message") or ""),
                 "used": response.get("used"), "limit": response.get("limit"),
             }
+        except OfflineError:
+            self._free_state("Device is offline", authenticated=bool(self._session))
+            if feature_key in self.OFFLINE_FILE_FEATURES:
+                offline_result = self._consume_offline_file_feature(feature_key, amount, scope_key)
+                if offline_result is not None:
+                    return offline_result
+            return {"allowed": False, "tracked": False, "message": "offline_feature_unavailable"}
         except Exception as exc:
             self._free_state(str(exc), authenticated=bool(self._session))
             return {"allowed": False, "tracked": False,
-                    "message": f"Feature access is locked because the server could not verify the account: {exc}"}
+                    "message": f"Feature access could not be verified: {exc}"}
 
     def _authenticated_edge(self, name: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         """Call an account Edge Function with a current, non-empty user JWT.
@@ -1007,7 +1311,11 @@ class LicenseService:
         session = self.get_session(refresh=True)
         if not session:
             return {"authenticated": False, "devices": []}
-        return self._authenticated_edge("account-overview", {})
+        result = self._authenticated_edge("account-overview", {})
+        self._cache_offline_usage_snapshot(
+            result.get("tag_usage"), str((session.get("user") or {}).get("id") or ""),
+        )
+        return result
 
     def request_subscription_payment(self, billing_period: str) -> dict[str, Any]:
         """Create a pending manual-QR subscription request using server-side pricing."""
