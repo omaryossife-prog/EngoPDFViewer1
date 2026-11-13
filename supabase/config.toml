@@ -21,3 +21,6 @@ verify_jwt = false
 
 [functions.oauth-success-image]
 verify_jwt = false
+
+[functions.public-theme-settings]
+verify_jwt = false
