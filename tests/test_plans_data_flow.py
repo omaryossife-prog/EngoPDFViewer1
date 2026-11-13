@@ -161,3 +161,80 @@ def test_exhausted_provider_credits_stay_red_until_a_successful_request():
     assert 'records.pop("_account", None)' in source
     assert 'record = {"state": "billing_blocked", "checked_at": now, "expires_at":' not in source
 
+def test_reset_preserves_provider_api_keys_without_deleting_keyring_credentials():
+    main = (ROOT / "main.py").read_text(encoding="utf-8")
+    dialogs = (ROOT / "engo_app_dialogs.py").read_text(encoding="utf-8")
+    start = main.index("    def _continue_reset_shutdown(self, reset_dialog):")
+    end = main.index("    def _animate_theme_transition(self):", start)
+    reset_block = main[start:end]
+    assert 'key.startswith("ai_key_")' in reset_block
+    assert "preserved_provider_keys" in reset_block
+    assert "self.settings.clear()" in reset_block
+    assert "self.settings.setValue(key, value)" in reset_block
+    assert "reset_dialog._delete_provider_credentials()" not in reset_block
+    assert "Your AI provider API keys will be kept." in dialogs
+    assert "مع الاحتفاظ بمفاتيح API" in dialogs
+
+
+def test_reset_still_triggers_first_run_even_when_api_keys_are_preserved():
+    main = (ROOT / "main.py").read_text(encoding="utf-8")
+    init = main.split("class MainWindow(QMainWindow):", 1)[1].split(
+        "# PDF linking is an explicit", 1
+    )[0]
+    assert 'key.startswith("ai_key_")' in init
+    assert "has_completed_setup or has_legacy_setup" in init
+    assert 'self.settings.value("first_run_complete", False, type=bool)' in init
+    assert "not key.startswith" in init
+
+
+def test_first_run_has_language_theme_and_google_or_guest_steps():
+    dialogs = (ROOT / "engo_app_dialogs.py").read_text(encoding="utf-8")
+    wizard = dialogs.split("class FirstRunSetupDialog(QDialog):", 1)[1].split(
+        "class _SettingsNoWheelSlider", 1
+    )[0]
+    assert "STEP 1 OF 3" in wizard
+    assert "STEP 2 OF 3" in wizard
+    assert "STEP 3 OF 3" in wizard
+    assert "google_sign_in_requested = pyqtSignal()" in wizard
+    assert "self.google_signin_button.clicked.connect(self.google_sign_in_requested.emit)" in wizard
+    assert "self.guest_button.clicked.connect(self._continue_as_guest)" in wizard
+    assert 'self.account_choice = "guest"' in wizard
+
+
+def test_first_run_uses_same_free_premium_theme_gate_as_application_settings():
+    dialogs = (ROOT / "engo_app_dialogs.py").read_text(encoding="utf-8")
+    wizard = dialogs.split("class FirstRunSetupDialog(QDialog):", 1)[1].split(
+        "class _SettingsNoWheelSlider", 1
+    )[0]
+    assert 'FREE_UI_THEMES = {"light", "dark", "midnight"}' in dialogs
+    assert 'is_locked = value not in FREE_UI_THEMES and not self._is_premium' in wizard
+    assert "locked=is_locked" in wizard
+    assert "self.theme_group.addButton(card)" in wizard
+    assert "self._show_theme_locked_prompt(key)" in wizard
+
+
+def test_google_brand_icon_is_used_in_first_run_and_account_dialogs():
+    base = (ROOT / "engo_base.py").read_text(encoding="utf-8")
+    dialogs = (ROOT / "engo_app_dialogs.py").read_text(encoding="utf-8")
+    account = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
+    assert "def google_brand_icon(size: int = 20)" in base
+    assert all(color in base for color in ("#EA4335", "#FBBC05", "#34A853", "#4285F4"))
+    assert "self.google_signin_button.setIcon(google_brand_icon(22))" in dialogs
+    assert "self.signin_button.setIcon(google_brand_icon(22))" in account
+    assert "🔵" not in account
+
+
+def test_startup_splash_can_be_cancelled_before_main_window_opens():
+    ui = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
+    main = (ROOT / "main.py").read_text(encoding="utf-8")
+    splash = ui.split("class EngoSplashScreen(QWidget):", 1)[1].split(
+        "class GroupedPlanHeader", 1
+    )[0]
+    assert "cancel_requested = pyqtSignal()" in splash
+    assert 'QPushButton("×")' in splash
+    assert "self.close_button.clicked.connect(self.cancel_requested.emit)" in splash
+    assert "splash.cancel_requested.connect(cancel_startup)" in main
+    assert 'launch_state["cancelled"] = True' in main
+    assert 'if launch_state["started"] or launch_state["cancelled"]:' in main
+    assert 'if launch_state["cancelled"]:' in main
+
