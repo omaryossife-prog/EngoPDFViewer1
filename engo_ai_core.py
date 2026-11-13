@@ -6,6 +6,7 @@ import json
 import io
 import uuid
 import sqlite3
+import hashlib
 import re
 import base64
 import urllib.request
@@ -13,6 +14,7 @@ import urllib.error
 import urllib.parse
 import socket
 import threading
+import time
 from pathlib import Path
 import pymupdf as fitz  # use the maintained import name; keep fitz alias for existing calls
 from PIL import Image, ImageOps, ImageChops, ImageFilter
@@ -1667,11 +1669,23 @@ class AISettingsDialog(QDialog):
 
     def _on_models_loaded(self, provider, model_ids):
         self.settings.setValue(f"ai_available_models_{provider}", json.dumps(list(model_ids)))
+        self.settings.setValue(f"ai_models_catalog_verified_{provider}", True)
+        self.settings.setValue(f"ai_models_catalog_checked_at_{provider}", time.time())
+        worker = self._model_workers.get(provider)
+        catalog_key = str(getattr(worker, "api_key", "") or "").strip()
+        if catalog_key:
+            fingerprint = hashlib.sha256(
+                catalog_key.encode("utf-8", errors="replace")
+            ).hexdigest()[:20]
+            self.settings.setValue(
+                f"ai_models_catalog_key_fingerprint_{provider}", fingerprint
+            )
         source = f"Found {len(model_ids)} available models. Save settings to use them in chat."
         self.model_status[provider].setProperty("engoAiSourceText", source)
         self.model_status[provider].setText(self._ai_tr(source))
 
     def _on_models_failed(self, provider, message):
+        self.settings.setValue(f"ai_models_catalog_verified_{provider}", False)
         source = f"Could not load models: {message}"
         self.model_status[provider].setProperty("engoAiSourceText", source)
         self.model_status[provider].setText(self._ai_tr(source))
