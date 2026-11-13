@@ -5595,12 +5595,24 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, APP_NAME, str(exc))
 
     def open_pdf(self, path):
+        """Open a PDF for Free users; require Premium for every other supported format."""
         source_path = os.path.abspath(str(path or ""))
-        if is_office_document(source_path):
-            self.open_office_document(source_path)
-            return
         if not is_supported_document(source_path):
             QMessageBox.information(self, APP_NAME, "Please choose a PDF, image, DOCX, or PPTX file.")
+            return
+        if Path(source_path).suffix.lower() != ".pdf":
+            self._request_feature_access(
+                "open_other_formats",
+                lambda value=source_path: self._open_supported_document(value),
+                denied_message="Opening images and Office documents requires an active Premium subscription.",
+            )
+            return
+        self._open_supported_document(source_path)
+
+    def _open_supported_document(self, source_path):
+        """Open a supported document after its format entitlement has been approved."""
+        if is_office_document(source_path):
+            self.open_office_document(source_path)
             return
         try:
             viewer_path = prepare_document_for_viewer(source_path)
