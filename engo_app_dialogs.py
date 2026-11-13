@@ -694,6 +694,7 @@ class FirstRunSetupDialog(QDialog):
         account_layout.addWidget(self.account_caption)
         self.google_signin_button = QPushButton("Continue with Google")
         self.google_signin_button.setObjectName("firstRunGoogleButton")
+        self.google_signin_button.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         self.google_signin_button.setIcon(google_brand_icon(22))
         self.google_signin_button.setIconSize(QSize(22, 22))
         self.google_signin_button.setMinimumHeight(48)
@@ -837,7 +838,7 @@ class FirstRunSetupDialog(QDialog):
             if is_ar else
             "Sign in with Google to manage your subscription and linked devices, or continue without an account."
         )
-        self.google_signin_button.setText("المتابعة باستخدام" if is_ar else "Continue with Google")
+        self.google_signin_button.setText("المتابعة باستخدام Google" if is_ar else "Continue with Google")
         self.guest_button.setText("المتابعة كزائر" if is_ar else "Continue as guest")
         self.back_button.setText("رجوع" if is_ar else "Back")
         self.back_button.show()
