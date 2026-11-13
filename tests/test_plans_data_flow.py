@@ -124,3 +124,10 @@ def test_provider_model_status_is_ui_only_and_keeps_application_version_unchange
     assert 'self.model_combo = AIModelSelectorCombo()' in chat
     assert 'self._chat_text_plan_access()' in chat
     assert 'APP_VERSION = "2.3.6"' in main
+
+
+def test_chat_imports_provider_key_helper_before_model_catalog_check():
+    source = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    imports = source.split("from engo_ai_core import (", 1)[1].split(")", 1)[0]
+    assert "_get_provider_key" in imports
+    assert "current_key = _get_provider_key(self.settings, provider)" in source
