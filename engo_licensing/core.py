@@ -1301,10 +1301,22 @@ class LicenseService:
                 feature_key, scope_key, response, pending_offline, amount, batch_amount, True,
             )
             # Only a signed license plus an affirmative server reservation grants access.
+            reservation_id = (
+                str(response.get("reservation_id") or "").strip()
+                if feature_key == "text_chat" else ""
+            )
+            if feature_key == "text_chat" and response.get("used") is not None and not reservation_id:
+                # A metered chat must carry its one-time settlement token.
+                # Never start a provider request if the reservation cannot be refunded.
+                return {
+                    "allowed": False, "tracked": False,
+                    "message": "The server did not return a text-chat usage reservation. Please retry.",
+                }
             return {
                 "allowed": True, "tracked": True,
                 "message": str(response.get("message") or ""),
                 "used": response.get("used"), "limit": response.get("limit"),
+                "reservation_id": reservation_id or None,
             }
         except OfflineError:
             self._free_state("Device is offline", authenticated=bool(self._session))
@@ -1317,6 +1329,28 @@ class LicenseService:
             self._free_state(str(exc), authenticated=bool(self._session))
             return {"allowed": False, "tracked": False,
                     "message": f"Feature access could not be verified: {exc}"}
+
+    def settle_text_chat_usage(self, reservation_id: str, outcome: str) -> dict[str, Any]:
+        """Commit a successful text-chat reservation or refund a failed/cancelled one.
+
+        The server binds the opaque reservation to the authenticated user and
+        device, then makes settlement idempotent so a request can never be
+        refunded more than once.
+        """
+        reservation_id = str(reservation_id or "").strip()
+        outcome = str(outcome or "").strip().lower()
+        if not reservation_id:
+            raise LicenseError("A text-chat reservation ID is required")
+        if outcome not in {"success", "failure"}:
+            raise LicenseError("Invalid text-chat settlement outcome")
+        response = self._authenticated_edge("usage-settle", {
+            "device_id": self.device_id,
+            "reservation_id": reservation_id,
+            "outcome": outcome,
+        })
+        if response.get("settled") is not True:
+            raise LicenseError("The text-chat usage reservation could not be settled")
+        return response
 
     def _authenticated_edge(self, name: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         """Call an account Edge Function with a current, non-empty user JWT.
