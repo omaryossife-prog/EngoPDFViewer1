@@ -1693,8 +1693,6 @@ class MainWindow(QMainWindow):
             language=language,
             parent=self,
             theme=ui_theme,
-            image_endpoint=(self.license_service.config.supabase_url.rstrip("/") + "/functions/v1/oauth-success-image"),
-            publishable_key=self.license_service.config.anon_key,
         )
         welcome.exec()
 
@@ -10870,8 +10868,6 @@ def main():
                     language=first_run.selected_language or "en",
                     parent=first_run,
                     theme=first_run.selected_theme or ui_theme,
-                    image_endpoint=(service.config.supabase_url.rstrip("/") + "/functions/v1/oauth-success-image"),
-                    publishable_key=service.config.anon_key,
                 )
                 welcome.exec()
                 first_run.account_choice = "google"
