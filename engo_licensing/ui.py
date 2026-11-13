@@ -900,8 +900,110 @@ class PlansDialog(QDialog):
 
 
 
+class SignInWelcomeDialog(QDialog):
+    """Branded post-login confirmation with the authenticated Google profile."""
+
+    def __init__(self, state: LicenseState, language: str = "en", parent=None, theme: str = "dark"):
+        super().__init__(parent)
+        self.language = "ar" if str(language).lower().startswith("ar") else "en"
+        is_ar = self.language == "ar"
+        self.setWindowTitle("مرحبًا بك في Engo" if is_ar else "Welcome to Engo")
+        self.setObjectName("engoSignInWelcome")
+        self.setModal(True)
+        self.setMinimumWidth(470)
+        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft if is_ar else Qt.LayoutDirection.LeftToRight)
+        t = _get_theme_tokens(theme)
+        self.setStyleSheet(f"""
+            QDialog#engoSignInWelcome {{ background:{t['window']}; color:{t['text']}; }}
+            QLabel {{ color:{t['text']}; background:transparent; }}
+            QLabel#signinWelcomeName {{ font-size:20pt; font-weight:850; }}
+            QLabel#signinWelcomeSub {{ color:{t['muted']}; font-size:10pt; }}
+            QLabel#signinWelcomeEmail {{ color:{t['muted']}; font-size:9pt; }}
+            QLabel#signinWelcomeAvatar {{ background:{t['panel_alt']}; color:{t['accent']};
+                border:2px solid {t['accent']}; border-radius:66px; font-size:34pt; font-weight:900; }}
+            QPushButton#signinWelcomeContinue {{ background:{t['accent']}; color:#10213a;
+                border:0; border-radius:10px; min-height:48px; padding:0 30px;
+                font-size:11pt; font-weight:850; }}
+            QPushButton#signinWelcomeContinue:hover {{ background:{t['accent_hover']}; }}
+        """)
+        user = getattr(state, "user", {}) or {}
+        metadata = user.get("user_metadata") if isinstance(user, dict) else {}
+        metadata = metadata if isinstance(metadata, dict) else {}
+        name = str(metadata.get("full_name") or metadata.get("name") or
+                    metadata.get("given_name") or user.get("email") or
+                    ("صديقي" if is_ar else "there")).strip()
+        email = str(user.get("email") or "").strip()
+        avatar_url = str(metadata.get("avatar_url") or metadata.get("picture") or "").strip()
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(30, 28, 30, 24)
+        root.setSpacing(13)
+        root.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.avatar_label = QLabel("E")
+        self.avatar_label.setObjectName("signinWelcomeAvatar")
+        self.avatar_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.avatar_label.setFixedSize(132, 132)
+        root.addWidget(self.avatar_label, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        self.name_label = QLabel((f"أهلًا بك يا {name}" if is_ar else f"Welcome, {name}!"))
+        self.name_label.setObjectName("signinWelcomeName")
+        self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.name_label.setWordWrap(True)
+        root.addWidget(self.name_label)
+        self.subtitle_label = QLabel(
+            "تم تسجيل الدخول إلى حساب Engo بنجاح."
+            if is_ar else "You have successfully signed in to your Engo account."
+        )
+        self.subtitle_label.setObjectName("signinWelcomeSub")
+        self.subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.subtitle_label.setWordWrap(True)
+        root.addWidget(self.subtitle_label)
+        if email:
+            email_label = QLabel(email)
+            email_label.setObjectName("signinWelcomeEmail")
+            email_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            root.addWidget(email_label)
+
+        self.continue_button = QPushButton("متابعة" if is_ar else "Continue")
+        self.continue_button.setObjectName("signinWelcomeContinue")
+        self.continue_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.continue_button.clicked.connect(self.accept)
+        root.addSpacing(8)
+        root.addWidget(self.continue_button)
+
+        self._avatar_manager = QNetworkAccessManager(self)
+        if avatar_url.startswith("https://"):
+            reply = self._avatar_manager.get(QNetworkRequest(QUrl(avatar_url)))
+            reply.finished.connect(lambda r=reply: self._load_profile_avatar(r))
+
+    def _load_profile_avatar(self, reply):
+        try:
+            raw = bytes(reply.readAll())
+            pixmap = QPixmap()
+            if raw and pixmap.loadFromData(raw):
+                size = self.avatar_label.width()
+                scaled = pixmap.scaled(
+                    size, size, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                result = QPixmap(size, size)
+                result.fill(Qt.GlobalColor.transparent)
+                painter = QPainter(result)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                painter.setBrush(QBrush(scaled))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.drawEllipse(0, 0, size, size)
+                painter.end()
+                self.avatar_label.setText("")
+                self.avatar_label.setPixmap(result)
+        finally:
+            reply.deleteLater()
+
+
 class AccountDialog(QDialog):
     """Compact account and subscription panel; no PDF/chat content is uploaded."""
+    login_successful = pyqtSignal(object)
+    login_failed = pyqtSignal(str)
 
     def __init__(self, service: LicenseService, language: str = "en", parent=None, theme: str = "dark"):
         super().__init__(parent)
@@ -909,6 +1011,7 @@ class AccountDialog(QDialog):
         self.language = "ar" if str(language).lower().startswith("ar") else "en"
         self._worker: ServiceActionWorker | None = None
         self._plans_worker: ServiceActionWorker | None = None
+        self._login_flow_pending = False
         self.account_data: dict[str, Any] = {}
         # Seed the plans visibility from the fresh, Ed25519-verified startup
         # license. Keep plans hidden while the mode is not yet verified; the
@@ -1222,19 +1325,37 @@ class AccountDialog(QDialog):
         self.message_label.setText(message or (self._tr("جارٍ تنفيذ العملية…", "Working…") if busy else ""))
 
     def _run_action(self, action: Callable[[], Any], on_done: Callable[[Any, str], None]):
-        if self._worker and self._worker.isRunning():
-            return
+        if self._worker:
+            try:
+                if self._worker.isRunning():
+                    return
+            except RuntimeError:
+                self._worker = None
         self._set_busy(True)
-        self._worker = ServiceActionWorker(action, self)
-        self._worker.completed.connect(on_done)
-        self._worker.start()
+        # OAuth can outlive this dialog. Parenting its worker to the dialog caused
+        # QThread: Destroyed while thread is still running when the user closed it.
+        app = QApplication.instance()
+        worker = ServiceActionWorker(action, app)
+        self._worker = worker
+
+        def deliver_result(result, error):
+            if self._worker is worker:
+                self._worker = None
+            on_done(result, error)
+
+        worker.completed.connect(deliver_result)
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
 
     def _start_login(self):
+        self._login_flow_pending = True
         self._run_action(self.service.login_google, self._login_completed)
 
     def _login_completed(self, session: Any, error: str):
         if error:
+            self._login_flow_pending = False
             self._set_busy(False, error)
+            self.login_failed.emit(error)
             return
         def activate():
             return self.service.activate_device(allow_transfer=False)
@@ -1242,7 +1363,9 @@ class AccountDialog(QDialog):
 
     def _activation_completed(self, result: Any, error: str):
         if error:
+            self._login_flow_pending = False
             self._set_busy(False, error)
+            self.login_failed.emit(error)
             return
         if isinstance(result, dict) and result.get("status") == "device_conflict":
             message = self._tr(
@@ -1255,6 +1378,7 @@ class AccountDialog(QDialog):
             if answer == QMessageBox.StandardButton.Yes:
                 QTimer.singleShot(80, lambda: self._run_action(self.service.transfer_device_and_check, self._action_completed))
             else:
+                self._login_flow_pending = False
                 self.service._free_state("Account is signed in but remains active on another device", authenticated=True)
                 self._render_state()
                 self._set_busy(False, self.service.state.reason)
@@ -1263,11 +1387,17 @@ class AccountDialog(QDialog):
 
     def _action_completed(self, state: Any, error: str):
         if error:
+            if self._login_flow_pending:
+                self._login_flow_pending = False
+                self.login_failed.emit(error)
             self._set_busy(False, error)
             self._render_state()
             return
         self._render_state()
         self._set_busy(False, getattr(state, "reason", ""))
+        if self._login_flow_pending:
+            self._login_flow_pending = False
+            self.login_successful.emit(self.service.state)
         QTimer.singleShot(100, self._load_overview)
 
     def _transfer_here(self):
