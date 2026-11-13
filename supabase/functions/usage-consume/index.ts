@@ -63,10 +63,18 @@ Deno.serve(async (req: Request) => {
         license: license.envelope,
       });
     }
-    const usageResult = await admin.rpc("consume_feature_usage_v1", {
-      p_user_id: user.id, p_device_id: deviceId, p_app_version: appVersion,
-      p_feature_key: feature, p_amount: amount, p_scope_key: scopeKey,
-    });
+    // Text chat is a reservation, not a final charge. The desktop settles it
+    // as committed only after a non-empty provider answer, or refunds it after
+    // an API error / user cancellation. Other metered features remain immediate.
+    const usageResult = feature === "text_chat"
+      ? await admin.rpc("reserve_text_chat_usage_v1", {
+          p_user_id: user.id, p_device_id: deviceId,
+          p_app_version: appVersion, p_amount: amount,
+        })
+      : await admin.rpc("consume_feature_usage_v1", {
+          p_user_id: user.id, p_device_id: deviceId, p_app_version: appVersion,
+          p_feature_key: feature, p_amount: amount, p_scope_key: scopeKey,
+        });
     if (usageResult.error) throw new Error(usageResult.error.message);
     const usage = usageResult.data as Record<string, unknown>;
     const freeFeatureIsUnlimited = entitlement?.limit === null || entitlement?.limit === undefined;
@@ -80,6 +88,7 @@ Deno.serve(async (req: Request) => {
       used: usage?.used ?? null,
       limit: usage?.limit ?? null,
       message: allowed ? "" : String(usage?.message ?? (validLicense ? "Feature unavailable" : "License is not active")),
+      reservation_id: feature === "text_chat" ? (usage?.reservation_id ?? null) : null,
       license: license.envelope,
     });
   } catch (error) { return badRequest(error instanceof Error ? error.message : "Usage check failed", 400); }
