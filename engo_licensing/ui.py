@@ -546,6 +546,7 @@ class PlansDialog(QDialog):
             ("tag_units", "وحدات الوسوم", "Tag units"),
             ("translations", "الترجمة", "Translations"),
             ("ai_search", "البحث بالذكاء الاصطناعي", "AI search"),
+            ("open_other_formats", "فتح الملفات بصيغ أخرى", "Open other file formats"),
         ]
         rows = self.account_data.get("entitlements") or []
         by_key: dict[str, dict[str, dict]] = {}
@@ -591,8 +592,9 @@ class PlansDialog(QDialog):
             "translations": "limited",
             "page_themes": "limited",
             "smart_theme": "unavailable",
+            "open_other_formats": "unavailable",
         }
-        premium_unlimited_overrides = {"smart_theme"}
+        premium_unlimited_overrides = {"smart_theme", "open_other_formats"}
         for key, label_ar, label_en in labels:
             free_row = by_key.get(key, {}).get("free")
             premium_row = by_key.get(key, {}).get("premium")
