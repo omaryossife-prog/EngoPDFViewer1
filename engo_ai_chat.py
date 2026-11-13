@@ -2055,7 +2055,7 @@ class AIChatPanel(QFrame):
         else:
             lowered = str(error or "").lower()
             retry_match = re.search(
-                r"retry\\s+in\\s+(?:(\\d+(?:\\.\\d+)?)h)?\\s*(?:(\\d+(?:\\.\\d+)?)m)?\\s*(?:(\\d+(?:\\.\\d+)?)s)?",
+                r"retry\s+in\s+(?:(\d+(?:\.\d+)?)h)?\s*(?:(\d+(?:\.\d+)?)m)?\s*(?:(\d+(?:\.\d+)?)s)?",
                 lowered,
             )
             retry_seconds = 0.0
@@ -2067,7 +2067,7 @@ class AIChatPanel(QFrame):
                 )
             quota_zero = (
                 ("quota exceeded" in lowered or "resource_exhausted" in lowered)
-                and bool(re.search(r"\\blimit\\s*:\\s*0\\b", lowered))
+                and bool(re.search(r"\blimit\s*:\s*0\b", lowered))
             )
             model_rejected = any(token in lowered for token in (
                 "model not found", "unknown model", "unsupported model", "invalid model",
