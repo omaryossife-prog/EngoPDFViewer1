@@ -1335,6 +1335,7 @@ class AIChatPanel(QFrame):
         controls.addWidget(self.model_combo, 3)
 
         self.include_context = QCheckBox("PDF context")
+        self.include_context.setObjectName("aiIncludeContext")
         self.include_context.setChecked(True)
         self.include_context.setToolTip("Include PDF text or page previews. Current-page actions always include the current page.")
         controls.addWidget(self.include_context)
