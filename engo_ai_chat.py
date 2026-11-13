@@ -2002,6 +2002,108 @@ class AIChatPanel(QFrame):
         age_seconds = time.time() - checked_at if checked_at > 0 else float("inf")
         return verified and 0 <= age_seconds <= 7 * 24 * 60 * 60
 
+    def _provider_model_health_key(self, provider: str, api_key: str | None = None) -> str:
+        secret = str(api_key if api_key is not None else _get_provider_key(self.settings, provider) or "").strip()
+        if not secret:
+            return ""
+        fingerprint = hashlib.sha256(secret.encode("utf-8", errors="replace")).hexdigest()[:20]
+        return f"ai_model_health_v1_{provider}_{fingerprint}"
+
+    def _load_provider_model_health(self, provider: str) -> dict:
+        storage_key = self._provider_model_health_key(provider)
+        if not storage_key:
+            return {}
+        try:
+            raw = self.settings.value(storage_key, "{}", type=str)
+            records = json.loads(raw) if isinstance(raw, str) else {}
+            if not isinstance(records, dict):
+                return {}
+        except Exception:
+            return {}
+        now = time.time()
+        changed = False
+        for model_id, record in list(records.items()):
+            if not isinstance(record, dict):
+                records.pop(model_id, None)
+                changed = True
+                continue
+            try:
+                expires_at = float(record.get("expires_at") or 0)
+            except (TypeError, ValueError):
+                expires_at = 0
+            if expires_at <= now:
+                records.pop(model_id, None)
+                changed = True
+        if changed:
+            self.settings.setValue(storage_key, json.dumps(records, ensure_ascii=False))
+        return records
+
+    def record_provider_model_result(
+        self, provider: str, model_id: str, api_key: str, success: bool, error: str = ""
+    ) -> bool:
+        """Persist a user's real request outcome. No background request is ever sent."""
+        provider = str(provider or "").strip().lower()
+        model_id = str(model_id or "").strip()
+        storage_key = self._provider_model_health_key(provider, api_key)
+        if provider not in AI_PROVIDER_LABELS or not model_id or not storage_key:
+            return False
+
+        now = time.time()
+        record = None
+        if success:
+            record = {"state": "success", "checked_at": now, "expires_at": now + 7 * 86400}
+        else:
+            lowered = str(error or "").lower()
+            retry_match = re.search(
+                r"retry\\s+in\\s+(?:(\\d+(?:\\.\\d+)?)h)?\\s*(?:(\\d+(?:\\.\\d+)?)m)?\\s*(?:(\\d+(?:\\.\\d+)?)s)?",
+                lowered,
+            )
+            retry_seconds = 0.0
+            if retry_match:
+                retry_seconds = (
+                    float(retry_match.group(1) or 0) * 3600
+                    + float(retry_match.group(2) or 0) * 60
+                    + float(retry_match.group(3) or 0)
+                )
+            quota_zero = (
+                ("quota exceeded" in lowered or "resource_exhausted" in lowered)
+                and bool(re.search(r"\\blimit\\s*:\\s*0\\b", lowered))
+            )
+            model_rejected = any(token in lowered for token in (
+                "model not found", "unknown model", "unsupported model", "invalid model",
+                "not found for api version", "is not supported for", "http 404",
+            ))
+            if quota_zero:
+                retry_seconds = min(max(retry_seconds, 60.0), 7 * 86400.0)
+                record = {"state": "quota_blocked", "checked_at": now, "expires_at": now + retry_seconds}
+            elif model_rejected:
+                record = {"state": "model_rejected", "checked_at": now, "expires_at": now + 86400}
+            elif "http 429" in lowered or "rate limit" in lowered or "rate_limit" in lowered:
+                retry_seconds = min(max(retry_seconds, 90.0), 86400.0)
+                record = {"state": "rate_limited", "checked_at": now, "expires_at": now + retry_seconds}
+            elif "http 401" in lowered or "http 403" in lowered or "unauthorized" in lowered:
+                record = {"state": "auth_failed", "checked_at": now, "expires_at": now + 900}
+            else:
+                # Network and server errors do not prove that a model is invalid.
+                return False
+
+        try:
+            raw = self.settings.value(storage_key, "{}", type=str)
+            records = json.loads(raw) if isinstance(raw, str) else {}
+            if not isinstance(records, dict):
+                records = {}
+        except Exception:
+            records = {}
+        records[model_id] = record
+        if len(records) > 200:
+            records = dict(list(records.items())[-200:])
+        self.settings.setValue(storage_key, json.dumps(records, ensure_ascii=False))
+        self.settings.sync()
+        current_provider = str(self.provider_combo.currentData() or "").strip().lower()
+        if current_provider == provider:
+            self._populate_provider_model_menu(provider)
+        return True
+
     def _model_status_tooltip(self, status: str, reason: str) -> str:
         is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
         messages = {
