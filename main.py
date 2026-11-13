@@ -6932,7 +6932,11 @@ class MainWindow(QMainWindow):
                     self._chat_panel_anim_until = 0.0
                     p.setMaximumWidth(720)
                     p.setMinimumWidth(405)
-                    p.reveal_chat_content(stagger_messages=True)
+                    # Reveal the already-rendered transcript as one surface.
+                    # Cascading bubble-height animations delayed the visual arrival
+                    # and made the scrollbar chase messages while the panel opened.
+                    p.reveal_chat_content(stagger_messages=False)
+                    p._scroll_chat_to_bottom()
                     now = max(1, self.workspace.width())
                     self.workspace.setSizes([max(1, now - target - board), target, board])
                     p.prompt_edit.setFocus()
@@ -6940,6 +6944,11 @@ class MainWindow(QMainWindow):
                     # when its viewport reported a tiny/default width. Reflow the complete
                     # history only after the final splitter geometry has been applied.
                     QTimer.singleShot(35, self._finish_chat_transcript_resize)
+                    # Width reflow can change message heights; force the final
+                    # viewport position again after geometry has settled.
+                    QTimer.singleShot(55, p._scroll_chat_to_bottom)
+                    QTimer.singleShot(150, p._scroll_chat_to_bottom)
+                    QTimer.singleShot(320, p._scroll_chat_to_bottom)
                     QTimer.singleShot(0, self._relayout_active_pdf_after_panel_animation)
                     if anchor_tab is not None:
                         # Let the final coalesced PDF layout finish, then release
