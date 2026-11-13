@@ -1545,7 +1545,7 @@ class MainWindow(QMainWindow):
             free_unlimited_mode = bool(getattr(state, "free_unlimited_mode", False))
             # A real Premium subscription is always visible, independent of launch mode.
             # Only hide the Free label while the product is globally free and unlimited.
-            show_plan = bool(state.is_premium or (not free_unlimited_mode and state.plan_label != "Free"))
+            show_plan = bool(state.is_premium or not free_unlimited_mode)
             if first_name:
                 label = first_name + (" · " + plan_shown if show_plan else "")
             else:
@@ -1907,9 +1907,8 @@ class MainWindow(QMainWindow):
         is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
         latest_version = str(info.get("latest_version") or "").strip()
         custom_message = str(info.get("message_ar" if is_ar else "message_en") or "").strip()
-        current_version = str(getattr(getattr(self, "license_service", None), "state", None).app_version
-                               if getattr(getattr(self, "license_service", None), "state", None) is not None
-                               and getattr(self.license_service.state, "app_version", None) else APP_VERSION)
+        state = getattr(getattr(self, "license_service", None), "state", None)
+        current_version = str(getattr(state, "app_version", None) or APP_VERSION)
         title = "يتوفر تحديث جديد لبرنامج ENGO" if is_ar else "A new ENGO update is available"
         message = custom_message or (
             "يتوفر إصدار أحدث من ENGO. يُفضّل تثبيته للاستفادة من التحسينات والإصلاحات."
