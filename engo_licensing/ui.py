@@ -4,7 +4,6 @@ from __future__ import annotations
 import traceback
 import sys
 import json
-import base64
 from html import escape as html_escape
 from pathlib import Path
 from datetime import datetime, timezone
