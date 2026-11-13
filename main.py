@@ -8431,6 +8431,10 @@ class MainWindow(QMainWindow):
 
     def _on_ai_success(self, path, answer):
         worker = self._ai_worker
+        if worker is not None:
+            self.ai_panel.record_provider_model_result(
+                worker.provider, worker.model, worker.api_key, success=True
+            )
         mode = getattr(worker, "mode", "custom") if worker is not None else "custom"
         if mode == "teach" and os.path.abspath(path) == os.path.abspath(self.ai_panel.document_path):
             self._begin_teaching(answer)
@@ -8470,6 +8474,11 @@ class MainWindow(QMainWindow):
 
     def _on_ai_failure(self, path, error):
         self._speak_next_response = False
+        worker = self._ai_worker
+        if worker is not None:
+            self.ai_panel.record_provider_model_result(
+                worker.provider, worker.model, worker.api_key, success=False, error=str(error)
+            )
         friendly = self._friendly_ai_error_message(error)
         # Raw HTML (<details>) is escaped by the chat renderer and Qt cannot collapse it, so it was shown as literal text.
         # Use plain Markdown only: a bold label followed by a code block.
