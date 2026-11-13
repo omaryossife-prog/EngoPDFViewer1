@@ -32,7 +32,11 @@ def test_annual_subscription_is_available_from_the_client_and_admin():
     admin = (ROOT / "engo_admin.py").read_text(encoding="utf-8")
     edge = (ROOT / "supabase" / "functions" / "subscription-request" / "index.ts").read_text(encoding="utf-8")
     assert 'PERIODS = ("monthly", "quarterly", "semiannual", "annual")' in ui
-    assert 'self.period_combo.addItem(self._tr("سنوي", "Annual"), "annual")' in ui
+    assert '("annual", self._tr("سنوي\\\\n12 شهر", "Annual\\\\n12 months"))' in ui
+    assert 'self.period_cards["monthly"].setChecked(True)' in ui
+    assert 'self.period_group.setExclusive(True)' in ui
+    core = (ROOT / "engo_licensing" / "core.py").read_text(encoding="utf-8")
+    assert 'billing_period not in {"monthly", "quarterly", "semiannual", "annual"}' in core
     assert '("annual", "سنوي", 12)' in admin
     assert 'QTableWidget(4,6)' in admin
     assert '"annual": "سنوي"' in admin
@@ -85,3 +89,24 @@ def test_comparison_wraps_full_labels_without_ellipsis_and_sorts_free_statuses()
     assert "self.comparison_table.setTextElideMode(Qt.TextElideMode.ElideNone)" in ui
     assert "self.comparison_table.setColumnWidth(column, 90)" in ui
     assert "QHeaderView.ResizeMode.ResizeToContents" in ui
+
+
+
+def test_subscription_periods_are_four_selectable_side_by_side_cards():
+    ui = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
+    assert 'self.period_group = QButtonGroup(self)' in ui
+    assert 'self.period_group.setExclusive(True)' in ui
+    assert 'self.period_cards: dict[str, QPushButton] = {}' in ui
+    assert 'period_cards_row.addWidget(button, 1)' in ui
+    for period in ("monthly", "quarterly", "semiannual", "annual"):
+        assert f'("{period}", self._tr(' in ui
+        assert f'self.period_cards["{period}"] = button' in ui
+
+
+def test_payment_button_shows_busy_state_and_restores_after_request():
+    ui = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
+    assert 'self.payment_button.setText(self._tr("جاري إنشاء طلب الدفع…", "Creating payment request…"))' in ui
+    assert 'self.period_group.setEnabled(False)' in ui
+    assert 'self.period_group.setEnabled(True)' in ui
+    assert 'self.payment_button.setText(self._payment_button_text)' in ui
+    assert 'self._worker.finished.connect(self._payment_worker_finished)' in ui
