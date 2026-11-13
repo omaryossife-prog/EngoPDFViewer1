@@ -1163,22 +1163,14 @@ class MainWindow(QMainWindow):
         else:
             side.insertWidget(browser_insert_index, browser, 1)
         side.setStretch(side.indexOf(browser), 1)
-        self.home_update_center_btn = QPushButton("✦  Update Center")
+        self.home_update_center_btn = QPushButton()
         self.home_update_center_btn.setObjectName("homeUpdateCenter")
-        self.home_update_center_btn.setFixedHeight(38)
         self.home_update_center_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.home_update_center_btn.setToolTip("Check for Engo updates and release information")
         self.home_update_center_btn.clicked.connect(self._open_update_center)
-        self.home_update_center_btn.setStyleSheet(
-            "QPushButton#homeUpdateCenter { background:#285fc4; color:#ffffff; "
-            "border:1px solid #5b8bea; border-radius:9px; padding:7px 10px; "
-            "font-weight:800; text-align:left; }"
-            "QPushButton#homeUpdateCenter:hover { background:#3474df; border-color:#8eb0f4; }"
-            "QPushButton#homeUpdateCenter:pressed { background:#214d9f; }"
-        )
         settings_index = side.indexOf(self.home_settings_btn)
         side.insertWidget(settings_index if settings_index >= 0 else side.count() - 1,
                           self.home_update_center_btn)
+        self._refresh_home_update_center_button()
         self._home_browser_current_dir = ""  # Empty means This PC / available drives.
         self._home_browser_breadcrumb_focus_dir = ""
         self._refresh_home_browser()
@@ -1834,6 +1826,54 @@ class MainWindow(QMainWindow):
     def _open_update_center(self):
         """Manually check release information from the prominent Home action."""
         self._check_app_update_info(manual=True)
+
+    def _refresh_home_update_center_button(self):
+        """Keep the Home update action localized and tied to the active theme accent."""
+        button = getattr(self, "home_update_center_btn", None)
+        if button is None:
+            return
+        try:
+            language = str(
+                self.settings.value("interface_language", "en", type=str) or "en"
+            ).lower()
+            is_ar = language.startswith("ar")
+            theme = normalize_ui_theme(
+                self.settings.value("ui_theme", "dark", type=str)
+            )
+            tokens = engo_ui_theme_tokens(theme)
+            accent = tokens["accent"]
+            accent_hover = tokens.get("accent_hover", accent)
+            label = "يتوفر تحديث جديد" if is_ar else "New update available"
+            tooltip = (
+                "اضغط لعرض معلومات التحديث الجديد"
+                if is_ar else "Open details for the latest ENGO update"
+            )
+
+            button.setText(label)
+            button.setIcon(make_icon("update", accent, 22))
+            button.setIconSize(QSize(22, 22))
+            button.setLayoutDirection(
+                Qt.LayoutDirection.RightToLeft if is_ar
+                else Qt.LayoutDirection.LeftToRight
+            )
+            button.setFixedHeight(46)
+            button.setToolTip(tooltip)
+            button.setAccessibleName(label)
+            button.setStyleSheet(
+                "QPushButton#homeUpdateCenter { "
+                f"background:{tokens['panel_alt']}; color:{accent}; "
+                f"border:1px solid {accent}; border-radius:10px; "
+                "padding:7px 12px; font-size:12pt; font-weight:850; "
+                "text-align:center; }"
+                "QPushButton#homeUpdateCenter:hover { "
+                f"background:{tokens['hover']}; color:{accent_hover}; "
+                f"border-color:{accent_hover}; }}"
+                "QPushButton#homeUpdateCenter:pressed { "
+                f"background:{tokens['pressed']}; color:{accent}; }}"
+            )
+        except (AttributeError, RuntimeError, KeyError, TypeError, ValueError):
+            # A cosmetic refresh must never interfere with the update action itself.
+            pass
 
     def _check_app_update_info(self, manual=False):
         service = getattr(self, "license_service", None)
@@ -3066,6 +3106,7 @@ class MainWindow(QMainWindow):
             except (RuntimeError, AttributeError):
                 pass
         self._apply_text_font_preferences()
+        self._refresh_home_update_center_button()
 
     def _apply_text_font_preferences(self):
         chat_pt = self.settings.value("ui_chat_font_pt", 13.0, type=float)
@@ -3412,11 +3453,7 @@ class MainWindow(QMainWindow):
             self.files_merge_btn.setText("⇧  دمج ملفات PDF" if language == "ar" else "⇧  Merge PDFs")
             tip = "دمج ملفين PDF أو أكثر في ملف واحد" if language == "ar" else "Combine two or more PDF files into one PDF"
             self.files_merge_btn.setToolTip(tip)
-        if hasattr(self, "home_update_center_btn"):
-            self.home_update_center_btn.setText("✦  مركز التحديثات" if language == "ar" else "✦  Update Center")
-            tip = "التحقق من تحديثات ENGO ومعلومات الإصدارات" if language == "ar" else "Check for Engo updates and release information"
-            self.home_update_center_btn.setToolTip(tip)
-            self.home_update_center_btn.setAccessibleName(tip)
+        self._refresh_home_update_center_button()
         if hasattr(self, "home_settings_btn"):
             self.home_settings_btn.setText("الإعدادات" if language == "ar" else "Settings")
             tip = "الإعدادات" if language == "ar" else "Settings"
