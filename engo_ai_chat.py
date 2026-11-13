@@ -262,86 +262,152 @@ class ClickableChatPassageLabel(QLabel):
         super().mousePressEvent(event)
 
 
+class ChatImageCanvas(QLabel):
+    """Image-only canvas with a hand cursor, drag panning and wheel zoom."""
+
+    def __init__(self, preview_dialog, parent=None):
+        super().__init__(parent)
+        self.preview_dialog = preview_dialog
+        self._drag_origin = None
+        self._start_scroll = (0, 0)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.setMouseTracking(True)
+
+    def wheelEvent(self, event):
+        self.preview_dialog._zoom_from_wheel(event)
+        event.accept()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_origin = event.globalPosition().toPoint()
+            self._start_scroll = (
+                self.preview_dialog.image_scroll.horizontalScrollBar().value(),
+                self.preview_dialog.image_scroll.verticalScrollBar().value(),
+            )
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._drag_origin is not None and (event.buttons() & Qt.MouseButton.LeftButton):
+            current = event.globalPosition().toPoint()
+            dx = current.x() - self._drag_origin.x()
+            dy = current.y() - self._drag_origin.y()
+            hbar = self.preview_dialog.image_scroll.horizontalScrollBar()
+            vbar = self.preview_dialog.image_scroll.verticalScrollBar()
+            hbar.setValue(self._start_scroll[0] - dx)
+            vbar.setValue(self._start_scroll[1] - dy)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_origin = None
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.preview_dialog._reset_zoom()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
+
 class ChatImagePreviewDialog(QDialog):
-    """Resizable, zoomable popup for images attached to chat messages."""
+    """Clean image-only preview with wheel zoom and hand-drag panning."""
 
     def __init__(self, image_path: str, title: str = "Attached image", parent=None):
         super().__init__(parent, Qt.WindowType.Window)
         self.image_path = os.path.abspath(str(image_path or ""))
         self._source_pixmap = QPixmap(self.image_path)
         self._zoom_factor = 1.0
-        self.setWindowTitle(str(title or "Attached image"))
+        file_name = Path(self.image_path).name or str(title or "Attached image")
+        self.setWindowTitle(file_name)
         self.setModal(False)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setMinimumSize(420, 300)
-        self.setSizeGripEnabled(True)
+        self.setWindowFlag(Qt.WindowType.WindowMinMaxButtonsHint, True)
+
+        host = parent.window() if parent is not None else None
+        settings = getattr(host, "settings", None)
+        try:
+            language = str(settings.value("interface_language", "en", type=str) or "en") if settings is not None else "en"
+            theme_name = normalize_ui_theme(settings.value("ui_theme", "dark", type=str)) if settings is not None else "dark"
+        except (AttributeError, RuntimeError, TypeError):
+            language, theme_name = "en", "dark"
+        is_ar = language.lower().startswith("ar")
+        tokens = engo_ui_theme_tokens(theme_name)
+        self.setLayoutDirection(
+            Qt.LayoutDirection.RightToLeft if is_ar
+            else Qt.LayoutDirection.LeftToRight
+        )
 
         screen = QApplication.primaryScreen()
         available = screen.availableGeometry() if screen is not None else QRect(0, 0, 1200, 850)
-        start_width = min(980, max(520, int(available.width() * 0.72)))
-        start_height = min(820, max(420, int(available.height() * 0.78)))
+        start_width = min(1080, max(520, int(available.width() * 0.78)))
+        start_height = min(860, max(420, int(available.height() * 0.82)))
         self.resize(start_width, start_height)
         self.move(available.center() - self.rect().center())
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(10, 10, 10, 10)
-        root.setSpacing(8)
-        toolbar = QHBoxLayout()
-        self.file_label = QLabel(os.path.basename(self.image_path) or "Attached image")
-        self.file_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.file_label.setMinimumWidth(0)
-        self.file_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        toolbar.addWidget(self.file_label, 1)
-
-        self.zoom_out_btn = QToolButton(self)
-        self.zoom_out_btn.setText("−")
-        self.zoom_out_btn.setFixedSize(32, 30)
-        self.zoom_out_btn.setToolTip("Zoom out")
-        self.zoom_out_btn.clicked.connect(lambda: self._change_zoom(1 / 1.2))
-        toolbar.addWidget(self.zoom_out_btn)
-        self.zoom_label = QLabel("Fit")
-        self.zoom_label.setMinimumWidth(48)
-        self.zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        toolbar.addWidget(self.zoom_label)
-        self.zoom_in_btn = QToolButton(self)
-        self.zoom_in_btn.setText("+")
-        self.zoom_in_btn.setFixedSize(32, 30)
-        self.zoom_in_btn.setToolTip("Zoom in")
-        self.zoom_in_btn.clicked.connect(lambda: self._change_zoom(1.2))
-        toolbar.addWidget(self.zoom_in_btn)
-        self.fit_btn = QToolButton(self)
-        self.fit_btn.setText("Fit")
-        self.fit_btn.setToolTip("Fit image to window")
-        self.fit_btn.clicked.connect(self._reset_zoom)
-        toolbar.addWidget(self.fit_btn)
-        self.close_btn = QToolButton(self)
-        self.close_btn.setText("×")
-        self.close_btn.setFixedSize(32, 30)
-        self.close_btn.setToolTip("Close image preview")
-        self.close_btn.clicked.connect(self.close)
-        toolbar.addWidget(self.close_btn)
-        root.addLayout(toolbar)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
         self.image_scroll = QScrollArea(self)
+        self.image_scroll.setObjectName("chatImageOnlyScroll")
         self.image_scroll.setWidgetResizable(False)
         self.image_scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_scroll.setFrameShape(QFrame.Shape.StyledPanel)
-        self.image_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.image_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.image_scroll.setStyleSheet("QScrollArea { background: #171b22; border: 1px solid #394456; border-radius: 6px; }")
-        self.image_label = QLabel()
-        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setStyleSheet("QLabel { background: #171b22; border: 0; }")
+        self.image_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # Keep the viewport visually clean. The hidden scroll ranges still drive
+        # hand-drag panning, so no toolbars or scrollbars cover the actual image.
+        self.image_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.image_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.image_scroll.setStyleSheet(
+            f"QScrollArea#chatImageOnlyScroll {{ background:{tokens['window']}; border:0; }}"
+            f"QScrollArea#chatImageOnlyScroll QWidget#qt_scrollarea_viewport {{ background:{tokens['window']}; border:0; }}"
+        )
+        self.image_label = ChatImageCanvas(self, self.image_scroll)
+        self.image_label.setStyleSheet(
+            f"QLabel {{ background:{tokens['window']}; color:{tokens['text']}; border:0; }}"
+        )
         if self._source_pixmap.isNull():
-            self.image_label.setText("Image file is no longer available.")
+            self.image_label.setText(
+                "الصورة لم تعد متاحة." if is_ar else "Image file is no longer available."
+            )
             self.image_label.setMinimumSize(260, 180)
+            self.image_label.setCursor(Qt.CursorShape.ArrowCursor)
         self.image_scroll.setWidget(self.image_label)
         root.addWidget(self.image_scroll, 1)
+        self.setStyleSheet(f"QDialog {{ background:{tokens['window']}; }}")
         QTimer.singleShot(0, self._render_image)
 
     def _change_zoom(self, factor: float):
-        self._zoom_factor = max(0.20, min(5.0, self._zoom_factor * float(factor)))
+        self._zoom_factor = max(0.10, min(10.0, self._zoom_factor * float(factor)))
         self._render_image()
+
+    def _zoom_from_wheel(self, event):
+        if self._source_pixmap.isNull() or not event.angleDelta().y():
+            return
+        old_size = self.image_label.size()
+        local = event.position().toPoint()
+        global_pos = self.image_label.mapToGlobal(local)
+        viewport_pos = self.image_scroll.viewport().mapFromGlobal(global_pos)
+        rel_x = local.x() / max(1, old_size.width())
+        rel_y = local.y() / max(1, old_size.height())
+        factor = 1.18 ** (event.angleDelta().y() / 120.0)
+        self._zoom_factor = max(0.10, min(10.0, self._zoom_factor * factor))
+        self._render_image()
+        QApplication.processEvents()
+        target_x = round(rel_x * self.image_label.width())
+        target_y = round(rel_y * self.image_label.height())
+        self.image_scroll.horizontalScrollBar().setValue(target_x - viewport_pos.x())
+        self.image_scroll.verticalScrollBar().setValue(target_y - viewport_pos.y())
 
     def _reset_zoom(self):
         self._zoom_factor = 1.0
@@ -351,8 +417,8 @@ class ChatImagePreviewDialog(QDialog):
         if self._source_pixmap.isNull():
             return
         viewport = self.image_scroll.viewport().size()
-        viewport_width = max(80, int(viewport.width()) - 24)
-        viewport_height = max(80, int(viewport.height()) - 24)
+        viewport_width = max(80, int(viewport.width()))
+        viewport_height = max(80, int(viewport.height()))
         fit_scale = min(viewport_width / max(1, self._source_pixmap.width()),
                         viewport_height / max(1, self._source_pixmap.height()), 1.0)
         scale = max(0.02, fit_scale * self._zoom_factor)
@@ -364,7 +430,6 @@ class ChatImagePreviewDialog(QDialog):
         )
         self.image_label.setPixmap(rendered)
         self.image_label.resize(rendered.size())
-        self.zoom_label.setText(f"{int(round(self._zoom_factor * 100))}%" if self._zoom_factor != 1.0 else "Fit")
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
