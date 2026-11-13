@@ -171,12 +171,19 @@ class MainWindow(QMainWindow):
                 app._engo_settings = self.settings
             except Exception:
                 pass
-        # Only show first-run onboarding when this profile has no saved preferences at all.
-        # Existing installs upgrading from an earlier version already have keys and skip it.
+        # The onboarding marker is deliberately independent of AI provider credentials.
+        # A full reset preserves encrypted API keys, but must still reopen the wizard.
         try:
-            self._needs_first_run_setup = len(self.settings.allKeys()) == 0
+            has_completed_setup = bool(self.settings.value("first_run_complete", False, type=bool))
+            has_legacy_setup = (
+                self.settings.contains("interface_language")
+                and self.settings.contains("ui_theme")
+            )
+            self._needs_first_run_setup = not (has_completed_setup or has_legacy_setup)
         except Exception:
-            self._needs_first_run_setup = not self.settings.contains("ui_theme")
+            self._needs_first_run_setup = not (
+                self.settings.contains("interface_language") and self.settings.contains("ui_theme")
+            )
         # PDF linking is an explicit, session-only action.
         # pairs and silently re-linked PDFs when both were opened together; discard
         # that legacy setting so multi-file opens always start independently.
@@ -2058,16 +2065,25 @@ class MainWindow(QMainWindow):
 
         # All windows have closed. Preserve user content by only clearing QSettings
         # and disposable caches; chat and lesson-board databases remain untouched.
-        failed_credentials = []
         cache_errors = 0
         try:
-            _removed, failed_credentials = reset_dialog._delete_provider_credentials()
+            # Preserve provider API keys exactly as stored (DPAPI-encrypted QSettings
+            # values on Windows). Credential Manager entries are separate from
+            # QSettings and are intentionally never deleted by a program reset.
+            preserved_provider_keys = {
+                key: self.settings.value(key)
+                for key in self.settings.allKeys()
+                if key.startswith("ai_key_")
+            }
             cache_stats = reset_dialog._perform_cache_cleanup(None)
             cache_errors = int(cache_stats.get("errors", 0))
             self.settings.clear()
+            for key, value in preserved_provider_keys.items():
+                self.settings.setValue(key, value)
             self.settings.sync()
-            if self.settings.allKeys():
-                raise RuntimeError("Some Engo preferences could not be cleared.")
+            remaining_keys = set(self.settings.allKeys())
+            if remaining_keys != set(preserved_provider_keys):
+                raise RuntimeError("Some Engo preferences could not be cleared or API keys could not be preserved.")
         except Exception as exc:
             app.setQuitOnLastWindowClosed(True)
             is_ar = getattr(reset_dialog, "language", "en") == "ar"
@@ -2103,8 +2119,6 @@ class MainWindow(QMainWindow):
             details = ("تمت إعادة ضبط إعدادات Engo، لكن تعذرت إعادة التشغيل تلقائيًا. شغّل Engo يدويًا لعرض شاشات الترحيب."
                        if is_ar else
                        "Engo settings were reset, but automatic restart failed. Start Engo manually to see the welcome setup.")
-            if failed_credentials:
-                details += "\nتعذر التأكد من حذف بعض مفاتيح API." if is_ar else "\nSome API credentials could not be confirmed as deleted."
             if cache_errors:
                 details += f"\nتعذر حذف {cache_errors} عنصر كاش." if is_ar else f"\n{cache_errors} cache item(s) could not be removed."
             QMessageBox.warning(None, "إعادة ضبط Engo" if is_ar else "Reset Engo", details)
@@ -10554,11 +10568,11 @@ def main():
     splash = EngoSplashScreen(icon_path, language, theme=ui_theme)
     splash.show()
 
-    launch_state = {"started": False}
+    launch_state = {"started": False, "cancelled": False}
     worker_holder = {"worker": None}
 
     def open_main_window(_state=None):
-        if launch_state["started"]:
+        if launch_state["started"] or launch_state["cancelled"]:
             return
         launch_state["started"] = True
         state = _state or service.state
@@ -10567,7 +10581,23 @@ def main():
         window = MainWindow(license_service=service)
         if getattr(window, "_needs_first_run_setup", False):
             splash.hide()
-            first_run = FirstRunSetupDialog()
+            first_run = FirstRunSetupDialog(
+                is_premium=bool(getattr(service.state, "is_premium", False))
+            )
+
+            def request_first_run_google_sign_in():
+                account_dialog = AccountDialog(
+                    service,
+                    language=first_run.selected_language or "en",
+                    parent=first_run,
+                    theme=first_run.selected_theme or ui_theme,
+                )
+                account_dialog.exec()
+                if service.state.authenticated:
+                    first_run.account_choice = "google"
+                    first_run.accept()
+
+            first_run.google_sign_in_requested.connect(request_first_run_google_sign_in)
             if first_run.exec() != QDialog.DialogCode.Accepted:
                 window.close()
                 splash.permit_close()
@@ -10595,6 +10625,9 @@ def main():
 
     def verification_completed(state):
         worker_holder["worker"] = None
+        if launch_state["cancelled"]:
+            app.quit()
+            return
         # Unconfigured projects and a user who has not signed in are expected Free
         # states, not blocking errors. Network, signature, device or build failures
         # are shown with explicit Retry and Continue Free actions.
@@ -10609,6 +10642,11 @@ def main():
             splash.show_failure(state.reason or "License verification failed")
 
     def start_verification():
+        if launch_state["cancelled"]:
+            return
+        active_worker = worker_holder.get("worker")
+        if active_worker is not None and active_worker.isRunning():
+            return
         splash.begin_retry()
         worker = StartupVerifierWorker(service)
         worker_holder["worker"] = worker
@@ -10616,7 +10654,23 @@ def main():
         worker.completed.connect(verification_completed)
         worker.start()
 
+    def cancel_startup():
+        if launch_state["started"] or launch_state["cancelled"]:
+            return
+        launch_state["cancelled"] = True
+        # Keep the event loop alive until the verification thread reports back;
+        # otherwise Qt could destroy a running QThread during application exit.
+        app.setQuitOnLastWindowClosed(False)
+        splash.permit_close()
+        worker = worker_holder.get("worker")
+        if worker is None or not worker.isRunning():
+            app.quit()
+        else:
+            worker.requestInterruption()
+
     def continue_free():
+        if launch_state["cancelled"]:
+            return
         had_device_conflict = "another device" in str(service.state.reason).lower()
         service._free_state("You chose to continue using Engo Free mode")
         if had_device_conflict:
@@ -10625,6 +10679,7 @@ def main():
 
     splash.retry_requested.connect(start_verification)
     splash.continue_free_requested.connect(continue_free)
+    splash.cancel_requested.connect(cancel_startup)
     QTimer.singleShot(0, start_verification)
     return app.exec()
 
