@@ -677,7 +677,7 @@ class LicenseService:
 
         try:
             google_tokens = self._exchange_google_desktop_code(code, verifier, redirect_uri)
-        except LicenseError as exc:
+        except (LicenseError, NetworkError) as exc:
             # Older Supabase projects may have Google OAuth configured in Auth
             # but not the server-side Desktop OAuth secrets. Preserve sign-in by
             # falling back to Supabase's hosted Google OAuth flow in that case.
