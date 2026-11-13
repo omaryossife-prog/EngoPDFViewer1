@@ -1899,6 +1899,8 @@ class MainWindow(QMainWindow):
         "Account is suspended or unavailable": "الحساب موقوف أو غير متاح.",
         "Invalid usage amount": "قيمة استخدام غير صالحة.",
         "This feature is not available on the current plan.": "هذه الميزة غير متاحة في خطتك الحالية.",
+        "offline_feature_unavailable":
+            "الميزة اتقفلت لأن جهازك غير متصل بالإنترنت. اتصل بالإنترنت وحاول مرة أخرى.",
     }
 
     def _document_feature_scope(self, tab=None):
@@ -1978,22 +1980,43 @@ class MainWindow(QMainWindow):
                 service._free_state(str(error), authenticated=service.state.authenticated)
                 self._refresh_license_button()
                 reason = str(error)
-                message = (
-                    "تعذر التحقق من الحساب أو احتساب الاستخدام من الخادم، لذلك تم قفل هذه الميزة.\n\n"
-                    + reason[:900]
-                ) if is_ar else (
-                    "The server could not verify the account or reserve usage. This feature has been locked.\n\n"
-                    + reason[:900]
-                )
+                reason_lower = reason.lower()
+                offline_error = any(token in reason_lower for token in (
+                    "could not contact the engo account server",
+                    "getaddrinfo failed", "name or service not known",
+                    "network is unreachable", "connection timed out",
+                    "timed out", "temporary failure in name resolution",
+                ))
+                if offline_error:
+                    message = (
+                        "الميزة اتقفلت لأن جهازك غير متصل بالإنترنت. اتصل بالإنترنت وحاول مرة أخرى."
+                        if is_ar else
+                        "This feature is locked because your device is offline. Connect to the internet and try again."
+                    )
+                else:
+                    message = (
+                        "تعذر التحقق من الحساب أو احتساب الاستخدام من الخادم، لذلك تم قفل هذه الميزة.\\n\\n"
+                        + reason[:900]
+                    ) if is_ar else (
+                        "The server could not verify the account or reserve usage. This feature has been locked.\\n\\n"
+                        + reason[:900]
+                    )
                 QMessageBox.warning(self, "Engo", message)
                 return
 
-            # Both flags are mandatory. An untracked Free/offline fallback is a denial.
+            # Both flags are mandatory. Per-file tag quotas may be counted locally
+            # only from the last protected, signed entitlement/usage snapshot.
             if isinstance(result, dict) and result.get("allowed") is True and result.get("tracked") is True:
                 continuation()
                 self._refresh_license_button()
                 if result.get("used") is not None and result.get("limit") is not None:
-                    self.show_status(f"Usage · {result['used']} / {result['limit']}")
+                    if result.get("offline"):
+                        self.show_status(
+                            f"الاستخدام دون اتصال · {result['used']} / {result['limit']}"
+                            if is_ar else f"Offline usage · {result['used']} / {result['limit']}"
+                        )
+                    else:
+                        self.show_status(f"Usage · {result['used']} / {result['limit']}")
                 return
 
             raw_text = str((result or {}).get("message") or "")
@@ -2002,7 +2025,10 @@ class MainWindow(QMainWindow):
                 return
             else:
                 text_en = denied_message or raw_text or "This feature is not available on the current plan."
-                text = self._FEATURE_DENIED_MESSAGES_AR.get(text_en, text_en) if is_ar else text_en
+                text = self._FEATURE_DENIED_MESSAGES_AR.get(text_en, text_en) if is_ar else (
+                    "This feature is locked because your device is offline. Connect to the internet and try again."
+                    if raw_text == "offline_feature_unavailable" else text_en
+                )
                 message = ("تم قفل الميزة: " + text) if is_ar else ("Feature locked: " + text)
             QMessageBox.information(self, "Engo", message)
 
