@@ -678,15 +678,7 @@ class LicenseService:
         if not code:
             raise LicenseError("Google sign-in did not return an authorization code")
 
-        try:
-            google_tokens = self._exchange_google_desktop_code(code, verifier, redirect_uri)
-        except (LicenseError, NetworkError) as exc:
-            # Older Supabase projects may have Google OAuth configured in Auth
-            # but not the server-side Desktop OAuth secrets. Preserve sign-in by
-            # falling back to Supabase's hosted Google OAuth flow in that case.
-            if "Google Desktop OAuth is not configured on the Engo server" not in str(exc):
-                raise
-            return self._login_google_via_supabase()
+        google_tokens = self._exchange_google_desktop_code(code, verifier, redirect_uri)
 
         id_token = str(google_tokens.get("id_token") or "")
         if not id_token:
