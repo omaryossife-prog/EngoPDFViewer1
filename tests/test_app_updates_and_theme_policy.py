@@ -179,3 +179,11 @@ def test_other_file_format_entitlement_is_seeded_for_free_and_premium():
     assert "('free', 'open_other_formats', false, 0, null, 'lifetime')" in migration
     assert "('premium', 'open_other_formats', true, null, null, 'lifetime')" in migration
     assert "on conflict (plan_id, feature_key) do update" in migration.lower()
+
+
+
+def test_subscription_price_label_has_arabic_and_english_prefixes():
+    ui = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
+    assert 'self._tr(f"السعر: {formatted_price}", f"Price: {formatted_price}")' in ui
+    assert 'self._tr("السعر: بيانات السعر لم تصل", "Price: data not loaded")' in ui
+    assert 'self._tr("السعر: لم يحدد بعد", "Price: not configured yet")' in ui
