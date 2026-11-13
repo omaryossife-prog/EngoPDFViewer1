@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QApplication, QDialog, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel,
     QListWidget, QMessageBox, QPushButton, QProgressBar, QVBoxLayout, QWidget,
     QComboBox, QScrollArea, QPlainTextEdit, QTableWidget, QTableWidgetItem,
-    QHeaderView, QAbstractItemView, QAbstractScrollArea, QSizePolicy,
+    QHeaderView, QAbstractItemView, QAbstractScrollArea, QSizePolicy, QButtonGroup,
 )
 
 from .core import LicenseService, LicenseState
@@ -432,6 +432,9 @@ class PlansDialog(QDialog):
         self.language = "ar" if str(language).lower().startswith("ar") else "en"
         self.account_data = account_data if isinstance(account_data, dict) else {}
         self._worker: ServiceActionWorker | None = None
+        self._selected_billing_period = "monthly"
+        self.period_cards: dict[str, QPushButton] = {}
+        self._payment_button_text = self._tr("التواصل والدفع", "Contact and Pay")
         self._network_manager = QNetworkAccessManager(self)
         self.setWindowTitle(self._tr("خطط الاشتراك", "Subscription plans"))
         self.setMinimumSize(600, 650)
@@ -447,6 +450,9 @@ class PlansDialog(QDialog):
             QPushButton {{ background:{t['raised']}; color:{t['text']}; border:1px solid {t['border']}; border-radius:8px; padding:7px 12px; min-height:34px; font-weight:700; }}
             QPushButton:hover {{ background:{t['hover']}; border-color:{t['border_strong']}; }}
             QPushButton#planPrimary {{ background:{t['accent']}; color:white; border-color:{t['accent']}; }}
+            QPushButton#periodCard {{ background:{t['raised']}; border:1px solid {t['border_strong']}; border-radius:9px; padding:7px 3px; min-height:58px; font-size:8.5pt; }}
+            QPushButton#periodCard:hover {{ background:{t['hover']}; border-color:{t['accent']}; }}
+            QPushButton#periodCard:checked {{ background:{t['selection']}; border:2px solid {t['accent']}; color:{t['text']}; }}
             QPushButton:disabled {{ color:{t['muted']}; background:{t['panel_alt']}; }}
             QComboBox {{ background:{t['input']}; color:{t['text']}; border:1px solid {t['border_strong']}; border-radius:7px; padding:6px 9px; min-height:30px; }}
             QPlainTextEdit {{ background:{t['panel_alt']}; border:1px solid {t['border']}; border-radius:8px; color:{t['text']}; padding:8px; }}
@@ -490,16 +496,31 @@ class PlansDialog(QDialog):
         premium = QFrame(); premium.setObjectName("planCard"); pl = QVBoxLayout(premium); pl.setContentsMargins(14,12,14,12)
         premium_title = QLabel(self._tr("مميز", "Premium")); premium_title.setObjectName("planHeading"); pl.addWidget(premium_title)
         premium_copy = QLabel(self._tr("إتاحة أوسع للميزات حسب إعدادات Engo.", "Expanded feature access as configured by Engo.")); premium_copy.setWordWrap(True); pl.addWidget(premium_copy)
-        period_row=QHBoxLayout(); period_row.addWidget(QLabel(self._tr("مدة الاشتراك:", "Billing period:")))
-        self.period_combo=QComboBox()
-        self.period_combo.addItem(self._tr("شهري", "Monthly"), "monthly")
-        self.period_combo.addItem(self._tr("ربع سنوي", "Quarterly"), "quarterly")
-        self.period_combo.addItem(self._tr("نصف سنوي", "Semiannual"), "semiannual")
-        self.period_combo.addItem(self._tr("سنوي", "Annual"), "annual")
-        self.period_combo.currentIndexChanged.connect(self._update_price)
-        period_row.addWidget(self.period_combo,1); pl.addLayout(period_row)
+        pl.addWidget(QLabel(self._tr("مدة الاشتراك:", "Billing period:")))
+        period_cards_row = QHBoxLayout()
+        period_cards_row.setSpacing(8)
+        self.period_group = QButtonGroup(self)
+        self.period_group.setExclusive(True)
+        period_labels = (
+            ("monthly", self._tr("شهري\\nشهر واحد", "Monthly\\n1 month")),
+            ("quarterly", self._tr("ربع سنوي\\n3 أشهر", "Quarterly\\n3 months")),
+            ("semiannual", self._tr("نصف سنوي\\n6 أشهر", "Semiannual\\n6 months")),
+            ("annual", self._tr("سنوي\\n12 شهر", "Annual\\n12 months")),
+        )
+        for period, label in period_labels:
+            button = QPushButton(label)
+            button.setObjectName("periodCard")
+            button.setCheckable(True)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            button.setMinimumHeight(62)
+            self.period_group.addButton(button)
+            button.clicked.connect(lambda checked=False, value=period: self._select_period(value))
+            period_cards_row.addWidget(button, 1)
+            self.period_cards[period] = button
+        self.period_cards["monthly"].setChecked(True)
+        pl.addLayout(period_cards_row)
         self.price_label=QLabel("—"); self.price_label.setObjectName("planHeading"); pl.addWidget(self.price_label)
-        self.payment_button=QPushButton(self._tr("التواصل والدفع", "Contact and Pay")); self.payment_button.setObjectName("planPrimary")
+        self.payment_button=QPushButton(self._payment_button_text); self.payment_button.setObjectName("planPrimary")
         self.payment_button.clicked.connect(self._request_payment); pl.addWidget(self.payment_button)
         root.addWidget(premium)
 
@@ -666,8 +687,14 @@ class PlansDialog(QDialog):
     def _tr(self, ar: str, en: str) -> str:
         return ar if self.language == "ar" else en
 
+    def _select_period(self, period: str):
+        if period not in self.PERIODS:
+            return
+        self._selected_billing_period = period
+        self._update_price()
+
     def _selected_period(self) -> str:
-        return str(self.period_combo.currentData() or "monthly")
+        return self._selected_billing_period
 
     def _price_row(self) -> dict:
         period = self._selected_period()
@@ -779,13 +806,21 @@ class PlansDialog(QDialog):
             return
         period = self._selected_period()
         self.payment_button.setEnabled(False)
+        self.payment_button.setText(self._tr("جاري إنشاء طلب الدفع…", "Creating payment request…"))
+        self.period_group.setEnabled(False)
         self._worker = ServiceActionWorker(
             lambda: self.service.request_subscription_payment(period), self
         )
         self._worker.completed.connect(self._payment_created)
+        self._worker.finished.connect(self._payment_worker_finished)
         self._worker.start()
 
+    def _payment_worker_finished(self):
+        self._worker = None
+
     def _payment_created(self, result, error: str):
+        self.period_group.setEnabled(True)
+        self.payment_button.setText(self._payment_button_text)
         self._update_price()
         if error:
             QMessageBox.warning(
