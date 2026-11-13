@@ -1509,10 +1509,15 @@ class MainWindow(QMainWindow):
             name = metadata.get("full_name") or metadata.get("name") or user.get("email") or ""
             first_name = str(name).split()[0] if name else ""
             plan_shown = self._plan_label_localized(state.plan_label, is_ar)
+            free_unlimited_mode = bool(getattr(state, "free_unlimited_mode", False))
+            # In global Free launch mode, hide the Free label but never hide
+            # the user's actual Premium status.
+            show_plan = bool(state.is_premium or (not free_unlimited_mode and state.plan_label != "Free"))
             if first_name:
-                label = first_name + (" · " + plan_shown if state.plan_label != "Free" else "")
+                label = first_name + (" · " + plan_shown if show_plan else "")
             else:
-                label = ("الحساب · " if is_ar else "Account · ") + plan_shown
+                account_label = "الحساب" if is_ar else "Account"
+                label = account_label + (" · " + plan_shown if show_plan else "")
         else:
             label = "الرجاء تسجيل الدخول" if is_ar else "Please sign in"
         plan_color = "#d6a328" if state.is_premium else "#4f8ee8"
@@ -1536,7 +1541,11 @@ class MainWindow(QMainWindow):
             if len(display_name) > 18:
                 display_name = display_name[:16] + "…"
             name_lbl.setText(display_name)
-            plan_lbl.setText(self._plan_label_localized(state.plan_label, is_ar))
+            free_unlimited_mode = bool(getattr(state, "free_unlimited_mode", False))
+            plan_lbl.setText(
+                self._plan_label_localized(state.plan_label, is_ar)
+                if (state.is_premium or not free_unlimited_mode) else ""
+            )
             plan_color = "#d6a328" if state.is_premium else "#4f8ee8"
             plan_lbl.setStyleSheet(
                 f"color: {plan_color}; font-size: 11pt; font-weight: 800; background: transparent;"
