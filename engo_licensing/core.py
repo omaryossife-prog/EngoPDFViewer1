@@ -458,7 +458,7 @@ h1{{font-size:25px;margin:0 0 12px;font-weight:800}}p{{font-size:15px;line-heigh
    "{{{{AVATAR_DATA_URI}}}}":"","{{{{AVATAR_CLASS}}}}":"empty"
   }};
   for(const [k,v] of Object.entries(values))page=page.split(k).join(v);
-  page=page.replace(/<a class="continue" href="engo:/{2}continue">([\s\S]*?)<\/a>/,"<span class=\"continue\">يمكنك العودة إلى Engo الآن</span>");
+  page=page.replace(/<a class="continue" href="engo:[/]{2}continue">([\s\S]*?)<\/a>/,"<span class=\"continue\">يمكنك العودة إلى Engo الآن</span>");
   document.open();document.write(page);document.close();
  }}catch(_e){{}}
 }})();
