@@ -1052,11 +1052,14 @@ class AccountDialog(QDialog):
         self.signin_container = QWidget()
         sc_lay = QVBoxLayout(self.signin_container)
         sc_lay.setContentsMargins(0, 4, 0, 4)
+        from engo_base import google_brand_icon
         self.signin_button = QPushButton(
-            "  تسجيل الدخول باستخدام Google  🔵" if is_ar
-            else "  Sign in with Google  🔵"
+            "تسجيل الدخول باستخدام Google" if is_ar
+            else "Sign in with Google"
         )
         self.signin_button.setObjectName("acctGoogleBtn")
+        self.signin_button.setIcon(google_brand_icon(22))
+        self.signin_button.setIconSize(QSize(22, 22))
         self.signin_button.clicked.connect(self._start_login)
         sc_lay.addWidget(self.signin_button, 0, Qt.AlignmentFlag.AlignHCenter)
         root.addWidget(self.signin_container)
