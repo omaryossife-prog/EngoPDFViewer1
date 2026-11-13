@@ -170,7 +170,7 @@ class EngoSplashScreen(QWidget):
         layout.setContentsMargins(42, 16, 42, 28)
         layout.setSpacing(10)
         top_row = QHBoxLayout()
-        top_row.setContentsMargins(0, 0, -28, 0)
+        top_row.setContentsMargins(0, 0, 0, 0)
         top_row.addStretch(1)
         self.close_button = QPushButton("×")
         self.close_button.setObjectName("splashClose")
