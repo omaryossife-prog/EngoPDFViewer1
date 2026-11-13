@@ -450,7 +450,7 @@ class PlansDialog(QDialog):
             QPushButton {{ background:{t['raised']}; color:{t['text']}; border:1px solid {t['border']}; border-radius:8px; padding:7px 12px; min-height:34px; font-weight:700; }}
             QPushButton:hover {{ background:{t['hover']}; border-color:{t['border_strong']}; }}
             QPushButton#planPrimary {{ background:{t['accent']}; color:white; border-color:{t['accent']}; }}
-            QPushButton#periodCard {{ background:{t['raised']}; border:1px solid {t['border_strong']}; border-radius:9px; padding:7px 3px; min-height:58px; font-size:8.5pt; }}
+            QPushButton#periodCard {{ background:{t['raised']}; border:1px solid {t['border_strong']}; border-radius:9px; padding:4px 2px; min-height:46px; font-size:8pt; }}
             QPushButton#periodCard:hover {{ background:{t['hover']}; border-color:{t['accent']}; }}
             QPushButton#periodCard:checked {{ background:{t.get('selection', t['raised'])}; border:2px solid {t['accent']}; color:{t['text']}; }}
             QPushButton:disabled {{ color:{t['muted']}; background:{t['panel_alt']}; }}
@@ -512,7 +512,7 @@ class PlansDialog(QDialog):
             button.setObjectName("periodCard")
             button.setCheckable(True)
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            button.setMinimumHeight(62)
+            button.setMinimumHeight(48)
             self.period_group.addButton(button)
             button.clicked.connect(lambda checked=False, value=period: self._select_period(value))
             period_cards_row.addWidget(button, 1)
@@ -801,13 +801,18 @@ class PlansDialog(QDialog):
         finally:
             reply.deleteLater()
 
+    def _set_period_cards_enabled(self, enabled: bool):
+        """Enable or disable the actual period buttons, not their QButtonGroup."""
+        for button in self.period_cards.values():
+            button.setEnabled(bool(enabled))
+
     def _request_payment(self):
         if self._worker and self._worker.isRunning():
             return
         period = self._selected_period()
         self.payment_button.setEnabled(False)
         self.payment_button.setText(self._tr("جاري إنشاء طلب الدفع…", "Creating payment request…"))
-        self.period_group.setEnabled(False)
+        self._set_period_cards_enabled(False)
         self._worker = ServiceActionWorker(
             lambda: self.service.request_subscription_payment(period), self
         )
@@ -819,7 +824,7 @@ class PlansDialog(QDialog):
         self._worker = None
 
     def _payment_created(self, result, error: str):
-        self.period_group.setEnabled(True)
+        self._set_period_cards_enabled(True)
         self.payment_button.setText(self._payment_button_text)
         self._update_price()
         if error:
