@@ -120,3 +120,17 @@ def test_next_release_version_is_trusted_and_update_settings_start_disabled():
     assert 'APP_VERSION_FALLBACK = "2.3.6"' in core
     assert "'2.3.6', true" in migration
     assert "true, false, '2.3.6'" in migration
+
+
+
+def test_plan_comparison_shows_requested_table_only_feature_statuses():
+    ui = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
+    assert '("page_themes", "ثيمات الصفحات", "Page themes")' in ui
+    assert '("smart_theme", "الثيم الذكي", "Smart Theme")' in ui
+    assert '("كل أدوات التعديل والملاحظات", "All editing and annotation tools")' in ui
+    assert '"app_themes": "limited"' in ui
+    assert '"translations": "limited"' in ui
+    assert '"page_themes": "limited"' in ui
+    assert '"smart_theme": "unavailable"' in ui
+    assert 'premium_unlimited_overrides = {"smart_theme"}' in ui
+    assert "do not alter the actual entitlement data or runtime feature enforcement" in ui
