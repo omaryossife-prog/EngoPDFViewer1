@@ -47,3 +47,43 @@ def test_subscription_request_reads_the_server_side_price():
     assert 'from("subscription_prices")' in source
     assert '.eq("is_active", true)' in source
     assert 'from("payment_transactions").insert' in source
+
+
+
+def test_provider_model_status_is_green_only_when_plan_and_provider_are_verified():
+    source = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    assert 'if plan_access == "denied":' in source
+    assert 'return "unavailable", "plan"' in source
+    assert 'if plan_access != "allowed":' in source
+    assert 'return "unknown", "plan_unknown"' in source
+    assert 'if not catalog_verified:' in source
+    assert 'return "unknown", "catalog_unknown"' in source
+    assert 'return "available", "provider_catalog"' in source
+    assert 'return "unavailable", "model_not_listed"' in source
+
+
+def test_chat_model_menu_shows_status_icons_without_changing_model_ids():
+    source = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    assert 'self.model_combo.addItem(_provider_model_status_icon(status), model_id, model_id)' in source
+    assert 'self.model_combo.setItemData(' in source
+    assert 'self.model_combo.popupAboutToShow.connect(self._refresh_provider_model_menu)' in source
+    assert 'class AIModelSelectorCombo(QComboBox):' in source
+    assert 'self.popupAboutToShow.emit()' in source
+    assert 'self.model_combo.setIconSize(QSize(13, 13))' in source
+
+
+def test_provider_model_catalog_is_marked_verified_only_after_success():
+    source = (ROOT / "engo_ai_core.py").read_text(encoding="utf-8")
+    loaded = source.split('    def _on_models_loaded(self, provider, model_ids):', 1)[1].split('    def _on_models_failed', 1)[0]
+    failed = source.split('    def _on_models_failed(self, provider, message):', 1)[1].split('    def _on_models_worker_finished', 1)[0]
+    assert 'ai_models_catalog_verified_{provider}", True' in loaded
+    assert 'ai_models_catalog_checked_at_{provider}", time.time()' in loaded
+    assert 'ai_models_catalog_verified_{provider}", False' in failed
+
+
+def test_provider_model_status_is_ui_only_and_keeps_application_version_unchanged():
+    chat = (ROOT / "engo_ai_chat.py").read_text(encoding="utf-8")
+    main = (ROOT / "main.py").read_text(encoding="utf-8")
+    assert 'self.model_combo = AIModelSelectorCombo()' in chat
+    assert 'self._chat_text_plan_access()' in chat
+    assert 'APP_VERSION = "2.3.6"' in main
