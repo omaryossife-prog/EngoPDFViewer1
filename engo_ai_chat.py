@@ -712,24 +712,6 @@ def _provider_model_status_icon(status: str) -> QIcon:
     return QIcon(pixmap)
 
 
-def _classify_provider_model_status(
-    model_id: str,
-    catalog_models: list[str],
-    catalog_verified: bool,
-    plan_access: str,
-) -> tuple[str, str]:
-    """Classify a chat model without making a live request or changing selection."""
-    if plan_access == "denied":
-        return "unavailable", "plan"
-    if plan_access != "allowed":
-        return "unknown", "plan_unknown"
-    if not catalog_verified:
-        return "unknown", "catalog_unknown"
-    if str(model_id or "").strip() in {str(item).strip() for item in catalog_models}:
-        return "available", "provider_catalog"
-    return "unavailable", "model_not_listed"
-
-
 class AIModelSelectorCombo(QComboBox):
     """Refresh cached status metadata immediately before opening the model list."""
     popupAboutToShow = pyqtSignal()
@@ -2081,10 +2063,14 @@ class AIChatPanel(QFrame):
         else:
             self.model_combo.setEditText(saved)
         self.model_combo.blockSignals(False)
+        is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
         self.model_combo.setToolTip(
-            "Green: provider catalog + current Engo plan confirmed. Yellow: not verified or stale. "
+            "الأخضر: المزوّد أظهر النموذج والخطة تسمح بالمحادثة. الأصفر: لم يكتمل التحقق أو أصبحت القائمة قديمة. "
+            "الأحمر: المحادثة غير متاحة في الخطة أو الموديل غير موجود في آخر قائمة للمزوّد. النقطة فحص استرشادي وليست تجربة إرسال."
+            if is_ar else
+            "Green: provider catalog and current Engo plan confirmed. Yellow: not verified or stale. "
             "Red: chat is not enabled on this plan or the model is absent from the latest provider list. "
-            "Refresh provider models in AI settings; the dot is a pre-check, not a test request."
+            "The dot is a pre-check, not a test request."
         )
 
     def _refresh_provider_model_menu(self):
