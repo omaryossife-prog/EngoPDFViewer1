@@ -134,3 +134,40 @@ def test_plan_comparison_shows_requested_table_only_feature_statuses():
     assert '"smart_theme": "unavailable"' in ui
     assert 'premium_unlimited_overrides = {"smart_theme"}' in ui
     assert "do not alter the actual entitlement data or runtime feature enforcement" in ui
+
+
+
+def test_non_pdf_documents_require_premium_gate_before_opening():
+    main = (ROOT / "main.py").read_text(encoding="utf-8")
+    start = main.index("    def open_pdf(self, path):")
+    end = main.index("    def _open_supported_document", start)
+    opener = main[start:end]
+    assert 'Path(source_path).suffix.lower() != ".pdf"' in opener
+    assert '"open_other_formats"' in opener
+    assert "self._request_feature_access(" in opener
+    assert "self._open_supported_document(value)" in opener
+
+
+def test_other_file_formats_are_server_enforced_premium_only():
+    core = (ROOT / "engo_licensing" / "core.py").read_text(encoding="utf-8")
+    usage = (ROOT / "supabase" / "functions" / "usage-consume" / "index.ts").read_text(encoding="utf-8")
+    ui = (ROOT / "engo_licensing" / "ui.py").read_text(encoding="utf-8")
+    assert '"open_other_formats"' in core
+    assert '"open_other_formats"' in usage
+    assert 'feature === "open_other_formats"' in usage
+    assert 'context.license_status !== "active"' in usage
+    assert '.eq("plan_id", "premium")' in usage
+    assert '("open_other_formats", "فتح الملفات بصيغ أخرى", "Open other file formats")' in ui
+    assert '"open_other_formats": "unavailable"' in ui
+    assert '"open_other_formats"' in ui.split("premium_unlimited_overrides = ", 1)[1].splitlines()[0]
+
+
+def test_guest_limited_and_unavailable_features_require_sign_in():
+    main = (ROOT / "main.py").read_text(encoding="utf-8")
+    start = main.index("    def _request_feature_access(")
+    end = main.index("    def _license_gate_thread_finished", start)
+    gate = main[start:end]
+    assert "if not service.state.authenticated:" in gate
+    assert "self.open_account_dialog()" in gate
+    assert "service.consume_feature(feature_key" in gate
+    assert 'result.get("tracked") is True' in gate
