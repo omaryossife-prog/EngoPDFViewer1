@@ -1388,7 +1388,7 @@ class LicenseService:
 
 __all__ = [
     "APP_VERSION_FALLBACK", "KNOWN_FEATURES", "LicenseConfig", "LicenseError",
-    "ConfigurationError", "SecureStorageError", "NetworkError", "SignatureError",
-    "LicenseState", "SecureStore", "LicenseService", "canonical_json",
+    "ConfigurationError", "SecureStorageError", "NetworkError", "OfflineError", "SignatureError",
+    "LicenseState", "SecureStore", "OfflineFeatureCacheStore", "LicenseService", "canonical_json",
     "is_expected_free_startup",
 ]
