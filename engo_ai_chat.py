@@ -2107,9 +2107,29 @@ class AIChatPanel(QFrame):
     def _model_status_tooltip(self, status: str, reason: str) -> str:
         is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
         messages = {
-            ("available", "provider_catalog"): (
-                "النموذج ظهر في آخر فحص ناجح لقائمة المزوّد، وميزة المحادثة النصية متاحة في خطتك. قد تظل بعض الطلبات خاضعة لصلاحيات مفتاح API أو حدود المزوّد.",
-                "The model appeared in the provider's latest successful catalog check, and text chat is enabled on your plan. Individual requests may still depend on API-key permissions or provider limits.",
+            ("available", "request_success"): (
+                "تم إرسال طلب محادثة حقيقي بهذا المفتاح والموديل بنجاح خلال آخر 7 أيام. قد تتغير الحصة أو الصلاحيات لاحقًا.",
+                "A real chat request using this API key and model succeeded within the last 7 days. Quotas and permissions can still change.",
+            ),
+            ("unknown", "catalog_only"): (
+                "الموديل موجود في قائمة المزوّد، لكن لم ينجح طلب محادثة فعلي به بعد. Engo لم يرسل طلب اختبار ولم يستهلك توكنز في الخلفية.",
+                "The model is listed by the provider, but no real chat request has succeeded with it yet. Engo has not sent a probe or used background tokens.",
+            ),
+            ("unavailable", "quota_blocked"): (
+                "المزوّد أكد أن حصة هذا الموديل مستنفدة حاليًا. ستعود الحالة للمراجعة بعد انتهاء مدة الانتظار التي حددها المزوّد.",
+                "The provider confirmed that this model quota is currently exhausted. Its status returns to unknown after the provider retry window.",
+            ),
+            ("unavailable", "model_rejected"): (
+                "المزوّد رفض هذا الموديل صراحةً في آخر طلب فعلي. راجع اسم الموديل أو صلاحيات مفتاح API.",
+                "The provider explicitly rejected this model in the latest real request. Check the model ID or API-key permissions.",
+            ),
+            ("unknown", "rate_limited"): (
+                "المزوّد فرض حدًا مؤقتًا على الطلبات. هذا لا يؤكد أن الموديل غير مدعوم.",
+                "The provider temporarily rate-limited requests. This does not prove the model is unsupported.",
+            ),
+            ("unknown", "auth_failed"): (
+                "المزوّد رفض مفتاح API أو صلاحياته في آخر محاولة. حالة الموديل غير مؤكدة حتى تصحيح المفتاح.",
+                "The provider rejected the API key or its permissions in the latest attempt. Model availability is unknown until the key is fixed.",
             ),
             ("unknown", "plan_unknown"): (
                 "تعذّر تأكيد صلاحية المحادثة النصية من ترخيص Engo حاليًا. النقطة الصفراء تعني أن الحالة غير مؤكدة، وليست رفضًا.",
@@ -2152,11 +2172,13 @@ class AIChatPanel(QFrame):
 
         plan_access = self._chat_text_plan_access()
         catalog_verified = self._model_catalog_is_fresh(provider)
+        provider_health = self._load_provider_model_health(provider)
         self.model_combo.blockSignals(True)
         self.model_combo.clear()
         for model_id in model_ids:
             status, reason = _classify_provider_model_status(
-                model_id, catalog_models, catalog_verified, plan_access
+                model_id, catalog_models, catalog_verified, plan_access,
+                provider_health.get(model_id),
             )
             row = self.model_combo.count()
             self.model_combo.addItem(_provider_model_status_icon(status), model_id, model_id)
@@ -2171,12 +2193,11 @@ class AIChatPanel(QFrame):
         self.model_combo.blockSignals(False)
         is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
         self.model_combo.setToolTip(
-            "الأخضر: المزوّد أظهر النموذج والخطة تسمح بالمحادثة. الأصفر: لم يكتمل التحقق أو أصبحت القائمة قديمة. "
-            "الأحمر: المحادثة غير متاحة في الخطة أو الموديل غير موجود في آخر قائمة للمزوّد. النقطة فحص استرشادي وليست تجربة إرسال."
+            "الأخضر: نجح طلب محادثة فعلي بهذا المفتاح والموديل مؤخرًا. الأصفر: الموديل موجود بالقائمة لكن لم ينجح استخدامه بعد، أو عليه تقييد مؤقت. "
+            "الأحمر: الخطة تمنع المحادثة، أو المزوّد رفض الموديل، أو أكد نفاد حصته حاليًا. لا توجد طلبات اختبار في الخلفية."
             if is_ar else
-            "Green: provider catalog and current Engo plan confirmed. Yellow: not verified or stale. "
-            "Red: chat is not enabled on this plan or the model is absent from the latest provider list. "
-            "The dot is a pre-check, not a test request."
+            "Green: a real chat request with this API key and model recently succeeded. Yellow: listed but not yet proven by a successful request, or temporarily limited. "
+            "Red: plan access is denied, the provider rejected the model, or its quota is currently exhausted. No background probe requests are sent."
         )
 
     def _refresh_provider_model_menu(self):
