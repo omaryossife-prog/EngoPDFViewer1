@@ -3362,10 +3362,14 @@ class DocumentCanvas(QWidget):
                 elif drag_kind == "resize" and control_mode == "vertex":
                     self.tab.transform_annotation_vertex(page_index, xref, control_meta,
                                                           control_target, canvas=self)
+                elif drag_kind == "resize" and self.tab.resize_freetext_to_bounds(
+                        page_index, xref, new_bounds, canvas=self):
+                    # Recreate FreeText with the new bounding rectangle; keep the
+                    # original font and colors instead of stretching the border.
+                    pass
                 elif drag_kind == "resize" and self.tab.resize_highlight_to_text(
                         page_index, xref, new_bounds, canvas=self):
-                    # The highlight now follows the text words covered by the
-                    # resized selection frame; it is not stretched as artwork.
+                    # The highlight follows the words covered by the new selection frame.
                     pass
                 else:
                     self.tab.transform_annotation(page_index, xref, original_bounds, new_bounds, canvas=self)
@@ -8052,24 +8056,111 @@ class DocumentTab(QWidget):
             QMessageBox.warning(self, APP_NAME, f"Could not change annotation color:\n{exc}")
             return False
 
-    def update_freetext_annotation(self, index: int, xref: int, text: str, fontsize: int, fontname: str):
+    def resize_freetext_to_bounds(self, index: int, xref: int, display_rect: QRectF,
+                                 canvas=None) -> bool:
+        """Resize a FreeText annotation by rebuilding its PDF text box at the new bounds."""
+        canvas = canvas or self.canvas
+        try:
+            page_index, xref = int(index), int(xref)
+            page = self.doc.load_page(page_index)
+            old = next((item for item in (page.annots() or []) if int(item.xref) == xref), None)
+            if old is None or int((old.type or (0, ""))[0]) != getattr(fitz, "PDF_ANNOT_FREE_TEXT", 2):
+                return False
+            da = str(self.doc.xref_get_key(xref, "DA")[1] or "")
+            size_match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s+Tf", da)
+            font_match = re.search(r"/([A-Za-z0-9]+)\s+[0-9.]+\s+Tf", da)
+            fontsize = float(size_match.group(1)) if size_match else 11.0
+            fontname = font_match.group(1) if font_match else "Helv"
+            page_display = canvas.page_rects.get(page_index, QRectF())
+            if page_display.isEmpty():
+                return True
+            target_rect = canvas._rect_to_pdf(page_index, page_display, QRectF(display_rect))
+            if target_rect.is_empty:
+                return True
+            return self.update_freetext_annotation(
+                page_index, xref, str((old.info or {}).get("content") or ""),
+                fontsize, fontname, target_rect=target_rect
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, APP_NAME, f"Could not resize text box:\\n{exc}")
+            return True
+
+    def update_freetext_annotation(self, index: int, xref: int, text: str,
+                                    fontsize: int, fontname: str, target_rect=None):
         page = self.doc.load_page(int(index))
         old = next((a for a in (page.annots() or []) if int(a.xref) == int(xref)), None)
         if old is None:
             return False
         old_info = dict(old.info or {})
-        old_rect = fitz.Rect(old.rect)
+        old_rect = fitz.Rect(target_rect) if target_rect is not None else fitz.Rect(old.rect)
         old_colors = dict(old.colors or {})
         old_border = dict(old.border or {})
-        stroke = old_colors.get("stroke") or color_tuple(self.annotation_colors.get("text_ink", DEFAULT_ANNOTATION_COLORS["text_ink"]))
-        fill = old_colors.get("fill") or color_tuple(self.annotation_colors.get("text_fill", DEFAULT_ANNOTATION_COLORS["text_fill"]))
+        # FreeText's text ink is stored in /DA, not Annot.colors. Its /C entry
+        # is surfaced by PyMuPDF as the stroke color, which represents the box fill.
+        try:
+            default_appearance = str(self.doc.xref_get_key(int(xref), "DA")[1] or "")
+        except Exception:
+            default_appearance = ""
+        rgb_match = re.search(
+            r"([-+]?(?:\\d+\\.?\\d*|\\.\\d+))\\s+([-+]?(?:\\d+\\.?\\d*|\\.\\d+))\\s+([-+]?(?:\\d+\\.?\\d*|\\.\\d+))\\s+rg",
+            default_appearance,
+        )
+        gray_match = re.search(
+            r"([-+]?(?:\\d+\\.?\\d*|\\.\\d+))\\s+g(?:\\s|$)",
+            default_appearance,
+        )
+        if rgb_match:
+            stroke = tuple(max(0.0, min(1.0, float(value))) for value in rgb_match.groups())
+        elif gray_match:
+            gray = max(0.0, min(1.0, float(gray_match.group(1))))
+            stroke = (gray, gray, gray)
+        else:
+            stroke = color_tuple(self.annotation_colors.get(
+                "text_ink", DEFAULT_ANNOTATION_COLORS["text_ink"]
+            ))
+        fill = old_colors.get("stroke")
+        if fill is None:
+            fill = color_tuple(self.annotation_colors.get(
+                "text_fill", DEFAULT_ANNOTATION_COLORS["text_fill"]
+            ))
+        try:
+            align_raw = self.doc.xref_get_key(int(xref), "Q")
+            alignment = int(align_raw[1]) if align_raw and align_raw[0] == "int" else 0
+        except Exception:
+            alignment = 0
+        try:
+            opacity = float(old.opacity)
+        except Exception:
+            opacity = -1.0
+        flags = int(getattr(old, "flags", 4))
+        rotation = int(getattr(old, "rotation", 0) or 0)
+        border_width = old_border.get("width", 0.4)
+        border_width = 0.4 if border_width is None else max(0.0, float(border_width))
+        subject = str(old_info.get("subject") or "")
+        safe_size = max(6, min(48, int(fontsize)))
+        safe_font = str(fontname or "Helv")
         self._record_undo()
         page.delete_annot(old)
-        new_annot = page.add_freetext_annot(old_rect, str(text or ""), fontsize=max(6, min(48, int(fontsize))),
-                                            fontname=str(fontname or "Helv"), text_color=stroke, fill_color=fill, align=0)  # Never inherit the app RTL layout.
-        new_annot.set_border(width=float(old_border.get("width", 0.4) or 0.4))
-        new_annot.set_info(title=str(old_info.get("title") or "Engo PDF Text"),
-                           content=str(text or ""), subject=str(old_info.get("subject") or ""))
+        new_annot = page.add_freetext_annot(
+            old_rect, str(text or ""), fontsize=safe_size, fontname=safe_font,
+            text_color=stroke, fill_color=fill, align=alignment
+        )  # Keep PDF text left-to-right; never inherit the UI's RTL layout.
+        new_annot.set_border(width=border_width)
+        new_annot.set_info(
+            title=str(old_info.get("title") or "Engo PDF Text"),
+            content=str(text or ""), subject=subject
+        )
+        try:
+            new_annot.flags = flags
+        except Exception:
+            pass
+        try:
+            if opacity >= 0:
+                new_annot.set_opacity(opacity)
+            if rotation:
+                new_annot.set_rotation(rotation)
+        except Exception:
+            pass
         new_annot.update()
         self.selected_annotation = (int(index), int(new_annot.xref))
         self.selected_annotations = [(int(index), int(new_annot.xref))]
