@@ -641,6 +641,7 @@ class MainWindow(QMainWindow):
         self.rotate_page_btn.setToolTip("Rotate the current PDF page 90° clockwise; use the arrow for the whole file")
         self.rotate_page_btn.setAccessibleName("Rotate current page clockwise; menu rotates all pages")
         self.rotate_page_menu = QMenu(self.rotate_page_btn)
+        self._apply_toolbar_dropdown_style(self.rotate_page_menu)
         rotate_all_action = self.rotate_page_menu.addAction("Rotate all pages 90° clockwise")
         rotate_all_action.triggered.connect(self.rotate_all_pages_active)
         self.rotate_page_btn.setMenu(self.rotate_page_menu)
@@ -661,7 +662,6 @@ class MainWindow(QMainWindow):
             ("select", "Select", "Select annotations, read, or activate links", "#b7c6dc"),
             ("pen", "Pen", "Draw freehand ink on the page", "#80adff"),
             ("highlight", "Highlight", "Use the marker pen or select text to highlight it", "#f0cf65"),
-            ("note", "Note", "Add a sticky-note comment", "#c5a0ff"),
             ("text", "Text", "Place editable text on the page", "#83d6c5"),
             ("link", "Link", "Draw an internal link to another page", "#7ad4dc"),
         ]
@@ -687,6 +687,7 @@ class MainWindow(QMainWindow):
                 btn.setProperty("engoIconBaseColor", color)
                 self.select_tool_btn = btn
                 self.select_tool_menu = QMenu(btn)
+                self._apply_toolbar_dropdown_style(self.select_tool_menu)
                 self.select_action = QAction(make_icon("select", color, 18), "Select", self.select_tool_menu)
                 self.select_action.setCheckable(True)
                 self.pan_action = QAction(make_icon("hand", color, 18), "Hand", self.select_tool_menu)
@@ -725,6 +726,7 @@ class MainWindow(QMainWindow):
                 btn.setProperty("engoIconBaseColor", color)
                 self.highlight_tool_btn = btn
                 self.highlight_tool_menu = QMenu(btn)
+                self._apply_toolbar_dropdown_style(self.highlight_tool_menu)
                 marker_action = self.highlight_tool_menu.addAction(
                     make_icon("highlighter", color, 16),
                     "قلم التظليل" if toolbar_is_ar else "Highlighter pen"
@@ -760,6 +762,7 @@ class MainWindow(QMainWindow):
         self.tag_tool_btn.setToolTip("Tag region · drag over an area to assign the selected tag; use the arrow to choose or edit tags")
         self.tag_tool_btn.setAccessibleName("Tag region and choose tag")
         self.tag_menu = QMenu(self.tag_tool_btn)
+        self._apply_toolbar_dropdown_style(self.tag_menu)
         self.tag_tool_btn.setMenu(self.tag_menu)
         self.tag_tool_btn.clicked.connect(lambda: self._set_tool("tag"))
         self.tool_group.addButton(self.tag_tool_btn)
@@ -5106,7 +5109,7 @@ class MainWindow(QMainWindow):
             # surface and border are theme-driven by the stylesheet below.
             self.delete_btn.setIcon(make_icon("delete", "#ef4444", 18))
         if hasattr(self, "book_btn"):
-            book_icon_color = "#172033" if current_theme == "light" else _current_tokens["text"]
+            book_icon_color = "#111111" if current_theme == "light" else _current_tokens["text"]
             self.book_btn.setIcon(make_icon("book", book_icon_color, 18))
             self.book_btn.setIconSize(QSize(18, 18))
         if hasattr(self, "select_tool_btn"):
@@ -7183,7 +7186,9 @@ class MainWindow(QMainWindow):
         else:
             button.setCheckable(True)
             button.setText("ككتاب" if is_arabic_ui else "Book")
-            button.setIcon(make_icon("book", "#b7c6dc", 18))
+            book_theme = normalize_ui_theme(self.settings.value("ui_theme", "dark", type=str))
+            book_color = "#111111" if book_theme == "light" else engo_ui_theme_tokens(book_theme)["text"]
+            button.setIcon(make_icon("book", book_color, 18))
             button.setToolTip("ككتاب · عرض صفحتين جنبًا إلى جنب، ويمكن دمجه مع التمرير" if is_arabic_ui else "Book · show two pages side by side; can be combined with Scroll")
             button.setAccessibleName("عرض صفحتين ككتاب" if is_arabic_ui else "Book view · show two pages side by side")
             button.setChecked(bool(tab.book_mode) if tab is not None else False)
@@ -10876,6 +10881,7 @@ class MainWindow(QMainWindow):
             "sidebar_btn": ("أظهر الصور المصغرة وفهرس الصفحات للتنقل بسرعة داخل الملف.", "Show page thumbnails and the document outline for faster navigation."),
             "continuous_btn": ("فعّل التمرير المتصل لعرض الصفحات رأسيًا في مساحة واحدة.", "Enable continuous scrolling to place pages in one vertical reading area."),
             "book_btn": ("اعرض صفحتين متجاورتين مثل الكتاب. يمكن استخدامه مع التمرير.", "Show two pages side by side like a book. This can be combined with scrolling."),
+            "eye_protection_toolbar_btn": ("فعّل حماية العين لتدفئة ألوان الصفحة أو ضبط سطوعها وتقليل إجهاد النظر.", "Open Eye Protection to warm page colors or adjust brightness for a more comfortable reading view."),
             "zoom_out_btn": ("قلّل تكبير صفحة PDF.", "Zoom out on the PDF page."),
             "zoom_in_btn": ("كبّر صفحة PDF. يمكنك أيضًا استخدام Ctrl مع عجلة الماوس.", "Zoom in on the PDF page. You can also hold Ctrl while using the mouse wheel."),
             "fit_width_btn": ("اضبط التكبير لملاءمة عرض الصفحة مع المساحة المتاحة.", "Fit the page to the available width."),
