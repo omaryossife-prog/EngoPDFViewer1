@@ -1294,23 +1294,27 @@ class MainWindow(QMainWindow):
         )
         self.recent_files_table.setRootIsDecorated(False)
         self.recent_files_table.setItemsExpandable(False)
-        self.recent_files_table.setUniformRowHeights(True)
+        # Per-item size hints must be honored; uniform row heights were silently
+        # overriding the larger height assigned to each recent-file entry.
+        self.recent_files_table.setUniformRowHeights(False)
         self.recent_files_table.setAlternatingRowColors(True)
         self.recent_files_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.recent_files_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.recent_files_table.setFrameShape(QFrame.Shape.NoFrame)
-        self.recent_files_table.setMinimumHeight(150)
+        self.recent_files_table.setMinimumHeight(300)
         self.recent_files_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.recent_files_table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         recent_header_view = self.recent_files_table.header()
         recent_header_view.setStretchLastSection(False)
         recent_header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         recent_header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        recent_header_view.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        # The Location column takes all remaining horizontal room, so the
+        # table always reaches the right edge instead of leaving a blank strip.
+        recent_header_view.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         recent_header_view.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         recent_header_view.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
         recent_header_view.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
-        for column, width in ((0, 74), (1, 230), (2, 460), (3, 66), (4, 150), (5, 90)):
+        for column, width in ((0, 74), (1, 220), (2, 360), (3, 52), (4, 150), (5, 90)):
             self.recent_files_table.setColumnWidth(column, width)
         self.recent_files_table.setStyleSheet(
             "QTreeWidget#recentFilesTable { border:0; border-radius:8px; }"
@@ -3972,9 +3976,9 @@ class MainWindow(QMainWindow):
         language = str(self.settings.value("interface_language", "en", type=str) or "en").lower()
         is_ar = language.startswith("ar")
         headers = (
-            ["النوع", "اسم الملف", "المكان", "عدد الصفحات", "آخر فتح", "فتح"]
+            ["النوع", "اسم الملف", "المكان", "ع", "آخر فتح", "فتح"]
             if is_ar else
-            ["Type", "File name", "Location", "Pages", "Last opened", "Open"]
+            ["Type", "File name", "Location", "n", "Last opened", "Open"]
         )
         table.setColumnCount(6)
         table.setHeaderLabels(headers)
@@ -4052,7 +4056,6 @@ class MainWindow(QMainWindow):
             item.setToolTip(1, Path(path).name)
             path_is_clipped = table.fontMetrics().horizontalAdvance(path) > max(80, table.columnWidth(2) - 18)
             item.setToolTip(2, path if path_is_clipped else "")
-            item.setSizeHint(0, QSize(0, 100))
             table.addTopLevelItem(item)
 
             type_badge = QLabel(kind)
@@ -4070,6 +4073,9 @@ class MainWindow(QMainWindow):
                 lambda _checked=False, value=path: self.open_pdf(value)
             )
             table.setItemWidget(item, 5, open_button)
+            # Keep a generous, fixed row height regardless of the current
+            # Pen/toolbar settings or the size of child widgets in the row.
+            item.setSizeHint(0, QSize(0, 76))
 
     def _read_last_session(self):
         raw = self.settings.value("last_session_json", "", type=str)
