@@ -1091,10 +1091,11 @@ def make_icon(name: str, color: str = "#b7c6dc", size: int = 18) -> QIcon:
         path([(9, 3), (3, 3), (3, 9)]); path([(15, 3), (21, 3), (21, 9)])
         path([(3, 15), (3, 21), (9, 21)]); path([(21, 15), (21, 21), (15, 21)])
     elif name == "minimize":
-        path([(3, 9), (3, 3), (9, 3)]); path([(15, 3), (21, 3), (21, 9)])
-        path([(3, 15), (3, 21), (9, 21)]); path([(21, 15), (21, 21), (15, 21)])
-        line(3, 3, 9, 9); line(21, 3, 15, 9)
-        line(3, 21, 9, 15); line(21, 21, 15, 15)
+        # Four inward-facing corner brackets, without the old diagonal arrows.
+        path([(3, 8), (8, 8), (8, 3)])
+        path([(16, 3), (16, 8), (21, 8)])
+        path([(3, 16), (8, 16), (8, 21)])
+        path([(16, 21), (16, 16), (21, 16)])
     elif name == "plus":
         line(12, 4, 12, 20); line(4, 12, 20, 12)
     elif name == "paste":
@@ -1912,7 +1913,7 @@ class AnnotationColorsDialog(QDialog):
         ("text_fill", "Text box background color"),
     ]
 
-    def __init__(self, parent, colors):
+    def __init__(self, parent, colors, apply_to_themes=True):
         super().__init__(parent)
         try:
             parent_settings = getattr(parent, "settings", None)
@@ -1948,6 +1949,37 @@ class AnnotationColorsDialog(QDialog):
             self._buttons[key] = btn
             row.addWidget(btn)
             layout.addLayout(row)
+
+        width_title_map = {
+            "pen_width": ("سمك خط القلم" if self._is_ar else "Pen stroke thickness"),
+            "highlight_width": ("سمك قلم الهايلايت" if self._is_ar else "Highlighter thickness"),
+        }
+        self.width_controls = {}
+        for key, low, high, default_value in (
+            ("pen_width", 1, 12, 3),
+            ("highlight_width", 2, 30, 12),
+        ):
+            row = QHBoxLayout()
+            label = QLabel(width_title_map[key])
+            label.setObjectName("dialogLabel")
+            row.addWidget(label, 1)
+            spin = QSpinBox()
+            spin.setRange(low, high)
+            spin.setValue(max(low, min(high, int(self.colors.get(key, default_value) or default_value))))
+            spin.setSuffix(" pt")
+            spin.setFixedWidth(88)
+            row.addWidget(spin)
+            self.width_controls[key] = spin
+            layout.addLayout(row)
+
+        self.apply_to_themes_check = QCheckBox(
+            "تطبيق ألوان التعليقات التوضيحية على كل ثيمات البرنامج"
+            if self._is_ar else
+            "Apply annotation colors across all app themes"
+        )
+        self.apply_to_themes_check.setChecked(bool(apply_to_themes))
+        layout.addWidget(self.apply_to_themes_check)
+
         reset = QPushButton("استعادة الافتراضي" if self._is_ar else "Restore defaults")
         reset.clicked.connect(self._reset)
         layout.addWidget(reset, 0, Qt.AlignmentFlag.AlignLeft)
@@ -1982,8 +2014,20 @@ class AnnotationColorsDialog(QDialog):
             return {"Pen / drawing color":"لون القلم / الرسم", "Highlight color":"لون التظليل", "Sticky note marker color":"لون علامة الملاحظة اللاصقة", "Text box font color":"لون خط مربع النص", "Text box background color":"لون خلفية مربع النص"}.get(title, title)
         return title
 
+    @property
+    def apply_to_themes(self):
+        return bool(self.apply_to_themes_check.isChecked())
+
+    def values(self):
+        result = dict(self.colors)
+        for key, control in self.width_controls.items():
+            result[key] = int(control.value())
+        return result
+
     def _reset(self):
         self.colors = dict(DEFAULT_ANNOTATION_COLORS)
+        for key, control in self.width_controls.items():
+            control.setValue(int(self.colors.get(key, 3 if key == "pen_width" else 12)))
         self._refresh()
 
 
@@ -2200,11 +2244,6 @@ def _recognize_pen_shape(points):
         and radial_error <= 0.18 and curve_excess >= 0.012
         and 0.38 <= ratio <= 2.65
     )
-    if looks_like_oval:
-        oval_rect = fitz.Rect(x0, y0, x1, y1)
-        oval_kind = "circle" if abs(width-height) <= max(4.0, diagonal*0.06) else "ellipse"
-        return {"kind": oval_kind, "rect": oval_rect}
-
     # Rough rectangles / squares (including mildly rotated ones).
     if len(simplified) == 4:
         vectors, lengths = [], []
@@ -2265,13 +2304,13 @@ def _recognize_pen_shape(points):
         if min(side_lengths) >= max(6.0, diagonal*0.09):
             return {"kind": "triangle", "points": triangle_points}
 
-    # Remaining smooth closed paths are tested as circles/ellipses. Polygonal shapes
-    # have already been claimed above, so a forgiving radial tolerance won't turn a
-    # rough square or triangle into a circle.
+    # Only paths not claimed as a line, rectangle, quadrilateral or triangle
+    # can be classified as a smooth ellipse/circle. This avoids converting a
+    # slightly wobbly rectangle into an oval just because its corners are rounded.
     if looks_like_oval:
-        diameter = (width+height)/2.0
-        return {"kind": "circle", "rect": fitz.Rect(cx-diameter/2, cy-diameter/2,
-                                                      cx+diameter/2, cy+diameter/2)}
+        oval_rect = fitz.Rect(x0, y0, x1, y1)
+        oval_kind = "circle" if abs(width-height) <= max(4.0, diagonal*0.06) else "ellipse"
+        return {"kind": oval_kind, "rect": oval_rect}
     return None
 
 
