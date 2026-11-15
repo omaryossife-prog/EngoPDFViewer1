@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton, QToolButton, QBoxLayout,
     QCheckBox, QColorDialog, QFileDialog, QHBoxLayout, QVBoxLayout, QScrollArea, QAbstractScrollArea,
     QListWidget, QListWidgetItem, QListView, QAbstractItemView, QTreeWidget, QTreeWidgetItem, QTreeView, QSpinBox,
-    QSizePolicy, QStatusBar, QMessageBox, QSplitter, QTabWidget, QDialog,
+    QSizePolicy, QStatusBar, QMessageBox, QSplitter, QTabWidget, QDialog, QHeaderView,
     QDialogButtonBox, QInputDialog, QButtonGroup, QLineEdit, QStackedWidget, QTabBar, QMenu, QComboBox,
     QTextBrowser, QTextEdit, QProgressBar, QGridLayout, QStyledItemDelegate, QStyle, QSlider, QWidgetAction, QToolTip, QGraphicsOpacityEffect
 )
@@ -550,11 +550,14 @@ class MainWindow(QMainWindow):
         self.zoom_out_btn.setToolTip("Zoom out (Ctrl + mouse wheel down / Ctrl+-)")
         self.zoom_out_btn.clicked.connect(lambda: self._zoom(1 / 1.15))
         zoom_row.addWidget(self.zoom_out_btn)
-        self.zoom_label = QLabel("Fit Width")
+        self.zoom_label = QLineEdit("Fit Width")
         self.zoom_label.setObjectName("zoomLabel")
-        self.zoom_label.setMinimumWidth(46)
+        self.zoom_label.setFixedWidth(66)
+        self.zoom_label.setFixedHeight(26)
         self.zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.zoom_label.setToolTip("Current zoom level")
+        self.zoom_label.setToolTip("Enter a zoom percentage and press Enter")
+        self.zoom_label.setClearButtonEnabled(False)
+        self.zoom_label.returnPressed.connect(self._apply_zoom_entry)
         zoom_row.addWidget(self.zoom_label)
         self.zoom_in_btn = self._button("Zoom In", "action", "zoom_in")
         self.zoom_in_btn.setToolTip("Zoom in (Ctrl + mouse wheel up / touchpad pinch)")
@@ -1124,6 +1127,8 @@ class MainWindow(QMainWindow):
         self.home_browser_tree.horizontalScrollBar().setSingleStep(28)
         self.home_browser_tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.home_browser_tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.home_browser_tree.setCursor(Qt.CursorShape.ArrowCursor)
+        self.home_browser_tree.viewport().setCursor(Qt.CursorShape.ArrowCursor)
         self.home_browser_tree.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.home_browser_tree.setSortingEnabled(True)
         self.home_browser_tree.sortByColumn(0, Qt.SortOrder.AscendingOrder)
@@ -1197,20 +1202,38 @@ class MainWindow(QMainWindow):
         recent_header.addWidget(self.recent_count_label)
         root.addLayout(recent_header)
 
-        self.recent_files_host = QWidget()
-        self.recent_files_layout = QVBoxLayout(self.recent_files_host)
-        self.recent_files_layout.setContentsMargins(0, 0, 0, 0)
-        self.recent_files_layout.setSpacing(7)
-        self.recent_files_scroll = QScrollArea()
-        self.recent_files_scroll.setObjectName("recentFilesScroll")
-        self.recent_files_scroll.setWidgetResizable(True)
-        self.recent_files_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.recent_files_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.recent_files_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.recent_files_scroll.setWidget(self.recent_files_host)
-        self.recent_files_scroll.setMinimumHeight(150)
-        self.recent_files_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        root.addWidget(self.recent_files_scroll, 1)
+        self.recent_files_table = QTreeWidget()
+        self.recent_files_table.setObjectName("recentFilesTable")
+        self.recent_files_table.setColumnCount(6)
+        self.recent_files_table.setHeaderLabels(
+            ["Type", "File name", "Location", "Pages", "Last opened", "Action"]
+        )
+        self.recent_files_table.setRootIsDecorated(False)
+        self.recent_files_table.setItemsExpandable(False)
+        self.recent_files_table.setUniformRowHeights(True)
+        self.recent_files_table.setAlternatingRowColors(True)
+        self.recent_files_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.recent_files_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.recent_files_table.setFrameShape(QFrame.Shape.NoFrame)
+        self.recent_files_table.setMinimumHeight(150)
+        self.recent_files_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.recent_files_table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        recent_header_view = self.recent_files_table.header()
+        recent_header_view.setStretchLastSection(False)
+        recent_header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        recent_header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        recent_header_view.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        recent_header_view.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        recent_header_view.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
+        recent_header_view.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        for column, width in ((0, 74), (1, 210), (3, 66), (4, 150), (5, 90)):
+            self.recent_files_table.setColumnWidth(column, width)
+        self.recent_files_table.setStyleSheet(
+            "QTreeWidget#recentFilesTable { border:0; border-radius:8px; }"
+            "QTreeWidget#recentFilesTable::item { padding:5px 4px; }"
+            "QTreeWidget#recentFilesTable QHeaderView::section { padding:7px 6px; font-weight:700; }"
+        )
+        root.addWidget(self.recent_files_table, 1)
         self._refresh_files_home()
         return page
 
@@ -1375,10 +1398,32 @@ class MainWindow(QMainWindow):
         if getattr(self, "_home_browser_refreshing", False):
             return
         try:
-            if index.isValid() and self.home_browser_model.isDir(index):
-                self._home_browser_breadcrumb_focus_dir = self.home_browser_model.filePath(index)
-                self.home_browser_path.setText(self._home_browser_breadcrumb_focus_dir)
-        except (RuntimeError, TypeError, OSError):
+            if not index.isValid() or not self.home_browser_model.isDir(index):
+                return
+            target = os.path.abspath(self.home_browser_model.filePath(index))
+            self._home_browser_breadcrumb_focus_dir = target
+            self.home_browser_path.setText(target)
+            tree = self.home_browser_tree
+            model = self.home_browser_model
+
+            def collapse_unrelated(parent_index):
+                for row in range(model.rowCount(parent_index)):
+                    child = model.index(row, 0, parent_index)
+                    if not child.isValid() or not model.isDir(child) or not tree.isExpanded(child):
+                        continue
+                    child_path = os.path.abspath(model.filePath(child))
+                    try:
+                        is_ancestor = os.path.commonpath([child_path, target]) == child_path
+                    except ValueError:
+                        is_ancestor = False
+                    if is_ancestor:
+                        collapse_unrelated(child)
+                    else:
+                        tree.collapse(child)
+
+            collapse_unrelated(tree.rootIndex())
+            self._home_browser_schedule_tree_width()
+        except (RuntimeError, TypeError, OSError, ValueError):
             pass
 
     def _home_browser_branch_collapsed(self, index):
@@ -1597,6 +1642,14 @@ class MainWindow(QMainWindow):
             )
             if avatar_lbl is not None:
                 cached_pixmap = getattr(self, "_home_avatar_pixmap", None)
+                if cached_pixmap is None:
+                    try:
+                        saved_pixmap = QPixmap(str(self._home_avatar_cache_file()))
+                        if not saved_pixmap.isNull():
+                            self._home_avatar_pixmap = saved_pixmap
+                            cached_pixmap = saved_pixmap
+                    except Exception:
+                        cached_pixmap = None
                 if cached_pixmap is not None:
                     # Reapply the cached photo every refresh: any setText() call on this
                     # label elsewhere (theme/language updates) silently drops the pixmap,
@@ -1608,19 +1661,48 @@ class MainWindow(QMainWindow):
                 if avatar_url.startswith("https://"):
                     self._load_home_avatar(avatar_url)
         else:
-            name_lbl.setText("الرجاء تسجيل الدخول" if is_ar else "Please sign in")
-            plan_lbl.setText("")
-            plan_lbl.setVisible(False)
-            plan_lbl.setStyleSheet("")
-            name_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+            offline_mode = bool(getattr(self, "_offline_mode", False))
+            name_lbl.setText(
+                ("زائر" if is_ar else "Guest") if offline_mode
+                else ("الرجاء تسجيل الدخول" if is_ar else "Please sign in")
+            )
             acct_text_layout = getattr(self, "home_acct_text_layout", None)
             if acct_text_layout is not None:
                 acct_text_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
             button.setStyleSheet("")
-            self._home_avatar_pixmap = None
-            self._home_avatar_url_loaded = ""
-            if avatar_lbl is not None:
-                avatar_lbl.setText("!")
+            if offline_mode:
+                plan_lbl.setText(
+                    "أنت الآن في وضع عدم الاتصال\nقد لا تتمكن من استخدام بعض الميزات التي تتطلب اتصالًا بالإنترنت أو تحققًا من الحساب والتراخيص."
+                    if is_ar else
+                    "You are now offline. Some features that require an internet connection or account and license verification may be unavailable."
+                )
+                plan_lbl.setWordWrap(True)
+                plan_lbl.setVisible(True)
+                plan_lbl.setStyleSheet("color:#8fa0b8; font-size:8pt; background:transparent;")
+                if avatar_lbl is not None:
+                    cached_pixmap = getattr(self, "_home_avatar_pixmap", None)
+                    if cached_pixmap is None:
+                        try:
+                            saved_pixmap = QPixmap(str(self._home_avatar_cache_file()))
+                            if not saved_pixmap.isNull():
+                                self._home_avatar_pixmap = saved_pixmap
+                                cached_pixmap = saved_pixmap
+                        except Exception:
+                            cached_pixmap = None
+                    if cached_pixmap is not None:
+                        avatar_lbl.setText("")
+                        avatar_lbl.setPixmap(cached_pixmap)
+                    else:
+                        avatar_lbl.setText("!")
+            else:
+                plan_lbl.setText("")
+                plan_lbl.setVisible(False)
+                plan_lbl.setStyleSheet("")
+                plan_lbl.setWordWrap(False)
+                self._home_avatar_pixmap = None
+                self._home_avatar_url_loaded = ""
+                if avatar_lbl is not None:
+                    avatar_lbl.setText("!")
 
         self._enforce_premium_settings()
 
@@ -1684,6 +1766,23 @@ class MainWindow(QMainWindow):
             else "Your Premium subscription ended, so paid-only appearance settings were reverted to Free."
         )
 
+    def _home_avatar_cache_file(self):
+        try:
+            base = QStandardPaths.writableLocation(
+                QStandardPaths.StandardLocation.AppLocalDataLocation
+            )
+        except Exception:
+            base = ""
+        if not base:
+            base = str(Path.home() / ".engo")
+        folder = Path(base) / "cache"
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            folder = Path.home() / ".engo"
+            folder.mkdir(parents=True, exist_ok=True)
+        return folder / "home_avatar.png"
+
     def _load_home_avatar(self, url: str):
         if getattr(self, "_home_avatar_url_loaded", "") == url:
             return
@@ -1721,6 +1820,10 @@ class MainWindow(QMainWindow):
                 lbl.setStyleSheet(lbl.styleSheet() + " border: none; background: transparent;")
                 lbl.setPixmap(result)
                 self._home_avatar_pixmap = result  # keep reference
+                try:
+                    result.save(str(self._home_avatar_cache_file()), "PNG")
+                except Exception:
+                    pass
         finally:
             reply.deleteLater()
 
@@ -1854,6 +1957,7 @@ class MainWindow(QMainWindow):
             tokens = engo_ui_theme_tokens(theme)
             accent = tokens["accent"]
             accent_hover = tokens.get("accent_hover", accent)
+            text_color = "#ffffff" if theme == "light" else tokens["text"]
             label = "يتوفر تحديث جديد" if is_ar else "New update available"
             tooltip = (
                 "اضغط لعرض معلومات التحديث الجديد"
@@ -1876,13 +1980,13 @@ class MainWindow(QMainWindow):
                 )
             icon_label = getattr(self, "home_update_icon_label", None)
             if icon_label is not None:
-                icon_pixmap = make_icon("update", tokens["text"], 18).pixmap(QSize(18, 18))
+                icon_pixmap = make_icon("update", text_color, 18).pixmap(QSize(18, 18))
                 icon_label.setPixmap(icon_pixmap)
             text_label = getattr(self, "home_update_text_label", None)
             if text_label is not None:
                 text_label.setText(label)
                 text_label.setStyleSheet(
-                    f"color:{tokens['text']}; background:transparent; border:0; "
+                    f"color:{text_color}; background:transparent; border:0; "
                     "font-size:10.5pt; font-weight:800;"
                 )
             else:
@@ -1896,12 +2000,12 @@ class MainWindow(QMainWindow):
             button.setAccessibleName(label)
             button.setStyleSheet(
                 "QPushButton#homeUpdateCenter { "
-                f"background:{accent}; color:{tokens['text']}; "
+                f"background:{accent}; color:{text_color}; "
                 f"border:1px solid {accent}; border-radius:7px; "
                 "padding:6px 10px; font-size:10.5pt; font-weight:800; "
                 "text-align:center; }"
                 "QPushButton#homeUpdateCenter:hover { "
-                f"background:{accent_hover}; color:{tokens['text']}; "
+                f"background:{accent_hover}; color:{text_color}; "
                 f"border-color:{accent_hover}; }}"
                 "QPushButton#homeUpdateCenter:pressed { "
                 f"background:{tokens['selection']}; color:{tokens['selection_text']}; }}"
@@ -3556,7 +3660,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "save_btn") and (previous_toolbar_language != language
                 or not getattr(self, "_toolbar_density_initialized", False)):
             self._apply_toolbar_density(force=True)
-        if hasattr(self, "recent_files_layout"):
+        if hasattr(self, "recent_files_table")
             self._refresh_files_home()
 
         if hasattr(self, "context_help_label"):
@@ -3639,93 +3743,133 @@ class MainWindow(QMainWindow):
         entries.insert(0, {"path": path, "opened_at": time.time()})
         self.settings.setValue("recent_files_json", json.dumps(entries[:40], ensure_ascii=False))
         self.settings.sync()
-        if hasattr(self, "recent_files_layout"):
+        if hasattr(self, "recent_files_table"):
             self._refresh_files_home()
 
     def _clear_recent_files_ui(self):
-        layout = getattr(self, "recent_files_layout", None)
-        if layout is None:
-            return
-        while layout.count():
-            item = layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
+        table = getattr(self, "recent_files_table", None)
+        if table is not None:
+            table.clear()
+            table.setColumnCount(6)
+
+    @staticmethod
+    def _recent_file_page_count(path):
+        suffix = Path(path).suffix.lower()
+        if is_image_document(path):
+            return "1"
+        if suffix != ".pdf":
+            return "—"
+        try:
+            with fitz.open(path) as document:
+                return str(int(document.page_count))
+        except Exception:
+            return "—"
 
     def _refresh_files_home(self):
-        if not hasattr(self, "recent_files_layout"):
+        table = getattr(self, "recent_files_table", None)
+        if table is None:
             return
-        self._clear_recent_files_ui()
-        recent = self._load_recent_files()
+        table.clear()
         language = str(self.settings.value("interface_language", "en", type=str) or "en").lower()
         is_ar = language.startswith("ar")
-        self.recent_count_label.setText((f"{len(recent)} ملف حديث" if is_ar else f"{len(recent)} recent") if recent else ("لا توجد ملفات حديثة" if is_ar else "No recent files yet"))
+        headers = (
+            ["النوع", "اسم الملف", "المكان", "عدد الصفحات", "آخر فتح", "فتح"]
+            if is_ar else
+            ["Type", "File name", "Location", "Pages", "Last opened", "Open"]
+        )
+        table.setColumnCount(6)
+        table.setHeaderLabels(headers)
+        recent = self._load_recent_files()
+        self.recent_count_label.setText(
+            (f"{len(recent)} ملف حديث" if is_ar else f"{len(recent)} recent")
+            if recent else ("لا توجد ملفات حديثة" if is_ar else "No recent files")
+        )
+
         last_session = self._read_last_session()
-        last_entries = [item for item in (last_session or {}).get("tabs", [])
-                        if isinstance(item, dict) and os.path.isfile(str(item.get("source_path") or item.get("path", "")))]
+        last_entries = [
+            item for item in (last_session or {}).get("tabs", [])
+            if isinstance(item, dict)
+            and os.path.isfile(str(item.get("source_path") or item.get("path", "")))
+        ]
         has_last_session = bool(last_entries)
         self.files_restore_btn.setEnabled(has_last_session)
         if is_ar:
-            self.files_restore_btn.setText(f"↺  استعادة الجلسة السابقة · {len(last_entries)} ملف" if has_last_session else "↺  استعادة الجلسة السابقة")
+            self.files_restore_btn.setText(
+                f"↺  استعادة الجلسة السابقة · {len(last_entries)} ملف"
+                if has_last_session else "↺  استعادة الجلسة السابقة"
+            )
         else:
-            self.files_restore_btn.setText(f"↺  Reopen last session · {len(last_entries)} document(s)" if has_last_session else "↺  Reopen last session")
+            self.files_restore_btn.setText(
+                f"↺  Reopen last session · {len(last_entries)} document(s)"
+                if has_last_session else "↺  Reopen last session"
+            )
         if has_last_session:
-            names = [Path(str(item.get("source_path") or item.get("path", ""))).name for item in last_entries[:4]]
+            names = [
+                Path(str(item.get("source_path") or item.get("path", ""))).name
+                for item in last_entries[:4]
+            ]
             if len(last_entries) > 4:
                 names.append(f"+{len(last_entries) - 4} more")
             saved_at = self._relative_opened_time(last_session.get("saved_at", 0), language, "saved")
-            self.last_session_summary.setText(("آخر جلسة · " if is_ar else "Last session · ") + "  ·  ".join(names) + f"   ({saved_at})")
-            self.last_session_summary.show()
+            self.last_session_summary.setText(
+                ("آخر جلسة · " if is_ar else "Last session · ")
+                + "  ·  ".join(names) + f"   ({saved_at})"
+            )
         else:
-            self.last_session_summary.setText("لم يتم حفظ جلسة سابقة بعد" if is_ar else "No previous session saved yet")
-            self.last_session_summary.show()
+            self.last_session_summary.setText(
+                "لم يتم حفظ جلسة سابقة بعد" if is_ar else "No previous session saved yet"
+            )
+        self.last_session_summary.show()
+
         if not recent:
-            empty = QLabel("ستظهر هنا ملفات PDF والصور التي فتحتها مؤخرًا، مع وقت آخر فتح لكل ملف." if is_ar else "Your recently opened PDFs and images will appear here, along with when you last opened them.")
-            empty.setObjectName("filesEmptyHint")
-            empty.setWordWrap(True)
-            self.recent_files_layout.addWidget(empty)
+            empty_text = (
+                "ستظهر هنا الملفات التي فتحتها مؤخرًا."
+                if is_ar else "Your recently opened files will appear here."
+            )
+            empty = QTreeWidgetItem([empty_text, "", "", "", "", ""])
+            table.addTopLevelItem(empty)
+            table.setFirstColumnSpanned(empty, True)
+            empty.setSizeHint(0, QSize(0, 48))
             return
+
         for entry in recent[:40]:
             path = entry["path"]
-            row = QFrame()
-            row.setObjectName("recentFileRow")
-            row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            row.setMinimumHeight(78)
-            row.setMaximumHeight(82)
-            row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(12, 8, 12, 8)
-            row_layout.setSpacing(10)
-            file_icon = QLabel("IMG" if is_image_document(path) else "PDF")
-            file_icon.setObjectName("recentPdfIcon")
-            file_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            file_icon.setFixedSize(42, 42)
-            row_layout.addWidget(file_icon)
-            text_col = QVBoxLayout()
-            name = QLabel(Path(path).name)
-            name.setObjectName("recentFileName")
-            name.setToolTip(path)
-            where = QLabel(path)
-            where.setObjectName("recentFilePath")
-            where.setToolTip(path)
-            when = QLabel(self._relative_opened_time(entry.get("opened_at", 0), language, "opened"))
-            when.setObjectName("recentFileWhen")
-            text_col.addWidget(name)
-            text_col.addWidget(where)
-            text_col.addWidget(when)
-            row_layout.addLayout(text_col, 1)
+            suffix = Path(path).suffix.lower()
+            if suffix == ".pdf":
+                kind = "PDF"
+            elif is_image_document(path):
+                kind = "IMG"
+            elif suffix == ".docx":
+                kind = "DOCX"
+            elif suffix == ".pptx":
+                kind = "PPTX"
+            else:
+                kind = suffix.lstrip(".").upper()[:6] or "FILE"
+            page_count = self._recent_file_page_count(path)
+            opened = self._relative_opened_time(entry.get("opened_at", 0), language, "opened")
+            item = QTreeWidgetItem([
+                kind, Path(path).name, path, page_count, opened, ""
+            ])
+            item.setToolTip(1, Path(path).name)
+            item.setToolTip(2, path)
+            item.setSizeHint(0, QSize(0, 42))
+            table.addTopLevelItem(item)
+
+            type_badge = QLabel(kind)
+            type_badge.setObjectName("recentPdfIcon")
+            type_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            type_badge.setFixedSize(52, 27)
+            table.setItemWidget(item, 0, type_badge)
+
             open_button = QPushButton("فتح" if is_ar else "Open")
             open_button.setObjectName("filesSecondaryButton")
             open_button.setProperty("recentFileAction", True)
-            # Fifth home-screen action: compact the Open button in each recent-file card.
-            # Keep its width text-driven (with a 72px minimum); reduce only its height.
-            open_button.setMinimumWidth(80)
+            open_button.setMinimumWidth(72)
             open_button.setFixedHeight(27)
-            open_button.clicked.connect(lambda _checked=False, value=path: self.open_pdf(value))
-            row_layout.addWidget(open_button)
-            self.recent_files_layout.addWidget(row)
-        # A single recent file must remain a compact card at the top of the list;
-        # the trailing stretch consumes empty viewport height, not the card itself.
-        self.recent_files_layout.addStretch(1)
+            open_button.clicked.connect(
+                lambda _checked=False, value=path: self.open_pdf(value)
+            )
+            table.setItemWidget(item, 5, open_button)
 
     def _read_last_session(self):
         raw = self.settings.value("last_session_json", "", type=str)
@@ -6006,11 +6150,7 @@ class MainWindow(QMainWindow):
             self.settings.value("ui_theme", "dark", type=str)
         )
         tokens = engo_ui_theme_tokens(theme)
-        message = (
-            ("جاري فتح الجلسة..." if is_ar else "Opening session...")
-            if operation == "session"
-            else ("جاري فتح الملف..." if is_ar else "Opening file...")
-        )
+        message = "جاري فتح الملف" if is_ar else "Opening file"
 
         # Match the startup splash structure: a translucent frameless host
         # with a fully painted, opaque card inside it.
@@ -6027,7 +6167,7 @@ class MainWindow(QMainWindow):
             Qt.LayoutDirection.RightToLeft if is_ar
             else Qt.LayoutDirection.LeftToRight
         )
-        dialog.setFixedSize(320, 46)
+        dialog.setFixedSize(300, 40)
 
         outer_layout = QVBoxLayout(dialog)
         outer_layout.setContentsMargins(1, 1, 1, 1)
@@ -6036,13 +6176,13 @@ class MainWindow(QMainWindow):
         card = QFrame(dialog)
         card.setObjectName("engoBusyCard")
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(14, 5, 14, 5)
-        card_layout.setSpacing(4)
+        card_layout.setContentsMargins(12, 4, 12, 4)
+        card_layout.setSpacing(3)
 
         label = QLabel(message, card)
         label.setObjectName("splashStatus")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setFixedHeight(18)
+        label.setFixedHeight(16)
         card_layout.addWidget(label)
 
         # Keep the exact indeterminate QProgressBar mode used by the startup splash.
@@ -6050,7 +6190,7 @@ class MainWindow(QMainWindow):
         progress.setObjectName("splashProgress")
         progress.setTextVisible(False)
         progress.setRange(0, 0)
-        progress.setFixedHeight(4)
+        progress.setFixedHeight(5)
         card_layout.addWidget(progress)
         outer_layout.addWidget(card)
 
@@ -6691,6 +6831,33 @@ class MainWindow(QMainWindow):
         if tab:
             tab.zoom_by(factor)
             self.zoom_label.setText(f"{int(tab.custom_scale * 100)}%")
+
+    def _apply_zoom_entry(self):
+        tab = self._view_target_tab()
+        if tab is None:
+            self.zoom_label.setText("—")
+            return
+        raw = str(self.zoom_label.text() or "").strip().replace("%", "").replace("٪", "")
+        try:
+            requested = float(raw) / 100.0
+            if not (requested > 0.0):
+                raise ValueError("Zoom must be positive")
+        except (TypeError, ValueError):
+            self.zoom_label.setText(
+                {"width": "Fit width", "page": "Fit page"}.get(
+                    tab.fit_mode, f"{int(round(tab.custom_scale * 100))}%"
+                )
+            )
+            self.zoom_label.selectAll()
+            self.zoom_label.setFocus()
+            return
+        requested = max(0.12, min(6.0, requested))
+        current = 1.0
+        if getattr(tab, "fit_mode", "") == "custom":
+            current = float(getattr(tab, "_zoom_target_scale", None) or tab.custom_scale or 1.0)
+        tab.zoom_by(requested / max(0.05, current))
+        self.zoom_label.setText(f"{int(round(tab.custom_scale * 100))}%")
+        self.zoom_label.clearFocus()
 
     def _set_fit_mode(self, mode):
         tab = self._view_target_tab()
@@ -9202,10 +9369,7 @@ class MainWindow(QMainWindow):
                 if self._live_tutor_dialog is not None and self._live_tutor_dialog.isVisible():
                     self.refresh_live_tutor_page(self._live_tutor_dialog)
                 self.show_status("Page Theme updated")
-            if dlg.smart_toggle.isChecked() and not self.smart_page_theme:
-                self._request_feature_access("smart_theme", apply_page_theme_changes)
-            else:
-                apply_page_theme_changes()
+            apply_page_theme_changes()
 
     def open_annotation_colors(self):
         dlg = AnnotationColorsDialog(self, self.annotation_colors)
@@ -10718,6 +10882,37 @@ class MainWindow(QMainWindow):
                             return True
                 if event_type == QEvent.Type.KeyPress:
                     key = event.key()
+                    if (key in (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down)
+                            and event.modifiers() == Qt.KeyboardModifier.NoModifier
+                            and not self._files_screen_active):
+                        tab = self.active_tab()
+                        blocked_targets = (
+                            QLineEdit, QTextEdit, QComboBox, QSpinBox, QCheckBox,
+                            QAbstractItemView, QPushButton, QToolButton, QTabBar, QSlider,
+                        )
+                        node = watched
+                        blocked = False
+                        while isinstance(node, QWidget):
+                            if isinstance(node, blocked_targets):
+                                blocked = True
+                                break
+                            if node is self:
+                                break
+                            try:
+                                node = node.parentWidget()
+                            except RuntimeError:
+                                break
+                        if tab is not None and bool(getattr(tab, "book_mode", False)) and not blocked:
+                            step = 2
+                            next_spread = key in (Qt.Key.Key_Right, Qt.Key.Key_Down)
+                            last_start = max(0, int(tab.page_count) - 2)
+                            target = int(tab.current_page) + (step if next_spread else -step)
+                            target = max(0, min(last_start, target))
+                            if target != int(tab.current_page):
+                                tab.go_to_page(target)
+                                self._update_controls()
+                            event.accept()
+                            return True
                     if key == Qt.Key.Key_Space:
                         is_repeat = bool(event.isAutoRepeat())
                         if not is_repeat and self._is_pdf_reader_space_target(watched):
@@ -10884,6 +11079,16 @@ class MainWindow(QMainWindow):
         # Backwards-compatible callback; the same pin button works in both modes.
         self._set_toolbar_pinned(pinned)
 
+    def _sync_fullscreen_button_icon(self):
+        button = getattr(self, "full_btn", None)
+        if button is None:
+            return
+        active = bool(getattr(self, "_fullscreen", False))
+        button.setIcon(make_icon("minimize" if active else "fullscreen", "#b7c6dc", 16))
+        button.setToolTip(
+            "الخروج من ملء الشاشة (F11)" if active else "ملء الشاشة (F11)"
+        )
+
     def toggle_fullscreen(self):
         if self._chat_focus_mode:
             # Restore the regular workspace first so Full Screen can save the
@@ -10900,6 +11105,7 @@ class MainWindow(QMainWindow):
                 self.tab_strip.isVisible(), self.status.isVisible(), self.topbar.isVisible()
             )
             self._fullscreen = True
+            self._sync_fullscreen_button_icon()
             self._fullscreen_toolbar_pinned = bool(self._toolbar_pinned)
             self._fullscreen_toolbar_hide_timer.stop()
             if self._fullscreen_toolbar_animation is not None:
@@ -10914,6 +11120,7 @@ class MainWindow(QMainWindow):
                 self._fullscreen_toolbar_hide_timer.start()
         else:
             self._fullscreen = False
+            self._sync_fullscreen_button_icon()
             self._fullscreen_toolbar_pinned = bool(self._toolbar_pinned)
             self._fullscreen_toolbar_hide_timer.stop()
             if self._fullscreen_toolbar_animation is not None:
@@ -11237,6 +11444,9 @@ def main():
             except Exception:
                 pass
         window = MainWindow(license_service=service)
+        window._offline_mode = bool(launch_state.get("offline", False))
+        if window._offline_mode:
+            window._refresh_license_button()
         # Defer last-session recovery until the startup update check has completed
         # and its modal prompt (when present) has been answered.
         window._startup_session_prompt_pending = bool(
@@ -11441,6 +11651,7 @@ def main():
         if launch_state["cancelled"]:
             return
         had_device_conflict = "another device" in str(service.state.reason).lower()
+        launch_state["offline"] = True
         service._free_state("You chose to continue using Engo Free mode")
         if had_device_conflict:
             service.state.reason = "This account is active on another device. Move it from the Account screen."
