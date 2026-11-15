@@ -6923,7 +6923,18 @@ class MainWindow(QMainWindow):
         current = 1.0
         if getattr(tab, "fit_mode", "") == "custom":
             current = float(getattr(tab, "_zoom_target_scale", None) or tab.custom_scale or 1.0)
-        tab.zoom_by(requested / max(0.05, current))
+        # zoom_by intentionally limits each gesture to a 2x step. Chain
+        # bounded steps here so an explicitly entered value such as 12% or
+        # 600% reaches the requested scale rather than silently stopping early.
+        remaining = requested / max(0.05, current)
+        while remaining > 2.0:
+            tab.zoom_by(2.0)
+            remaining /= 2.0
+        while remaining < 0.5:
+            tab.zoom_by(0.5)
+            remaining /= 0.5
+        if abs(remaining - 1.0) > 0.001:
+            tab.zoom_by(remaining)
         self.zoom_label.setText(f"{int(round(requested * 100))}%")
         self.zoom_label.clearFocus()
 
