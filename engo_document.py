@@ -3939,8 +3939,9 @@ class DocumentTab(QWidget):
         for i in range(self.page_count):
             page = self.doc.load_page(i)
             self.page_sizes.append((float(page.rect.width), float(page.rect.height)))
-            if (i + 1) % 8 == 0:
-                self._pump_opening_dialog_events()
+            # Repaint/tick the compact progress popup even for one-page files;
+            # the previous every-eight-pages cadence left small PDFs frozen.
+            self._pump_opening_dialog_events()
         self.current_page = 0
         self.dark_mode = bool(dark_mode)
         self.smart_page_theme = bool(smart_page_theme)
@@ -4190,23 +4191,7 @@ class DocumentTab(QWidget):
         sidebar_actions_layout = QHBoxLayout(self.sidebar_page_actions)
         sidebar_actions_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_actions_layout.setSpacing(3)
-        self.eye_protection_btn = QToolButton(self.sidebar_page_actions)
-        self.eye_protection_btn.setObjectName("eyeProtectionButton")
-        self.eye_protection_btn.setIcon(make_icon("eye", sidebar_icon_color, 16))
-        self.eye_protection_btn.setIconSize(QSize(16, 16))
-        self.eye_protection_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.eye_protection_btn.setFixedSize(30, 32)
-        self.eye_protection_btn.setAutoRaise(False)
-        self.eye_protection_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.eye_protection_btn.setToolTip(
-            "حماية العين" if self._sidebar_language == "ar" else "Eye protection"
-        )
-        self.eye_protection_btn.setAccessibleName(
-            "حماية العين" if self._sidebar_language == "ar" else "Eye protection"
-        )
-        self.eye_protection_btn.clicked.connect(self._open_eye_protection_settings)
-        self.eye_protection_btn.setProperty("engoIconName", "eye")
-        sidebar_actions_layout.addWidget(self.eye_protection_btn)
+        # Eye Protection now lives in the main PDF toolbar, immediately after Translate.
 
         self.page_overview_btn = QToolButton(self.sidebar_page_actions)
         self.page_overview_btn.setObjectName("pageOverviewButton")
