@@ -52,7 +52,7 @@ def main():
     cases = [
         ("wobbly square", square_trace(), "square"),
         ("rough circle", circle_trace(), "circle"),
-        ("wide oval", circle_trace(radius_wobble=2.0, aspect=2.4), "circle"),
+        ("wide oval", circle_trace(radius_wobble=2.0, aspect=2.4), "ellipse"),
     ]
     for label, points, expected in cases:
         result = _recognize_pen_shape(points)
