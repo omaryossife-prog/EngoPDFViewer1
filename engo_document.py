@@ -118,6 +118,7 @@ class DocumentCanvas(QWidget):
         self._text_selecting = False
         self._text_selection_page = -1
         self._text_selection_tool = ""
+        self._editing_highlight_xref = 0
         self._text_selection_words = []
         self._text_selection_start_word = -1
         self._text_selection_end_word = -1
@@ -1127,7 +1128,10 @@ class DocumentCanvas(QWidget):
                         if not _is_pen_shape_sel or (self._dragging_annotation and self._drag_xref == xref):
                             for shape_path in geometry["paths"]:
                                 painter.drawPath(shape_path)
-                        if self._annotation_edit_mode and len(getattr(self.tab, "selected_annotations", []) or []) == 1:
+                        is_native_text_highlight = int((annot.type or (0, ""))[0]) == getattr(fitz, "PDF_ANNOT_HIGHLIGHT", 8)
+                        if (self._annotation_edit_mode
+                                and len(getattr(self.tab, "selected_annotations", []) or []) == 1
+                                and not is_native_text_highlight):
                             painter.setPen(QPen(QColor("#eaf2ff"), 1.0))
                             painter.setBrush(QBrush(QColor("#5b9cff")))
                             for handle in geometry.get("handles", []):
@@ -1411,6 +1415,7 @@ class DocumentCanvas(QWidget):
         self._text_selecting = False
         self._text_selection_page = -1
         self._text_selection_tool = ""
+        self._editing_highlight_xref = 0
         self._text_selection_words = []
         self._text_selection_start_word = -1
         self._text_selection_end_word = -1
@@ -1492,16 +1497,17 @@ class DocumentCanvas(QWidget):
         self.update()
         return True
 
-    def _begin_text_selection(self, index: int, page_rect: QRectF, word_entry):
+    def _begin_text_selection(self, index: int, page_rect: QRectF, word_entry,
+                              selection_tool=None, preserve_annotation_selection=False):
         self._clear_text_selection()
         self._text_selecting = True
         self._text_selection_page = int(index)
-        self._text_selection_tool = str(self.tab.active_tool or "select")
+        self._text_selection_tool = str(selection_tool or self.tab.active_tool or "select")
         self._text_selection_words = self._text_words_for_page(index)
         self._text_selection_start_word = int(word_entry[0])
         self._text_selection_end_word = int(word_entry[0])
         self._text_selection_current_page_rect = QRectF(page_rect)
-        if self._text_selection_tool == "select":
+        if self._text_selection_tool == "select" and not preserve_annotation_selection:
             self.tab.clear_annotation_selection()
         self._refresh_text_selection_preview()
         self.setCursor(Qt.CursorShape.IBeamCursor)
@@ -1703,6 +1709,12 @@ class DocumentCanvas(QWidget):
             return
         if tool == "highlight":
             self.tab.add_highlight_words(index, records)
+            self._clear_text_selection()
+        elif tool == "highlight_edit":
+            xref = int(self._editing_highlight_xref or 0)
+            self.tab.edit_text_highlight_words(
+                index, xref, records, int(self._text_selection_start_word)
+            )
             self._clear_text_selection()
         else:
             self._show_pdf_text_selection_menu(global_pos, text, index, records)
@@ -2452,6 +2464,10 @@ class DocumentCanvas(QWidget):
             annot = next((a for a in (page.annots() or []) if int(a.xref) == xref), None)
             if annot is None:
                 return ""
+            if int((annot.type or (0, ""))[0]) == getattr(fitz, "PDF_ANNOT_HIGHLIGHT", 8):
+                # Native text highlights are edited by adding/removing words,
+                # never by dragging their bounding box or individual quad nodes.
+                return ""
             geometry = self._annotation_selection_geometry(int(page_index), annot, page=page)
             bounds = geometry.get("bounds") if geometry else None
             if bounds is None or bounds.isEmpty():
@@ -2906,6 +2922,30 @@ class DocumentCanvas(QWidget):
         # Highlight uses the same rule, but a blank/image-started drag remains an
         # area highlight even if the pointer later crosses over text.
         current_tool = str(self.tab.active_tool or "")
+        if current_tool == "select" and self._annotation_edit_mode and not force_select:
+            selected_highlight = self.tab.selected_annotation
+            if selected_highlight is not None:
+                selected_page_index = int(selected_highlight[0])
+                selected_xref = int(selected_highlight[1])
+                selected_page = self.tab.doc.load_page(selected_page_index)
+                selected_annot = next(
+                    (a for a in (selected_page.annots() or []) if int(a.xref) == selected_xref),
+                    None
+                )
+                if (selected_annot is not None
+                        and int((selected_annot.type or (0, ""))[0]) == getattr(fitz, "PDF_ANNOT_HIGHLIGHT", 8)):
+                    text_page_index, text_page_rect = self._page_at(pos)
+                    if text_page_index == selected_page_index:
+                        word_entry = self._text_word_at(text_page_index, text_page_rect, pos)
+                        if word_entry is not None:
+                            self._editing_highlight_xref = selected_xref
+                            self._begin_text_selection(
+                                text_page_index, text_page_rect, word_entry,
+                                selection_tool="highlight_edit",
+                                preserve_annotation_selection=True,
+                            )
+                            event.accept()
+                            return
         if current_tool in ("select", "highlight") and not force_select:
             text_page_index, text_page_rect = self._page_at(pos)
             if text_page_index >= 0:
@@ -7786,6 +7826,107 @@ class DocumentTab(QWidget):
         annot.update()
         self._changed(int(index))
         return True
+
+    def edit_text_highlight_words(self, index: int, xref: int,
+                                  selected_word_records, start_word_index: int) -> bool:
+        """Toggle PDF text words inside one existing native highlight annotation."""
+        try:
+            page_index = int(index)
+            page = self.doc.load_page(page_index)
+            old = next(
+                (a for a in (page.annots() or []) if int(a.xref) == int(xref)),
+                None
+            )
+            if old is None or int((old.type or (0, ""))[0]) != getattr(fitz, "PDF_ANNOT_HIGHLIGHT", 8):
+                return False
+            all_words = list(self.canvas._text_words_for_page(page_index))
+            selected_set = {tuple(word) for word in (selected_word_records or [])}
+            selected_indexes = {
+                word_index for word_index, word in enumerate(all_words)
+                if tuple(word) in selected_set
+            }
+            if not selected_indexes:
+                return False
+
+            vertices = list(old.vertices or [])
+            highlight_rects = []
+            for offset in range(0, len(vertices) - 3, 4):
+                quad = [fitz.Point(point) for point in vertices[offset:offset + 4]]
+                if len(quad) == 4:
+                    highlight_rects.append(fitz.Rect(
+                        min(point.x for point in quad),
+                        min(point.y for point in quad),
+                        max(point.x for point in quad),
+                        max(point.y for point in quad),
+                    ))
+            highlighted_indexes = set()
+            for word_index, word in enumerate(all_words):
+                word_rect = fitz.Rect(word[:4])
+                area = max(0.001, float(word_rect.get_area()))
+                for highlight_rect in highlight_rects:
+                    overlap = word_rect & highlight_rect
+                    if not overlap.is_empty and float(overlap.get_area()) / area >= 0.40:
+                        highlighted_indexes.add(word_index)
+                        break
+
+            start_index = max(0, min(int(start_word_index), len(all_words) - 1))
+            remove_words = start_index in highlighted_indexes
+            remaining_indexes = (
+                highlighted_indexes - selected_indexes
+                if remove_words else highlighted_indexes | selected_indexes
+            )
+            remaining_records = [all_words[i] for i in sorted(remaining_indexes)]
+            old_colors = dict(old.colors or {})
+            old_stroke = old_colors.get("stroke")
+            old_opacity = float(old.opacity) if old.opacity is not None else 0.38
+
+            self._record_undo()
+            page.delete_annot(old)
+            new_annot = None
+            if remaining_records:
+                line_words = {}
+                for word in remaining_records:
+                    if len(word) < 8 or not str(word[4] or "").strip():
+                        continue
+                    word_rect = fitz.Rect(word[:4]) & page.cropbox
+                    if word_rect.is_empty or word_rect.width <= 0 or word_rect.height <= 0:
+                        continue
+                    line_key = (int(word[5]), int(word[6]))
+                    line_words.setdefault(line_key, []).append(word_rect)
+                merged_runs = []
+                for _line_key, words_on_line in line_words.items():
+                    words_on_line.sort(key=lambda item: (item.x0, item.x1))
+                    run = fitz.Rect(words_on_line[0])
+                    for word_rect in words_on_line[1:]:
+                        gap_limit = max(2.0, min(run.height, word_rect.height) * 0.65)
+                        if word_rect.x0 <= run.x1 + gap_limit:
+                            run |= word_rect
+                        else:
+                            merged_runs.append(fitz.Rect(run))
+                            run = fitz.Rect(word_rect)
+                    merged_runs.append(fitz.Rect(run))
+                if merged_runs:
+                    new_annot = page.add_highlight_annot([rect.quad for rect in merged_runs])
+                    if old_stroke:
+                        new_annot.set_colors(stroke=old_stroke)
+                    else:
+                        new_annot.set_colors(stroke=color_tuple(
+                            self.annotation_colors.get("highlight", DEFAULT_ANNOTATION_COLORS["highlight"])
+                        ))
+                    new_annot.set_opacity(max(0.05, min(1.0, old_opacity)))
+                    new_annot.update()
+
+            if new_annot is None:
+                self.clear_annotation_selection()
+            else:
+                self.selected_annotation = (page_index, int(new_annot.xref))
+                self.selected_annotations = [(page_index, int(new_annot.xref))]
+                self.annotationSelectionChanged.emit(True)
+            self._changed(page_index)
+            return True
+        except Exception as exc:
+            QMessageBox.warning(self, APP_NAME, f"Could not edit text highlight:\\n{exc}")
+            return False
 
     def add_area_highlight(self, index: int, rect: fitz.Rect):
         """Create an area/image highlight without converting crossed text into text markup."""
