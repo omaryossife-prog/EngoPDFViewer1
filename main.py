@@ -628,7 +628,7 @@ class MainWindow(QMainWindow):
         tool_items = [
             ("select", "Select", "Select annotations, read, or activate links", "#b7c6dc"),
             ("pen", "Pen", "Draw freehand ink on the page", "#80adff"),
-            ("highlight", "Highlight", "Highlight selectable text or mark a scanned area", "#f0cf65"),
+            ("highlight", "Highlight", "Use the marker pen or select text to highlight it", "#f0cf65"),
             ("note", "Note", "Add a sticky-note comment", "#c5a0ff"),
             ("text", "Text", "Place editable text on the page", "#83d6c5"),
             ("link", "Link", "Draw an internal link to another page", "#7ad4dc"),
@@ -666,6 +666,33 @@ class MainWindow(QMainWindow):
                 self.select_tool_menu.aboutToShow.connect(self._refresh_select_tool_menu)
                 btn.setMenu(self.select_tool_menu)
                 btn.clicked.connect(self._select_tool_button_clicked)
+            elif key == "highlight":
+                btn = QToolButton()
+                btn.setObjectName("highlightTool")
+                btn.setIcon(make_icon("highlight", color, 18))
+                btn.setIconSize(QSize(18, 18))
+                btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+                btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+                btn.setCheckable(True)
+                btn.setFixedSize(40, 29)
+                btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                btn.setToolTip(tip + " · click for marker pen, use the arrow for text highlighting")
+                btn.setAccessibleName("Highlight text or use the marker pen")
+                btn.setProperty("engoIconName", "highlight")
+                btn.setProperty("engoIconBaseColor", color)
+                self.highlight_tool_btn = btn
+                self.highlight_tool_menu = QMenu(btn)
+                marker_action = self.highlight_tool_menu.addAction(
+                    make_icon("highlighter", color, 16), "Highlighter pen"
+                )
+                text_action = self.highlight_tool_menu.addAction(
+                    make_icon("text-cursor-input", color, 16), "Highlight selected text"
+                )
+                marker_action.triggered.connect(lambda checked=False: self._set_tool("highlight_pen"))
+                text_action.triggered.connect(lambda checked=False: self._set_tool("highlight"))
+                btn.setMenu(self.highlight_tool_menu)
+                btn.clicked.connect(lambda checked=False: self._set_tool("highlight_pen"))
             else:
                 btn = self._button("", "tool", key, color)
                 btn.setCheckable(True)
@@ -6990,13 +7017,17 @@ class MainWindow(QMainWindow):
         self.select_tool_btn.update()
 
     def _set_tool(self, tool, quiet=False):
-        if tool not in self.tool_buttons and tool != "pan":
+        if tool not in self.tool_buttons and tool not in ("pan", "highlight_pen"):
             return
         tab = self._view_target_tab()
         if tab:
             tab.set_tool(tool)
         for key, button in self.tool_buttons.items():
-            active = (key == tool) or (key == "select" and tool == "pan")
+            active = (
+                (key == tool)
+                or (key == "select" and tool == "pan")
+                or (key == "highlight" and tool == "highlight_pen")
+            )
             button.setProperty("activeTool", active)
             if button.isChecked() != active:
                 button.setChecked(active)
