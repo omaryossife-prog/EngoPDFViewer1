@@ -2148,7 +2148,7 @@ def _recognize_pen_shape(points):
     ratio = width/max(height, 1e-6)
     radial_error = 1.0
     cx, cy = (x0+x1)/2.0, (y0+y1)/2.0
-    if 0.42 <= ratio <= 2.40 and len(ring) >= 8:
+    if 0.42 <= ratio <= 2.65 and len(ring) >= 8:
         rx, ry = max(width/2.0, 1e-6), max(height/2.0, 1e-6)
         radii = [math.hypot((pt.x-cx)/rx, (pt.y-cy)/ry) for pt in ring]
         mean_r = sum(radii)/len(radii)
