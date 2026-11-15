@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -112,3 +114,45 @@ def test_fullscreen_and_chat_focus_use_the_corner_only_restore_icon():
     assert 'make_icon("minimize" if active else "fullscreen"' in main
     assert 'make_icon("minimize", "#b7c6dc", 16)' in chat
     assert 'make_icon("fullscreen", "#b7c6dc", 16)' in chat
+
+
+def test_pen_shape_recognition_keeps_wobbly_quadrilaterals_and_detects_ovals():
+    pytest.importorskip("PyQt6")
+    from PyQt6.QtCore import QPointF
+    from engo_widgets import _recognize_pen_shape
+
+    def rectangle_points(wobble=3.0, samples_per_edge=20):
+        corners = [(30, 30), (230, 30), (230, 150), (30, 150)]
+        points = []
+        for edge in range(4):
+            x1, y1 = corners[edge]
+            x2, y2 = corners[(edge + 1) % 4]
+            for sample in range(samples_per_edge):
+                t = sample / samples_per_edge
+                x = x1 + (x2 - x1) * t
+                y = y1 + (y2 - y1) * t
+                offset = __import__("math").sin(sample * 1.7 + edge * 2.1) * wobble
+                if abs(x2 - x1) > abs(y2 - y1):
+                    y += offset
+                else:
+                    x += offset
+                points.append(QPointF(x, y))
+        points.append(QPointF(*corners[0]))
+        return points
+
+    def ellipse_points(rx, ry, count=120):
+        import math
+        return [
+            QPointF(120 + rx * math.cos(2 * math.pi * i / count),
+                    100 + ry * math.sin(2 * math.pi * i / count))
+            for i in range(count + 1)
+        ]
+
+    rectangle = _recognize_pen_shape(rectangle_points())
+    ellipse = _recognize_pen_shape(ellipse_points(100, 60))
+    circle = _recognize_pen_shape(ellipse_points(70, 70))
+
+    assert rectangle is not None
+    assert rectangle["kind"] in ("rectangle", "square", "quadrilateral")
+    assert ellipse is not None and ellipse["kind"] == "ellipse"
+    assert circle is not None and circle["kind"] == "circle"
