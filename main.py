@@ -3778,6 +3778,12 @@ class MainWindow(QMainWindow):
             self._apply_toolbar_density(force=True)
         if hasattr(self, "recent_files_table"):
             self._refresh_files_home()
+        eye_button = getattr(self, "eye_protection_toolbar_btn", None)
+        if eye_button is not None:
+            eye_label = "حماية العين" if language == "ar" else "Eye protection"
+            eye_button.setText(eye_label)
+            eye_button.setToolTip(eye_label)
+            eye_button.setAccessibleName(eye_label)
 
         if hasattr(self, "context_help_label"):
             direction = Qt.LayoutDirection.RightToLeft if language == "ar" else Qt.LayoutDirection.LeftToRight
