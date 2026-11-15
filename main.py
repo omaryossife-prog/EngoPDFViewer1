@@ -3660,7 +3660,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "save_btn") and (previous_toolbar_language != language
                 or not getattr(self, "_toolbar_density_initialized", False)):
             self._apply_toolbar_density(force=True)
-        if hasattr(self, "recent_files_table")
+        if hasattr(self, "recent_files_table"):
             self._refresh_files_home()
 
         if hasattr(self, "context_help_label"):
