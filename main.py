@@ -4154,6 +4154,9 @@ class MainWindow(QMainWindow):
                     tab.deleteLater()
             self._tab_order.clear()
         for entry in valid_entries:
+            # Give the compact busy dialog another paint/timer turn between
+            # documents when restoring a multi-file session.
+            QApplication.processEvents()
             self.open_pdf(str(entry.get("source_path") or entry["path"]))
         # Restore explicit links only because the user explicitly requested the
         # previous session. Ordinary multi-file opening never auto-links files.
@@ -6301,6 +6304,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self, APP_NAME, f"Could not prepare this document:\n{exc}")
             return
+        QApplication.processEvents()
         is_image = is_image_document(source_path)
         for i in range(self.tabs.count()):
             tab = self.tabs.widget(i)
