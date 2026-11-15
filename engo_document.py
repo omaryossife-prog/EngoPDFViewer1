@@ -7082,7 +7082,10 @@ class DocumentTab(QWidget):
                 word_rect = fitz.Rect(word[:4])
                 if word_rect.is_empty or not target.intersects(word_rect):
                     continue
-                center = word_rect.tl + (word_rect.br - word_rect.tl) * 0.5
+                center = fitz.Point(
+                    (word_rect.x0 + word_rect.x1) / 2.0,
+                    (word_rect.y0 + word_rect.y1) / 2.0,
+                )
                 # Include words whose centers lie inside the editable selection.
                 # This avoids selecting neighboring words touched by only a pixel.
                 if target.contains(center):
@@ -8164,11 +8167,11 @@ class DocumentTab(QWidget):
         except Exception:
             default_appearance = ""
         rgb_match = re.search(
-            r"([-+]?(?:\\d+\\.?\\d*|\\.\\d+))\\s+([-+]?(?:\\d+\\.?\\d*|\\.\\d+))\\s+([-+]?(?:\\d+\\.?\\d*|\\.\\d+))\\s+rg",
+            r"([-+]?(?:\d+\.?\d*|\.\d+))\s+([-+]?(?:\d+\.?\d*|\.\d+))\s+([-+]?(?:\d+\.?\d*|\.\d+))\s+rg",
             default_appearance,
         )
         gray_match = re.search(
-            r"([-+]?(?:\\d+\\.?\\d*|\\.\\d+))\\s+g(?:\\s|$)",
+            r"([-+]?(?:\d+\.?\d*|\.\d+))\s+g(?:\s|$)",
             default_appearance,
         )
         if rgb_match:
