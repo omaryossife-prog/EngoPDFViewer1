@@ -1290,7 +1290,7 @@ class MainWindow(QMainWindow):
         self.recent_files_table.setObjectName("recentFilesTable")
         self.recent_files_table.setColumnCount(6)
         self.recent_files_table.setHeaderLabels(
-            ["Type", "File name", "Location", "Pages", "Last opened", "Action"]
+            ["Type", "File name", "Location", "n", "Last opened", "Open"]
         )
         self.recent_files_table.setRootIsDecorated(False)
         self.recent_files_table.setItemsExpandable(False)
