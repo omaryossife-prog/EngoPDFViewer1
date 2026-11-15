@@ -1525,7 +1525,8 @@ class ColorSwatchButton(QPushButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setText("")
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        if self._container_size:
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setColor(color)
 
     def color(self):
@@ -1562,7 +1563,9 @@ class ColorSwatchButton(QPushButton):
         self._diameter = diameter
         if not self._container_size:
             self.setFixedSize(diameter, diameter)
-        self.update()
+            self.setColor(self.color())
+        else:
+            self.update()
 
     def paintEvent(self, event):
         if not self._container_size:
