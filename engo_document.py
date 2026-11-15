@@ -4147,13 +4147,32 @@ class DocumentTab(QWidget):
         # Re-apply the language after both buttons exist; this keeps the custom
         # sidebar switcher localized even when a document is opened after startup.
         self.side_tabs.setLanguage(sidebar_language)
-        self.page_overview_btn = QToolButton(self.side_tabs._nav_host)
+        self.sidebar_page_actions = QWidget(self.side_tabs._nav_host)
+        self.sidebar_page_actions.setObjectName("sidebarPageActions")
+        sidebar_actions_layout = QHBoxLayout(self.sidebar_page_actions)
+        sidebar_actions_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_actions_layout.setSpacing(3)
+        self.eye_protection_btn = QToolButton(self.sidebar_page_actions)
+        self.eye_protection_btn.setObjectName("eyeProtectionButton")
+        self.eye_protection_btn.setIcon(make_icon("eye", sidebar_icon_color, 16))
+        self.eye_protection_btn.setIconSize(QSize(16, 16))
+        self.eye_protection_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.eye_protection_btn.setFixedSize(30, 32)
+        self.eye_protection_btn.setAutoRaise(False)
+        self.eye_protection_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.eye_protection_btn.setToolTip(_engo_translate_tooltip("Eye protection", self._sidebar_language))
+        self.eye_protection_btn.setAccessibleName("Eye protection")
+        self.eye_protection_btn.clicked.connect(self._open_eye_protection_settings)
+        self.eye_protection_btn.setProperty("engoIconName", "eye")
+        sidebar_actions_layout.addWidget(self.eye_protection_btn)
+
+        self.page_overview_btn = QToolButton(self.sidebar_page_actions)
         self.page_overview_btn.setObjectName("pageOverviewButton")
         self.page_overview_btn.setIcon(make_icon("fullscreen", sidebar_icon_color, 16))
         self.page_overview_btn.setIconSize(QSize(16, 16))
         self.page_overview_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.page_overview_btn.setFixedHeight(32)
-        self.page_overview_btn.setMinimumWidth(34)
+        self.page_overview_btn.setMinimumWidth(30)
         self.page_overview_btn.setMaximumWidth(42)
         self.page_overview_btn.setAutoRaise(False)
         self.page_overview_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -4162,7 +4181,8 @@ class DocumentTab(QWidget):
         self.page_overview_btn.setCheckable(True)
         self.page_overview_btn.clicked.connect(lambda _checked=False: self.show_page_overview())
         self.page_overview_btn.setProperty("engoIconName", "fullscreen")
-        self.side_tabs.setTrailingWidget(self.page_overview_btn)
+        sidebar_actions_layout.addWidget(self.page_overview_btn)
+        self.side_tabs.setTrailingWidget(self.sidebar_page_actions)
         side_layout.addWidget(self.side_tabs, 1)
         self.sidebar.installEventFilter(self)
         self.thumbnails.installEventFilter(self)
@@ -5558,6 +5578,12 @@ class DocumentTab(QWidget):
                 self.thumbnails.blockSignals(False)
             else:
                 self.thumbnails.viewport().update()
+
+    def _open_eye_protection_settings(self):
+        host = self.window()
+        opener = getattr(host, "open_eye_protection_settings", None)
+        if callable(opener):
+            opener()
 
     def _thumbnail_clicked(self, item):
         self.go_to_page(int(item.data(Qt.ItemDataRole.UserRole)))
