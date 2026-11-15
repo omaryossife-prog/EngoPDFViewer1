@@ -9374,9 +9374,9 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, self.close)
 
     def open_page_theme(self, _usage_checked=False):
-        if not _usage_checked:
-            self._request_feature_access("page_themes", lambda: self.open_page_theme(True))
-            return
+        # The page-theme chooser, including the experimental Smart Theme option,
+        # is available to Free users. Premium-only palettes and custom themes
+        # remain enforced by PageThemeDialog itself.
         dlg = PageThemeDialog(
             self, self.dark_mode, self.bg_color, self.ink_color,
             self.custom_page_themes, self.smart_page_theme,
