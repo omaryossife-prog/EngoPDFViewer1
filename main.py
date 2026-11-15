@@ -11167,7 +11167,12 @@ class MainWindow(QMainWindow):
         if button is None:
             return
         active = bool(getattr(self, "_fullscreen", False))
-        button.setIcon(make_icon("minimize" if active else "fullscreen", "#b7c6dc", 16))
+        try:
+            theme = normalize_ui_theme(self.settings.value("ui_theme", "dark", type=str))
+            icon_color = engo_ui_theme_tokens(theme)["text"]
+        except Exception:
+            icon_color = "#b7c6dc"
+        button.setIcon(make_icon("minimize" if active else "fullscreen", icon_color, 16))
         is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
         button.setToolTip(
             ("الخروج من ملء الشاشة (F11)" if active else "ملء الشاشة (F11)")
