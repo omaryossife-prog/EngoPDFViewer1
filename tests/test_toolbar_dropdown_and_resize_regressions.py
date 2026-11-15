@@ -61,3 +61,13 @@ def test_selection_outline_uses_a_cosmetic_pen_during_live_resize():
     document = read("engo_document.py")
     assert "selection_outline_pen.setCosmetic(True)" in document
     assert "painter.setPen(selection_outline_pen)" in document
+
+
+def test_resize_can_start_from_the_visible_annotation_frame_edge():
+    document = read("engo_document.py")
+    start = document.index("def _resize_handle_at(")
+    end = document.index("\n    def ", start + 10)
+    helper = document[start:end]
+    assert "tolerance = 8.0" in helper
+    assert 'return side' in helper
+    assert 'geometry.get("kind") != "circle"' in helper
