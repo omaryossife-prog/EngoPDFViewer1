@@ -1303,11 +1303,11 @@ class MainWindow(QMainWindow):
         recent_header_view.setStretchLastSection(False)
         recent_header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         recent_header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        recent_header_view.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        recent_header_view.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         recent_header_view.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         recent_header_view.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
         recent_header_view.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
-        for column, width in ((0, 74), (1, 210), (3, 66), (4, 150), (5, 90)):
+        for column, width in ((0, 74), (1, 230), (2, 460), (3, 66), (4, 150), (5, 90)):
             self.recent_files_table.setColumnWidth(column, width)
         self.recent_files_table.setStyleSheet(
             "QTreeWidget#recentFilesTable { border:0; border-radius:8px; }"
@@ -4047,8 +4047,9 @@ class MainWindow(QMainWindow):
                 kind, Path(path).name, path, page_count, opened, ""
             ])
             item.setToolTip(1, Path(path).name)
-            item.setToolTip(2, path)
-            item.setSizeHint(0, QSize(0, 84))
+            path_is_clipped = table.fontMetrics().horizontalAdvance(path) > max(80, table.columnWidth(2) - 18)
+            item.setToolTip(2, path if path_is_clipped else "")
+            item.setSizeHint(0, QSize(0, 100))
             table.addTopLevelItem(item)
 
             type_badge = QLabel(kind)
