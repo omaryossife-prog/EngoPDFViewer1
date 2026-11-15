@@ -1114,8 +1114,15 @@ class DocumentCanvas(QWidget):
                                 painter.translate(target.left(), target.top())
                                 painter.scale(sx, sy)
                                 painter.translate(-bounds.left(), -bounds.top())
-                        painter.setPen(QPen(QColor("#5b9cff"), 2.0, Qt.PenStyle.SolidLine,
-                                             Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+                        selection_outline_pen = QPen(
+                            QColor("#5b9cff"), 2.0, Qt.PenStyle.SolidLine,
+                            Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin
+                        )
+                        # The geometry is transformed while dragging, but the
+                        # selection stroke is a screen-space guide. A cosmetic pen
+                        # keeps its visible thickness constant at every zoom/size.
+                        selection_outline_pen.setCosmetic(True)
+                        painter.setPen(selection_outline_pen)
                         painter.setBrush(Qt.BrushStyle.NoBrush)
                         # A selected Pen-tool shape keeps its own stroke untouched:
                         # no blue glow over its sides while it is merely selected.
@@ -2152,6 +2159,30 @@ class DocumentCanvas(QWidget):
                 min_w = 12.0 if path_bounds.width() < 12.0 else path_bounds.width()
                 min_h = 12.0 if path_bounds.height() < 12.0 else path_bounds.height()
                 bounds = QRectF(center.x()-min_w/2.0, center.y()-min_h/2.0, min_w, min_h)
+        # Native vector/ink drawings resize as complete objects from their
+        # rectangular selection boundary. The previous per-vertex grips made a
+        # corner drag move one PDF point while the user expected the whole shape
+        # to stretch; it also made the bounding frame appear to change thickness.
+        bounds_resize_types = (type_line, type_polygon, type_polyline, type_ink)
+        if subtype in bounds_resize_types and not bounds.isEmpty():
+            left, top = bounds.left(), bounds.top()
+            right, bottom = bounds.right(), bounds.bottom()
+            cx, cy = bounds.center().x(), bounds.center().y()
+            handles = [
+                {"name": "tl", "point": QPointF(left, top), "mode": "bounds"},
+                {"name": "tr", "point": QPointF(right, top), "mode": "bounds"},
+                {"name": "bl", "point": QPointF(left, bottom), "mode": "bounds"},
+                {"name": "br", "point": QPointF(right, bottom), "mode": "bounds"},
+                {"name": "edge_top", "point": QPointF(cx, top),
+                 "anchor": QPointF(cx, bottom), "mode": "bounds", "side": "top"},
+                {"name": "edge_bottom", "point": QPointF(cx, bottom),
+                 "anchor": QPointF(cx, top), "mode": "bounds", "side": "bottom"},
+                {"name": "edge_left", "point": QPointF(left, cy),
+                 "anchor": QPointF(right, cy), "mode": "bounds", "side": "left"},
+                {"name": "edge_right", "point": QPointF(right, cy),
+                 "anchor": QPointF(left, cy), "mode": "bounds", "side": "right"},
+            ]
+
         # One dedicated uniform-scale grip is available for every selected shape.
         # Compute it only after the true path bounds are known (not the PDF /Rect,
         # which is padded for Line and Ink annotations).

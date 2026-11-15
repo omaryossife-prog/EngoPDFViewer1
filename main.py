@@ -2804,6 +2804,55 @@ class MainWindow(QMainWindow):
             str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar"),
         )
 
+    def _apply_toolbar_dropdown_style(self, menu: QMenu, theme: str | None = None):
+        """Give every annotation/view toolbar dropdown the same compact card design."""
+        if menu is None:
+            return
+        current = normalize_ui_theme(
+            theme or self.settings.value("ui_theme", "dark", type=str)
+        )
+        tokens = engo_ui_theme_tokens(current)
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background: {tokens['panel']};
+                color: {tokens['text']};
+                border: 1px solid {tokens['border']};
+                border-radius: 10px;
+                padding: 5px;
+            }}
+            QMenu::item {{
+                color: {tokens['text']};
+                background: transparent;
+                border: 0;
+                border-radius: 6px;
+                padding: 8px 16px 8px 10px;
+                margin: 2px 3px;
+                min-height: 22px;
+            }}
+            QMenu::item:selected {{
+                color: {tokens['selection_text']};
+                background: {tokens['selection']};
+            }}
+            QMenu::item:disabled {{
+                color: {tokens['muted']};
+                background: transparent;
+            }}
+            QMenu::icon {{
+                padding-left: 4px;
+            }}
+            QMenu::separator {{
+                height: 1px;
+                background: {tokens['border']};
+                margin: 5px 8px;
+            }}
+        """)
+        is_ar = str(
+            self.settings.value("interface_language", "en", type=str) or "en"
+        ).lower().startswith("ar")
+        menu.setLayoutDirection(
+            Qt.LayoutDirection.RightToLeft if is_ar else Qt.LayoutDirection.LeftToRight
+        )
+
     def _apply_annotation_color_theme(self, theme):
         """Load the saved annotation palette for the selected app theme."""
         theme = normalize_ui_theme(theme)
@@ -3787,12 +3836,23 @@ class MainWindow(QMainWindow):
 
         if hasattr(self, "context_help_label"):
             direction = Qt.LayoutDirection.RightToLeft if language == "ar" else Qt.LayoutDirection.LeftToRight
-            self.status.setLayoutDirection(direction)
+            # Keep the status bar's item order LTR so the info glyph stays on the
+            # physical left; only the hint text itself follows the selected language.
+            self.status.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+            self.context_help_icon.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
             self.context_help_label.setLayoutDirection(direction)
             self.context_help_label.setAlignment(
                 Qt.AlignmentFlag.AlignVCenter | (Qt.AlignmentFlag.AlignRight if language == "ar" else Qt.AlignmentFlag.AlignLeft)
             )
             self._set_default_context_help()
+        for dropdown in (
+            getattr(self, "highlight_tool_menu", None),
+            getattr(self, "select_tool_menu", None),
+            getattr(self, "rotate_page_menu", None),
+            getattr(self, "tag_menu", None),
+        ):
+            if dropdown is not None:
+                self._apply_toolbar_dropdown_style(dropdown)
 
     @staticmethod
     def _relative_opened_time(timestamp, language="en", action="opened"):
@@ -5044,10 +5104,22 @@ class MainWindow(QMainWindow):
             # Keep the trash glyph semantically red in every app theme; the button
             # surface and border are theme-driven by the stylesheet below.
             self.delete_btn.setIcon(make_icon("delete", "#ef4444", 18))
+        if hasattr(self, "book_btn"):
+            book_icon_color = "#172033" if current_theme == "light" else _current_tokens["text"]
+            self.book_btn.setIcon(make_icon("book", book_icon_color, 18))
+            self.book_btn.setIconSize(QSize(18, 18))
         if hasattr(self, "select_tool_btn"):
             self._refresh_selector_tool_button()
         if hasattr(self, "full_btn"):
             self._sync_fullscreen_button_icon()
+        for dropdown in (
+            getattr(self, "highlight_tool_menu", None),
+            getattr(self, "select_tool_menu", None),
+            getattr(self, "rotate_page_menu", None),
+            getattr(self, "tag_menu", None),
+        ):
+            if dropdown is not None:
+                self._apply_toolbar_dropdown_style(dropdown, current_theme)
         if hasattr(self, "save_btn"):
             self.save_btn.setIcon(make_icon("save", icon_color, 18))
         if hasattr(self, "rotate_page_btn"):
@@ -10095,7 +10167,7 @@ class MainWindow(QMainWindow):
         edit = self.tag_menu.addAction("تعديل الوسوم…" if is_ar else "Edit tags…")
         edit.triggered.connect(lambda _checked=False, owner=tab: self.open_tag_manager(owner))
         self.tag_menu.setLayoutDirection(Qt.LayoutDirection.RightToLeft if is_ar else Qt.LayoutDirection.LeftToRight)
-        self._apply_popup_menu_style(self.tag_menu)
+        self._apply_toolbar_dropdown_style(self.tag_menu)
         if hasattr(self, "tag_tool_btn"):
             self.tag_tool_btn.setIcon(make_icon("tag", selected_color if selected else "#d5b1ff", 18))
             self.tag_tool_btn.setToolTip(
