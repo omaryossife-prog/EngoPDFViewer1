@@ -3014,6 +3014,25 @@ class DocumentCanvas(QWidget):
                     selected_now = list(getattr(self.tab, "selected_annotations", []) or [])
                     item = (int(index), int(xref))
                     was_selected = item in selected_now
+                    if was_selected and self._annotation_edit_mode:
+                        try:
+                            current_annot_page = self.tab.doc.load_page(int(index))
+                            current_annot = next(
+                                (entry for entry in (current_annot_page.annots() or [])
+                                 if int(entry.xref) == int(xref)),
+                                None
+                            )
+                            if (current_annot is not None
+                                    and int((current_annot.type or (0, ""))[0])
+                                    == getattr(fitz, "PDF_ANNOT_HIGHLIGHT", 8)):
+                                # The word-selection handler above owns clicks on actual
+                                # PDF words. A click on the rest of the highlight bounds
+                                # must not turn the text highlight into a resize drag.
+                                event.accept()
+                                self.setCursor(Qt.CursorShape.ArrowCursor)
+                                return
+                        except Exception:
+                            pass
                     modifiers = event.modifiers()
                     ctrl_add = bool(modifiers & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier))
                     if ctrl_add:
@@ -7878,7 +7897,10 @@ class DocumentTab(QWidget):
             remaining_records = [all_words[i] for i in sorted(remaining_indexes)]
             old_colors = dict(old.colors or {})
             old_stroke = old_colors.get("stroke")
-            old_opacity = float(old.opacity) if old.opacity is not None else 0.38
+            try:
+                old_opacity = float(old.opacity)
+            except (TypeError, ValueError, RuntimeError):
+                old_opacity = 0.38
 
             self._record_undo()
             page.delete_annot(old)
