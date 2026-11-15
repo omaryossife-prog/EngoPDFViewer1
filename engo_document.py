@@ -1289,7 +1289,7 @@ class DocumentCanvas(QWidget):
                     ))
                     marker_color.setAlpha(105)
                     display_scale = max(0.5, float(self.page_scales.get(self._draw_page, 1.0)))
-                    marker_width = max(1.0, float(self.tab.annotation_colors.get("highlight_width", 12)) * display_scale)
+                    marker_width = max(1.0, float(self.tab.annotation_colors.get("highlight_width", 15)) * display_scale)
                     painter.setPen(QPen(
                         marker_color, marker_width, Qt.PenStyle.SolidLine,
                         Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin
@@ -2366,6 +2366,21 @@ class DocumentCanvas(QWidget):
                 point = item.get("point", QPointF())
                 if math.hypot(pos.x() - point.x(), pos.y() - point.y()) <= 11.0:
                     return str(item.get("name") or "")
+            # A resize must also start when the user grabs the visible frame itself,
+            # not only the tiny blue center grips. Resolve that grab to the nearest
+            # side and keep the opposite side as the fixed anchor during the drag.
+            if geometry.get("kind") != "circle":
+                tolerance = 8.0
+                if bounds.adjusted(-tolerance, -tolerance, tolerance, tolerance).contains(pos):
+                    distances = {
+                        "edge_left": abs(pos.x() - bounds.left()),
+                        "edge_right": abs(pos.x() - bounds.right()),
+                        "edge_top": abs(pos.y() - bounds.top()),
+                        "edge_bottom": abs(pos.y() - bounds.bottom()),
+                    }
+                    side, distance = min(distances.items(), key=lambda item: item[1])
+                    if distance <= tolerance:
+                        return side
             return ""
         points = {
             "tl": QPointF(bounds.left(), bounds.top()),
@@ -8217,7 +8232,7 @@ class DocumentTab(QWidget):
             annot.set_colors(stroke=color_tuple(
                 self.annotation_colors.get("highlight", DEFAULT_ANNOTATION_COLORS["highlight"])
             ))
-            annot.set_border(width=max(1.0, float(self.annotation_colors.get("highlight_width", 12))))
+            annot.set_border(width=max(1.0, float(self.annotation_colors.get("highlight_width", 15))))
             annot.set_opacity(0.72)
             # Multiply preserves the original dark ink while tinting the paper
             # underneath the freehand marker, like a real translucent highlighter.
