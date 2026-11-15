@@ -691,7 +691,7 @@ class PlansDialog(QDialog):
             "app_themes": "limited",
             "translations": "limited",
             "page_themes": "limited",
-            "smart_theme": "unavailable",
+            "smart_theme": "unlimited",
             "open_other_formats": "unavailable",
         }
         premium_unlimited_overrides = {"smart_theme", "open_other_formats"}
