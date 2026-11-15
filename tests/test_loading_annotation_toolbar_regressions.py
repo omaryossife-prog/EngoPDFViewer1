@@ -118,6 +118,7 @@ def test_fullscreen_and_chat_focus_use_the_corner_only_restore_icon():
 
 def test_pen_shape_recognition_keeps_wobbly_quadrilaterals_and_detects_ovals():
     pytest.importorskip("PyQt6")
+    import math
     import pymupdf as fitz
     from engo_widgets import _recognize_pen_shape
 
@@ -131,7 +132,7 @@ def test_pen_shape_recognition_keeps_wobbly_quadrilaterals_and_detects_ovals():
                 t = sample / samples_per_edge
                 x = x1 + (x2 - x1) * t
                 y = y1 + (y2 - y1) * t
-                offset = __import__("math").sin(sample * 1.7 + edge * 2.1) * wobble
+                offset = math.sin(sample * 1.7 + edge * 2.1) * wobble
                 if abs(x2 - x1) > abs(y2 - y1):
                     y += offset
                 else:
@@ -141,7 +142,6 @@ def test_pen_shape_recognition_keeps_wobbly_quadrilaterals_and_detects_ovals():
         return points
 
     def ellipse_points(rx, ry, count=120):
-        import math
         return [
             fitz.Point(120 + rx * math.cos(2 * math.pi * i / count),
                        100 + ry * math.sin(2 * math.pi * i / count))
