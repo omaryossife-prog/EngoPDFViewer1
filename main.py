@@ -337,6 +337,9 @@ class MainWindow(QMainWindow):
                 app.setWindowIcon(app_icon)
         self.setAcceptDrops(True)
         self._build_ui()
+        # Let the startup splash repaint between the expensive, synchronous UI
+        # construction phases. The main window is still created on the GUI thread.
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         # Home is the first screen. Hide the complete document-tab strip as well
         # as the PDF toolbar so the Home page occupies the full content area.
         # The strip is shown again only when a document view becomes active.
@@ -347,7 +350,9 @@ class MainWindow(QMainWindow):
         self.topbar.hide()
         self._sync_toolbar_pin_button()
         self._apply_style()
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         self._apply_user_interface_preferences()
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         self._apply_interface_language()
         self._set_default_context_help(force=True)
         self._shortcuts()
@@ -11714,13 +11719,25 @@ def main():
         # public Free-plan app-theme switch so the welcome wizard follows the
         # same database setting as signed-in Free accounts.
         if not bool(getattr(state, "is_premium", False)):
-            try:
-                public_theme_settings = service.get_public_theme_settings()
-                if public_theme_settings.get("free_app_themes_enabled"):
-                    state.entitlements = dict(getattr(state, "entitlements", {}) or {})
-                    state.entitlements["app_themes"] = {"enabled": True, "limit": None}
-            except Exception:
-                pass
+            # Fetch this public switch off the GUI thread. A nested Qt event loop
+            # keeps the startup progress animation running while the network responds.
+            theme_result = {"value": {}}
+            theme_loop = QEventLoop(splash)
+            theme_worker = ServiceActionWorker(service.get_public_theme_settings, splash)
+
+            def public_theme_ready(value, error):
+                theme_result["value"] = value if not error and isinstance(value, dict) else {}
+                theme_loop.quit()
+
+            theme_worker.completed.connect(public_theme_ready)
+            theme_worker.finished.connect(theme_worker.deleteLater)
+            theme_worker.start()
+            theme_loop.exec()
+            theme_worker.wait()
+            public_theme_settings = theme_result["value"]
+            if public_theme_settings.get("free_app_themes_enabled"):
+                state.entitlements = dict(getattr(state, "entitlements", {}) or {})
+                state.entitlements["app_themes"] = {"enabled": True, "limit": None}
         window = MainWindow(license_service=service)
         window._offline_mode = bool(launch_state.get("offline", False))
         if window._offline_mode:
