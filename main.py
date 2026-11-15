@@ -641,6 +641,7 @@ class MainWindow(QMainWindow):
         self.rotate_page_btn.setToolTip("Rotate the current PDF page 90° clockwise; use the arrow for the whole file")
         self.rotate_page_btn.setAccessibleName("Rotate current page clockwise; menu rotates all pages")
         self.rotate_page_menu = QMenu(self.rotate_page_btn)
+        self._apply_toolbar_dropdown_style(self.rotate_page_menu)
         rotate_all_action = self.rotate_page_menu.addAction("Rotate all pages 90° clockwise")
         rotate_all_action.triggered.connect(self.rotate_all_pages_active)
         self.rotate_page_btn.setMenu(self.rotate_page_menu)
@@ -661,11 +662,10 @@ class MainWindow(QMainWindow):
             ("select", "Select", "Select annotations, read, or activate links", "#b7c6dc"),
             ("pen", "Pen", "Draw freehand ink on the page", "#80adff"),
             ("highlight", "Highlight", "Use the marker pen or select text to highlight it", "#f0cf65"),
-            ("note", "Note", "Add a sticky-note comment", "#c5a0ff"),
             ("text", "Text", "Place editable text on the page", "#83d6c5"),
             ("link", "Link", "Draw an internal link to another page", "#7ad4dc"),
         ]
-        # Annotation/note tools are intentionally icon-only. Keep full labels in
+        # Annotation tools are intentionally icon-only. Keep full labels in
         # tooltips and accessibility names; leave every other toolbar group untouched.
         for key, label, tip, color in tool_items:
             if key == "select":
@@ -687,6 +687,7 @@ class MainWindow(QMainWindow):
                 btn.setProperty("engoIconBaseColor", color)
                 self.select_tool_btn = btn
                 self.select_tool_menu = QMenu(btn)
+                self._apply_toolbar_dropdown_style(self.select_tool_menu)
                 self.select_action = QAction(make_icon("select", color, 18), "Select", self.select_tool_menu)
                 self.select_action.setCheckable(True)
                 self.pan_action = QAction(make_icon("hand", color, 18), "Hand", self.select_tool_menu)
@@ -725,6 +726,7 @@ class MainWindow(QMainWindow):
                 btn.setProperty("engoIconBaseColor", color)
                 self.highlight_tool_btn = btn
                 self.highlight_tool_menu = QMenu(btn)
+                self._apply_toolbar_dropdown_style(self.highlight_tool_menu)
                 marker_action = self.highlight_tool_menu.addAction(
                     make_icon("highlighter", color, 16),
                     "قلم التظليل" if toolbar_is_ar else "Highlighter pen"
@@ -760,6 +762,7 @@ class MainWindow(QMainWindow):
         self.tag_tool_btn.setToolTip("Tag region · drag over an area to assign the selected tag; use the arrow to choose or edit tags")
         self.tag_tool_btn.setAccessibleName("Tag region and choose tag")
         self.tag_menu = QMenu(self.tag_tool_btn)
+        self._apply_toolbar_dropdown_style(self.tag_menu)
         self.tag_tool_btn.setMenu(self.tag_menu)
         self.tag_tool_btn.clicked.connect(lambda: self._set_tool("tag"))
         self.tool_group.addButton(self.tag_tool_btn)
@@ -1287,27 +1290,31 @@ class MainWindow(QMainWindow):
         self.recent_files_table.setObjectName("recentFilesTable")
         self.recent_files_table.setColumnCount(6)
         self.recent_files_table.setHeaderLabels(
-            ["Type", "File name", "Location", "Pages", "Last opened", "Action"]
+            ["Type", "File name", "Location", "n", "Last opened", "Open"]
         )
         self.recent_files_table.setRootIsDecorated(False)
         self.recent_files_table.setItemsExpandable(False)
-        self.recent_files_table.setUniformRowHeights(True)
+        # Per-item size hints must be honored; uniform row heights were silently
+        # overriding the larger height assigned to each recent-file entry.
+        self.recent_files_table.setUniformRowHeights(False)
         self.recent_files_table.setAlternatingRowColors(True)
         self.recent_files_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.recent_files_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.recent_files_table.setFrameShape(QFrame.Shape.NoFrame)
-        self.recent_files_table.setMinimumHeight(150)
+        self.recent_files_table.setMinimumHeight(300)
         self.recent_files_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.recent_files_table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         recent_header_view = self.recent_files_table.header()
         recent_header_view.setStretchLastSection(False)
         recent_header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         recent_header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        # The Location column takes all remaining horizontal room, so the
+        # table always reaches the right edge instead of leaving a blank strip.
         recent_header_view.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         recent_header_view.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         recent_header_view.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
         recent_header_view.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
-        for column, width in ((0, 74), (1, 210), (3, 66), (4, 150), (5, 90)):
+        for column, width in ((0, 74), (1, 220), (2, 360), (3, 52), (4, 150), (5, 90)):
             self.recent_files_table.setColumnWidth(column, width)
         self.recent_files_table.setStyleSheet(
             "QTreeWidget#recentFilesTable { border:0; border-radius:8px; }"
@@ -3574,8 +3581,10 @@ class MainWindow(QMainWindow):
             "Dark Mode / Custom Document Colors": "الوضع الداكن / ألوان مخصصة للمستند", "Recolors rendered page pixels, including scanned notes and embedded images.": "يغيّر ألوان الصفحة المعروضة، بما في ذلك الملاحظات الممسوحة ضوئيًا والصور المضمّنة.",
             "Page background": "خلفية الصفحة", "Text / ink": "لون النص", "Text / ink color": "لون النص", "Quick presets": "مظاهر سريعة",
             "Save current as…": "حفظ الإعدادات الحالية باسم…", "Delete saved theme": "حذف المظهر المحفوظ", "Apply": "تطبيق",
-            "ANNOTATION COLORS": "ألوان التعليقات التوضيحية", "Annotation Colors": "ألوان التعليقات التوضيحية",
+            "ANNOTATION SETTINGS": "إعدادات التعليقات التوضيحية",
+            "Annotation Settings": "إعدادات التعليقات التوضيحية",
             "These colors are used for new annotations. Existing annotations keep their saved colors.": "تُستخدم هذه الألوان للتعليقات التوضيحية الجديدة، بينما تحتفظ التعليقات الحالية بألوانها المحفوظة.",
+            "Click the circle beside an option to change its color.": "يمكنك تغيير اللون بالضغط على الدائرة بجانب الخيار.",
             "Pen / drawing color": "لون القلم / الرسم", "Highlight color": "لون التظليل", "Sticky note marker color": "لون علامة الملاحظة اللاصقة",
             "Text box font color": "لون خط مربع النص", "Text box background color": "لون خلفية مربع النص", "Save colors": "حفظ الألوان",
         }
@@ -3587,7 +3596,10 @@ class MainWindow(QMainWindow):
                 return translations.get(source, _engo_translate_tooltip(source, "ar"))
             return _reverse_ui_translations.get(source, _engo_translate_tooltip(source, "en"))
         # Window titles are not QLabel/Button text, so translate them explicitly.
-        dialog_title_translations = {"Page Theme": "مظهر الصفحة", "Annotation Colors": "ألوان التعليقات التوضيحية"}
+        dialog_title_translations = {
+            "Page Theme": "مظهر الصفحة",
+            "Annotation Settings": "إعدادات التعليقات التوضيحية",
+        }
         for dialog_widget in self.findChildren(QDialog):
             try:
                 original_title = dialog_widget.property("engoOriginalWindowTitle")
@@ -3969,9 +3981,9 @@ class MainWindow(QMainWindow):
         language = str(self.settings.value("interface_language", "en", type=str) or "en").lower()
         is_ar = language.startswith("ar")
         headers = (
-            ["النوع", "اسم الملف", "المكان", "عدد الصفحات", "آخر فتح", "فتح"]
+            ["النوع", "اسم الملف", "المكان", "ع", "آخر فتح", "فتح"]
             if is_ar else
-            ["Type", "File name", "Location", "Pages", "Last opened", "Open"]
+            ["Type", "File name", "Location", "n", "Last opened", "Open"]
         )
         table.setColumnCount(6)
         table.setHeaderLabels(headers)
@@ -4047,8 +4059,8 @@ class MainWindow(QMainWindow):
                 kind, Path(path).name, path, page_count, opened, ""
             ])
             item.setToolTip(1, Path(path).name)
-            item.setToolTip(2, path)
-            item.setSizeHint(0, QSize(0, 84))
+            path_is_clipped = table.fontMetrics().horizontalAdvance(path) > max(80, table.columnWidth(2) - 18)
+            item.setToolTip(2, path if path_is_clipped else "")
             table.addTopLevelItem(item)
 
             type_badge = QLabel(kind)
@@ -4066,6 +4078,9 @@ class MainWindow(QMainWindow):
                 lambda _checked=False, value=path: self.open_pdf(value)
             )
             table.setItemWidget(item, 5, open_button)
+            # Keep a generous, fixed row height regardless of the current
+            # Pen/toolbar settings or the size of child widgets in the row.
+            item.setSizeHint(0, QSize(0, 76))
 
     def _read_last_session(self):
         raw = self.settings.value("last_session_json", "", type=str)
@@ -5105,7 +5120,7 @@ class MainWindow(QMainWindow):
             # surface and border are theme-driven by the stylesheet below.
             self.delete_btn.setIcon(make_icon("delete", "#ef4444", 18))
         if hasattr(self, "book_btn"):
-            book_icon_color = "#172033" if current_theme == "light" else _current_tokens["text"]
+            book_icon_color = "#111111" if current_theme == "light" else _current_tokens["text"]
             self.book_btn.setIcon(make_icon("book", book_icon_color, 18))
             self.book_btn.setIconSize(QSize(18, 18))
         if hasattr(self, "select_tool_btn"):
@@ -5149,10 +5164,11 @@ class MainWindow(QMainWindow):
                 if hasattr(chat, "export_btn"):
                     chat.export_btn.setIcon(make_icon("export", chat_icon_color, 15))
                 if hasattr(chat, "focus_mode_btn"):
+                    focus_icon_color = "#111111" if current_theme == "light" else chat_icon_color
                     chat.set_focus_mode_button(bool(getattr(self, "_chat_focus_mode", False)))
                     chat.focus_mode_btn.setIcon(make_icon(
                         "minimize" if getattr(self, "_chat_focus_mode", False) else "fullscreen",
-                        chat_icon_color, 16
+                        focus_icon_color, 16
                     ))
                 if hasattr(chat, "chat_search_btn"):
                     chat.chat_search_btn.setIcon(make_icon("search", chat_icon_color, 15))
@@ -7182,7 +7198,9 @@ class MainWindow(QMainWindow):
         else:
             button.setCheckable(True)
             button.setText("ككتاب" if is_arabic_ui else "Book")
-            button.setIcon(make_icon("book", "#b7c6dc", 18))
+            book_theme = normalize_ui_theme(self.settings.value("ui_theme", "dark", type=str))
+            book_color = "#111111" if book_theme == "light" else engo_ui_theme_tokens(book_theme)["text"]
+            button.setIcon(make_icon("book", book_color, 18))
             button.setToolTip("ككتاب · عرض صفحتين جنبًا إلى جنب، ويمكن دمجه مع التمرير" if is_arabic_ui else "Book · show two pages side by side; can be combined with Scroll")
             button.setAccessibleName("عرض صفحتين ككتاب" if is_arabic_ui else "Book view · show two pages side by side")
             button.setChecked(bool(tab.book_mode) if tab is not None else False)
@@ -10875,6 +10893,7 @@ class MainWindow(QMainWindow):
             "sidebar_btn": ("أظهر الصور المصغرة وفهرس الصفحات للتنقل بسرعة داخل الملف.", "Show page thumbnails and the document outline for faster navigation."),
             "continuous_btn": ("فعّل التمرير المتصل لعرض الصفحات رأسيًا في مساحة واحدة.", "Enable continuous scrolling to place pages in one vertical reading area."),
             "book_btn": ("اعرض صفحتين متجاورتين مثل الكتاب. يمكن استخدامه مع التمرير.", "Show two pages side by side like a book. This can be combined with scrolling."),
+            "eye_protection_toolbar_btn": ("فعّل حماية العين لتدفئة ألوان الصفحة أو ضبط سطوعها وتقليل إجهاد النظر.", "Open Eye Protection to warm page colors or adjust brightness for a more comfortable reading view."),
             "zoom_out_btn": ("قلّل تكبير صفحة PDF.", "Zoom out on the PDF page."),
             "zoom_in_btn": ("كبّر صفحة PDF. يمكنك أيضًا استخدام Ctrl مع عجلة الماوس.", "Zoom in on the PDF page. You can also hold Ctrl while using the mouse wheel."),
             "fit_width_btn": ("اضبط التكبير لملاءمة عرض الصفحة مع المساحة المتاحة.", "Fit the page to the available width."),

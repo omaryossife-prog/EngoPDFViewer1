@@ -19,11 +19,13 @@ def test_opening_queue_runs_document_preparation_off_thread_and_waits_for_sessio
     assert "QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents" in main
 
 
-def test_recent_file_rows_are_twice_the_previous_height():
+def test_recent_file_rows_are_taller_and_keep_paths_readable():
     main = read("main.py")
     start = main.index("def _refresh_files_home(self):")
     end = main.index("\n    def ", start + 10)
-    assert "item.setSizeHint(0, QSize(0, 84))" in main[start:end]
+    assert "item.setSizeHint(0, QSize(0, 76))" in main[start:end]
+    assert "table.columnWidth(2) - 18" in main[start:end]
+    assert "QHeaderView.ResizeMode.Interactive" in main
 
 
 def test_eye_protection_is_after_translate_in_the_main_toolbar_only():
@@ -42,9 +44,11 @@ def test_annotation_palette_exposes_pen_and_highlighter_width_and_theme_sharing(
     widgets = read("engo_widgets.py")
     main = read("main.py")
     assert '"pen_width": 3' in base
-    assert '"highlight_width": 12' in base
-    assert '("pen_width", 1, 12, 3)' in widgets
-    assert '("highlight_width", 2, 30, 12)' in widgets
+    assert '"highlight_width": 15' in base
+    assert '"pen": ("pen_width", 2, 8, 3)' in widgets
+    assert '"highlight": ("highlight_width", 15, 35, 15)' in widgets
+    assert 'QSlider::sub-page:horizontal' in widgets
+    assert 'box.button(QDialogButtonBox.StandardButton.Save).setText("حفظ" if self._is_ar else "Save")' in widgets
     assert "Apply annotation colors across all app themes" in widgets
     assert "تطبيق ألوان التعليقات التوضيحية على كل ثيمات البرنامج" in widgets
     assert "annotation_colors_by_theme" in main
@@ -56,7 +60,7 @@ def test_manual_highlighter_preserves_dark_ink_with_multiply_blending():
     start = document.index("def add_highlighter_ink(")
     end = document.index("\n    def ", start + 10)
     method = document[start:end]
-    assert 'get("highlight_width", 12)' in method
+    assert 'get("highlight_width", 15)' in method
     assert 'annot.set_blendmode("Multiply")' in method
     assert "annot.set_opacity(0.72)" in method
 
@@ -112,8 +116,8 @@ def test_fullscreen_and_chat_focus_use_the_corner_only_restore_icon():
     main = read("main.py")
     chat = read("engo_ai_chat.py")
     assert 'make_icon("minimize" if active else "fullscreen"' in main
-    assert 'make_icon("minimize", "#b7c6dc", 16)' in chat
-    assert 'make_icon("fullscreen", "#b7c6dc", 16)' in chat
+    assert 'make_icon("minimize", icon_color, 16)' in chat
+    assert 'make_icon("fullscreen", icon_color, 16)' in chat
 
 
 def test_pen_shape_recognition_keeps_wobbly_quadrilaterals_and_detects_ovals():

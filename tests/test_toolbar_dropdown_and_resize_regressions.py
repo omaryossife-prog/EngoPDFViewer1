@@ -9,7 +9,7 @@ def read(name):
 
 def test_book_icon_uses_dark_contrast_in_light_theme():
     main = read("main.py")
-    assert 'book_icon_color = "#172033" if current_theme == "light"' in main
+    assert 'book_icon_color = "#111111" if current_theme == "light"' in main
     assert 'self.book_btn.setIcon(make_icon("book", book_icon_color, 18))' in main
 
 
@@ -44,6 +44,8 @@ def test_vector_ink_shapes_resize_from_their_whole_bounds():
     end = document.index("\n    def _geometry_with_vertex_preview", start)
     geometry = document[start:end]
     assert "bounds_resize_types = (type_line, type_polygon, type_polyline, type_ink)" in geometry
+    assert '"anchor": QPointF(right, bottom), "mode": "bounds"' in geometry
+    assert '"anchor": QPointF(left, top), "mode": "bounds"' in geometry
     for name in ('"tl"', '"tr"', '"bl"', '"br"', '"edge_top"', '"edge_bottom"', '"edge_left"', '"edge_right"'):
         assert name in geometry
     # The commit path remaps every original point to the resized bounding rectangle.
@@ -52,10 +54,22 @@ def test_vector_ink_shapes_resize_from_their_whole_bounds():
     transform = document[transform_start:transform_end]
     assert "def remap_pdf_point(point):" in transform
     assert "mapped = [remap_pdf_point(point) for point in vertices]" in transform
-    assert "updated.set_border(width=float(border.get(\"width\", 2.0)))" in transform
+    assert "updated.set_border(width=scaled_border_width)" in transform
 
 
-def test_selection_outline_uses_a_cosmetic_pen_during_live_resize():
+def test_selection_outline_scales_with_live_resize_and_matches_saved_border():
     document = read("engo_document.py")
-    assert "selection_outline_pen.setCosmetic(True)" in document
-    assert "painter.setPen(selection_outline_pen)" in document
+    assert "selection_outline_pen.setCosmetic(False)" in document
+    assert "border_scale = math.sqrt(max(0.0025, scale_x * scale_y))" in document
+    assert "updated.set_border(width=scaled_border_width)" in document
+    assert "annot.set_border(width=scaled_border_width)" in document
+
+
+def test_resize_can_start_from_the_visible_annotation_frame_edge():
+    document = read("engo_document.py")
+    start = document.index("def _resize_handle_at(")
+    end = document.index("\n    def ", start + 10)
+    helper = document[start:end]
+    assert "tolerance = 8.0" in helper
+    assert 'return side' in helper
+    assert 'geometry.get("kind") != "circle"' in helper

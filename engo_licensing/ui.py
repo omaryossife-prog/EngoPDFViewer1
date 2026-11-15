@@ -186,15 +186,15 @@ class EngoSplashScreen(QWidget):
         self.logo = QLabel("E")
         self.logo.setObjectName("splashLogo")
         self.logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.logo.setFixedSize(64, 64)
+        self.logo.setFixedSize(76, 76)
         self._logo_icon = QIcon(icon_path) if icon_path else QIcon()
         if not self._logo_icon.isNull():
             self.logo.setText("")
-            self.logo.setPixmap(self._logo_icon.pixmap(QSize(42, 42)))
+            self.logo.setPixmap(self._logo_icon.pixmap(QSize(54, 54)))
         self._splash_accent = acc
         self._splash_panel = panel
         self._splash_bdr = bdr
-        self.logo.setStyleSheet(f"background:{panel}; border:2px solid {bdr}; border-radius:24px; color:{acc}; font-size:38px; font-weight:900;")
+        self.logo.setStyleSheet(f"background:{panel}; border:2px solid {bdr}; border-radius:28px; color:{acc}; font-size:42px; font-weight:900;")
         logo_row = QHBoxLayout()
         logo_row.addStretch(1)
         logo_row.addWidget(self.logo)
@@ -281,14 +281,14 @@ class EngoSplashScreen(QWidget):
         # full height; the opacity and glow animations provide the entrance effect.
         self._logo_scale = min(100, self._logo_scale + 7)
         if not self._logo_icon.isNull():
-            self.logo.setPixmap(self._logo_icon.pixmap(QSize(44, 44)))
+            self.logo.setPixmap(self._logo_icon.pixmap(QSize(56, 56)))
         else:
             acc = getattr(self, "_splash_accent", "#76a9ff")
             panel = getattr(self, "_splash_panel", "#15243a")
             bdr = getattr(self, "_splash_bdr", "#30496b")
             self.logo.setStyleSheet(
                 f"background:{panel}; border:2px solid {bdr}; "
-                f"border-radius:24px; color:{acc}; font-size:38px; font-weight:900;"
+                f"border-radius:28px; color:{acc}; font-size:42px; font-weight:900;"
             )
         if self._logo_scale >= 100:
             self._logo_animation.stop()

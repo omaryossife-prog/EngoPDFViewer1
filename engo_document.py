@@ -108,6 +108,7 @@ class DocumentCanvas(QWidget):
         self._view_w = 900
         self._view_h = 760
         self._drawing = False
+        self._brush_cursor_cache = {}
         self._draw_page = -1
         self._draw_start = QPointF()
         self._draw_current = QPointF()
@@ -1118,10 +1119,10 @@ class DocumentCanvas(QWidget):
                             QColor("#5b9cff"), 2.0, Qt.PenStyle.SolidLine,
                             Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin
                         )
-                        # The geometry is transformed while dragging, but the
-                        # selection stroke is a screen-space guide. A cosmetic pen
-                        # keeps its visible thickness constant at every zoom/size.
-                        selection_outline_pen.setCosmetic(True)
+                        # Transform the preview outline with the annotation itself.
+                        # Its rendered thickness then matches the scaled PDF border
+                        # committed by transform_annotation() on mouse release.
+                        selection_outline_pen.setCosmetic(False)
                         painter.setPen(selection_outline_pen)
                         painter.setBrush(Qt.BrushStyle.NoBrush)
                         # A selected Pen-tool shape keeps its own stroke untouched:
@@ -1289,7 +1290,7 @@ class DocumentCanvas(QWidget):
                     ))
                     marker_color.setAlpha(105)
                     display_scale = max(0.5, float(self.page_scales.get(self._draw_page, 1.0)))
-                    marker_width = max(1.0, float(self.tab.annotation_colors.get("highlight_width", 12)) * display_scale)
+                    marker_width = max(1.0, float(self.tab.annotation_colors.get("highlight_width", 15)) * display_scale)
                     painter.setPen(QPen(
                         marker_color, marker_width, Qt.PenStyle.SolidLine,
                         Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin
@@ -2169,10 +2170,14 @@ class DocumentCanvas(QWidget):
             right, bottom = bounds.right(), bounds.bottom()
             cx, cy = bounds.center().x(), bounds.center().y()
             handles = [
-                {"name": "tl", "point": QPointF(left, top), "mode": "bounds"},
-                {"name": "tr", "point": QPointF(right, top), "mode": "bounds"},
-                {"name": "bl", "point": QPointF(left, bottom), "mode": "bounds"},
-                {"name": "br", "point": QPointF(right, bottom), "mode": "bounds"},
+                {"name": "tl", "point": QPointF(left, top),
+                 "anchor": QPointF(right, bottom), "mode": "bounds"},
+                {"name": "tr", "point": QPointF(right, top),
+                 "anchor": QPointF(left, bottom), "mode": "bounds"},
+                {"name": "bl", "point": QPointF(left, bottom),
+                 "anchor": QPointF(right, top), "mode": "bounds"},
+                {"name": "br", "point": QPointF(right, bottom),
+                 "anchor": QPointF(left, top), "mode": "bounds"},
                 {"name": "edge_top", "point": QPointF(cx, top),
                  "anchor": QPointF(cx, bottom), "mode": "bounds", "side": "top"},
                 {"name": "edge_bottom", "point": QPointF(cx, bottom),
@@ -2362,6 +2367,24 @@ class DocumentCanvas(QWidget):
                 point = item.get("point", QPointF())
                 if math.hypot(pos.x() - point.x(), pos.y() - point.y()) <= 11.0:
                     return str(item.get("name") or "")
+            # A resize must also start when the user grabs the visible frame itself,
+            # not only the tiny blue center grips. Resolve that grab to the nearest
+            # side and keep the opposite side as the fixed anchor during the drag.
+            if geometry.get("kind") != "circle":
+                tolerance = 8.0
+                if bounds.adjusted(-tolerance, -tolerance, tolerance, tolerance).contains(pos):
+                    distances = {
+                        "edge_left": abs(pos.x() - bounds.left()),
+                        "edge_right": abs(pos.x() - bounds.right()),
+                        "edge_top": abs(pos.y() - bounds.top()),
+                        "edge_bottom": abs(pos.y() - bounds.bottom()),
+                    }
+                    available_edges = {
+                        str(item.get("name") or "") for item in geometry.get("handles", [])
+                    }
+                    side, distance = min(distances.items(), key=lambda item: item[1])
+                    if distance <= tolerance and side in available_edges:
+                        return side
             return ""
         points = {
             "tl": QPointF(bounds.left(), bounds.top()),
@@ -2467,8 +2490,48 @@ class DocumentCanvas(QWidget):
         except (RuntimeError, AttributeError):
             self.tab.set_tool("select")
 
+    def _set_brush_cursor(self, page_index=None):
+        """Show a centered outline cursor whose diameter follows the active brush size."""
+        tool = str(getattr(self.tab, "active_tool", "") or "")
+        if tool not in ("pen", "highlight_pen"):
+            return False
+        key = "highlight_width" if tool == "highlight_pen" else "pen_width"
+        default_width = 15 if tool == "highlight_pen" else 3
+        width = max(0.5, float(self.tab.annotation_colors.get(key, default_width)))
+        if page_index is None or int(page_index) not in self.page_scales:
+            page_index = int(getattr(self.tab, "current_page", 0))
+        scale = max(0.35, float(self.page_scales.get(int(page_index), 1.0)))
+        diameter = max(5, min(58, int(round(width * scale))))
+        side = max(18, diameter + 10)
+        cache_key = (tool, round(width, 2), round(scale, 2), diameter)
+        cursor = self._brush_cursor_cache.get(cache_key)
+        if cursor is None:
+            pixmap = QPixmap(side, side)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            center = side / 2.0
+            radius = max(1.5, diameter / 2.0)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(QPen(QColor(12, 18, 28, 225), 2.2))
+            painter.drawEllipse(QRectF(center-radius, center-radius, radius*2, radius*2))
+            painter.setPen(QPen(QColor(255, 255, 255, 245), 1.0))
+            inset = 1.2
+            painter.drawEllipse(QRectF(center-radius+inset, center-radius+inset,
+                                       max(1.0, radius*2-inset*2), max(1.0, radius*2-inset*2)))
+            painter.end()
+            cursor = QCursor(pixmap, side // 2, side // 2)
+            if len(self._brush_cursor_cache) >= 64:
+                self._brush_cursor_cache.clear()
+            self._brush_cursor_cache[cache_key] = cursor
+        self.setCursor(cursor)
+        return True
+
     def _tool_default_cursor(self):
         tool = str(getattr(self.tab, "active_tool", "") or "")
+        if tool in ("pen", "highlight_pen"):
+            self._set_brush_cursor()
+            return self.cursor()
         if tool == "select":
             return Qt.CursorShape.ArrowCursor
         if tool == "pan":
@@ -3234,7 +3297,10 @@ class DocumentCanvas(QWidget):
         self._draw_start = pos
         self._draw_current = pos
         self._draw_points = [pos]
-        self.setCursor(Qt.CursorShape.CrossCursor)
+        if self.tab.active_tool in ("pen", "highlight_pen"):
+            self._set_brush_cursor(index)
+        else:
+            self.setCursor(Qt.CursorShape.CrossCursor)
         self.update()
 
     def mouseDoubleClickEvent(self, event):
@@ -3357,7 +3423,10 @@ class DocumentCanvas(QWidget):
                     self.setCursor(Qt.CursorShape.PointingHandCursor if _ctl == "action"
                                    else self._cursor_for_handle(_ctl))
                     return super().mouseMoveEvent(event)
-                if self.tab.active_tool not in ("highlight",):
+                if self.tab.active_tool in ("pen", "highlight_pen"):
+                    brush_page, _brush_rect = self._page_at(pos)
+                    self._set_brush_cursor(brush_page if brush_page >= 0 else None)
+                elif self.tab.active_tool not in ("highlight",):
                     self.setCursor(self._tool_default_cursor())
             if self.tab.active_tool in ("select", "highlight"):
                 index, page_rect = self._page_at(pos)
@@ -3412,6 +3481,7 @@ class DocumentCanvas(QWidget):
             rect = self.page_rects.get(self._draw_page, QRectF())
             if rect.contains(self._draw_current):
                 self._draw_points.append(self._draw_current)
+            self._set_brush_cursor(self._draw_page)
         self.update()
 
     def mouseReleaseEvent(self, event):
@@ -3532,7 +3602,10 @@ class DocumentCanvas(QWidget):
         page_rect = self.page_rects.get(index, QRectF())
         selection = QRectF(self._draw_start, self._draw_current).normalized().intersected(page_rect)
         self._drawing = False
-        self.setCursor(Qt.CursorShape.ArrowCursor if tool == "select" else Qt.CursorShape.CrossCursor)
+        if tool in ("pen", "highlight_pen"):
+            self._set_brush_cursor(index)
+        else:
+            self.setCursor(Qt.CursorShape.ArrowCursor if tool == "select" else Qt.CursorShape.CrossCursor)
         try:
             if tool in ("ai_select", "translate_select") and selection.width() > 10 and selection.height() > 10:
                 # Render the exact selected area; works with text, charts, scans, and handwriting.
@@ -6138,6 +6211,8 @@ class DocumentTab(QWidget):
         cursor = (Qt.CursorShape.ArrowCursor if tool == "select" else
                   Qt.CursorShape.OpenHandCursor if tool == "pan" else Qt.CursorShape.CrossCursor)
         self.canvas.setCursor(cursor)
+        if tool in ("pen", "highlight_pen"):
+            self.canvas._set_brush_cursor()
         self.canvas.update()
         # A linked pair shares the active annotation/selection tool, while each
         # document still writes annotations into its own PDF.
@@ -6152,6 +6227,8 @@ class DocumentTab(QWidget):
                             primary._secondary_canvas.setCursor(
                                 Qt.CursorShape.ArrowCursor if tool == "select" else
                                 Qt.CursorShape.OpenHandCursor if tool == "pan" else Qt.CursorShape.CrossCursor)
+                            if tool in ("pen", "highlight_pen"):
+                                primary._secondary_canvas._set_brush_cursor()
                             primary._secondary_canvas.update()
                     elif getattr(primary, "_linked_view_secondary", None) is not None and primary._linked_view_secondary is not self:
                         continue
@@ -6162,6 +6239,8 @@ class DocumentTab(QWidget):
             self._secondary_canvas.setCursor(
                 Qt.CursorShape.ArrowCursor if tool == "select" else
                 Qt.CursorShape.OpenHandCursor if tool == "pan" else Qt.CursorShape.CrossCursor)
+            if tool in ("pen", "highlight_pen"):
+                self._secondary_canvas._set_brush_cursor()
             self._secondary_canvas.update()
 
     def _update_linked_display(self, page_index=None, clear_cache=False):
@@ -7271,6 +7350,18 @@ class DocumentTab(QWidget):
             opacity = annot.opacity
             border = dict(annot.border or {})
             original_line_ends = tuple(getattr(annot, "line_ends", (0, 0)) or (0, 0))
+            scale_x = abs(float(new_display.width())) / max(abs(float(old_display.width())), 1.0)
+            scale_y = abs(float(new_display.height())) / max(abs(float(old_display.height())), 1.0)
+            # A PDF annotation stores stroke width separately from its geometry.
+            # Scale it too; otherwise the live transformed preview looks correct,
+            # then MuPDF recreates the released shape with the old, thinner border.
+            border_scale = math.sqrt(max(0.0025, scale_x * scale_y))
+            border_scale = max(0.05, min(20.0, border_scale))
+            original_border_width = border.get("width")
+            scaled_border_width = (
+                max(0.1, min(72.0, float(original_border_width) * border_scale))
+                if original_border_width is not None else None
+            )
 
             def remap_pdf_point(point):
                 display_point = canvas._pdf_to_display(page_index, page_rect, fitz.Point(point))
@@ -7365,8 +7456,8 @@ class DocumentTab(QWidget):
                     updated.set_line_ends(int(original_line_ends[0]), int(original_line_ends[1]))
                 if colors.get("stroke") or colors.get("fill"):
                     updated.set_colors(stroke=colors.get("stroke"), fill=colors.get("fill"))
-                if border.get("width") is not None and replacement_kind != "highlight":
-                    updated.set_border(width=float(border.get("width", 2.0)))
+                if scaled_border_width is not None and replacement_kind != "highlight":
+                    updated.set_border(width=scaled_border_width)
                 if opacity is not None and opacity >= 0:
                     updated.set_opacity(opacity)
                 if info.get("content") or info.get("title"):
@@ -7391,6 +7482,9 @@ class DocumentTab(QWidget):
                 xref = new_xref
             else:
                 annot.set_rect(replacement_data)
+                if (scaled_border_width is not None
+                        and subtype_code != getattr(fitz, "PDF_ANNOT_TEXT", 0)):
+                    annot.set_border(width=scaled_border_width)
                 annot.update()
                 refreshed = next((a for a in (page.annots() or []) if int(a.xref) == int(xref)), None)
                 if refreshed is None:
@@ -8164,7 +8258,7 @@ class DocumentTab(QWidget):
             annot.set_colors(stroke=color_tuple(
                 self.annotation_colors.get("highlight", DEFAULT_ANNOTATION_COLORS["highlight"])
             ))
-            annot.set_border(width=max(1.0, float(self.annotation_colors.get("highlight_width", 12))))
+            annot.set_border(width=max(1.0, float(self.annotation_colors.get("highlight_width", 15))))
             annot.set_opacity(0.72)
             # Multiply preserves the original dark ink while tinting the paper
             # underneath the freehand marker, like a real translucent highlighter.
@@ -8551,7 +8645,7 @@ class DocumentTab(QWidget):
         if save_as or image_source or office_source:
             source_for_name = str(getattr(self, "source_path", original_path) or original_path)
             suggested = str(Path(source_for_name).with_name(Path(source_for_name).stem + "_edited.pdf"))
-            target = _engo_file_dialog(self, "Save edited document as PDF", "حفظ المستند المعدّل كملف PDF", suggested, "PDF files (*.pdf)", save=True)
+            target = _engo_file_dialog(self, "Save edited document as PDF", "حفظ المستند المعدّل كملف PDF", suggested, "PDF files (*.pdf)", save=True, native=True)
             if not target:
                 return False
             if not target.lower().endswith(".pdf"):

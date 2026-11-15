@@ -1143,7 +1143,7 @@ class AIChatPanel(QFrame):
         header.addWidget(self.export_btn)
         self.focus_mode_btn = MotionButton(parent=self)
         self.focus_mode_btn.setObjectName("aiFocusMode")
-        self.focus_mode_btn.setIcon(make_icon("fullscreen", "#b7c6dc", 16))
+        self.focus_mode_btn.setIcon(make_icon("fullscreen", self._focus_mode_icon_color(), 16))
         self.focus_mode_btn.setFixedSize(32, 34)
         self.focus_mode_btn.setToolTip("Expand chat · hide the PDF and app controls (Ctrl+Shift+F)")
         self.focus_mode_btn.setAccessibleName("Enter chat focus mode")
@@ -1568,13 +1568,24 @@ class AIChatPanel(QFrame):
             except RuntimeError:
                 pass
 
+    def _focus_mode_icon_color(self):
+        """Use the active theme's foreground for the chat expand/restore glyph."""
+        try:
+            theme = normalize_ui_theme(self.settings.value("ui_theme", "dark", type=str))
+            if theme == "light":
+                return "#111111"
+            return engo_ui_theme_tokens(theme)["text"]
+        except Exception:
+            return "#b7c6dc"
+
     def set_focus_mode_button(self, focused: bool):
+        icon_color = self._focus_mode_icon_color()
         if focused:
-            self.focus_mode_btn.setIcon(make_icon("minimize", "#b7c6dc", 16))
+            self.focus_mode_btn.setIcon(make_icon("minimize", icon_color, 16))
             self.focus_mode_btn.setToolTip("Exit chat focus mode · show the PDF and app controls (Esc)")
             self.focus_mode_btn.setAccessibleName("Exit chat focus mode")
         else:
-            self.focus_mode_btn.setIcon(make_icon("fullscreen", "#b7c6dc", 16))
+            self.focus_mode_btn.setIcon(make_icon("fullscreen", icon_color, 16))
             self.focus_mode_btn.setToolTip("Expand chat · hide the PDF and app controls (Ctrl+Shift+F)")
             self.focus_mode_btn.setAccessibleName("Enter chat focus mode")
 
