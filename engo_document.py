@@ -111,6 +111,7 @@ class DocumentCanvas(QWidget):
         self._draw_start = QPointF()
         self._draw_current = QPointF()
         self._draw_points: list[QPointF] = []
+        self._pen_snap_target: QPointF | None = None
         # Native text selection is anchored to the word under the initial press.
         # It is never activated midway through a drag that began on blank/image space.
         self._text_selecting = False
@@ -1239,6 +1240,14 @@ class DocumentCanvas(QWidget):
                     painter.drawPolyline(QPolygonF(self._draw_points))
                 elif self._draw_points:
                     painter.drawPoint(self._draw_points[0])
+                if self._pen_snap_target is not None:
+                    painter.save()
+                    painter.setPen(QPen(QColor("#54d6ad"), 1.5))
+                    painter.setBrush(QBrush(QColor(18, 63, 53, 210)))
+                    painter.drawEllipse(self._pen_snap_target, 8.0, 8.0)
+                    badge = make_icon("link", "#8ff3d1", 13).pixmap(QSize(13, 13))
+                    painter.drawPixmap(self._pen_snap_target.toPoint() - QPoint(6, 6), badge)
+                    painter.restore()
             else:
                 r = QRectF(self._draw_start, self._draw_current).normalized()
                 if tool == "highlight":
@@ -2345,6 +2354,21 @@ class DocumentCanvas(QWidget):
         except Exception:
             return False
 
+    def _activate_select_for_annotation_edit(self):
+        """Move the canvas and shared toolbar to Select before editing an object."""
+        try:
+            host = self.window()
+            view_setter = getattr(host, "_set_view_target_tab", None)
+            if callable(view_setter):
+                view_setter(self.tab)
+            tool_setter = getattr(host, "_set_tool", None)
+            if callable(tool_setter):
+                tool_setter("select", quiet=True)
+            else:
+                self.tab.set_tool("select")
+        except (RuntimeError, AttributeError):
+            self.tab.set_tool("select")
+
     def _tool_default_cursor(self):
         tool = str(getattr(self.tab, "active_tool", "") or "")
         if tool == "select":
@@ -2746,6 +2770,34 @@ class DocumentCanvas(QWidget):
         except Exception:
             return False
 
+    def _nearest_pen_line_endpoint(self, page_index: int, display_pos: QPointF,
+                                   tolerance: float = 14.0):
+        """Snap a new pen stroke to a nearby endpoint of an existing native line."""
+        try:
+            page_rect = self.page_rects.get(int(page_index), QRectF())
+            if page_rect.isEmpty():
+                return None
+            page = self.tab.doc.load_page(int(page_index))
+            nearest = None
+            nearest_distance = float(tolerance)
+            for annot in (page.annots() or []):
+                if int((annot.type or (0, ""))[0]) != getattr(fitz, "PDF_ANNOT_LINE", 3):
+                    continue
+                vertices = list(annot.vertices or [])
+                if len(vertices) < 2:
+                    continue
+                for vertex in (vertices[0], vertices[-1]):
+                    point = self._pdf_to_display(int(page_index), page_rect, fitz.Point(vertex))
+                    distance = math.hypot(
+                        point.x() - display_pos.x(), point.y() - display_pos.y()
+                    )
+                    if distance <= nearest_distance:
+                        nearest_distance = distance
+                        nearest = QPointF(point)
+            return nearest
+        except Exception:
+            return None
+
     def mousePressEvent(self, event):
         doc = getattr(self.tab, "doc", None)
         if doc is None or getattr(doc, "is_closed", True):
@@ -2851,6 +2903,8 @@ class DocumentCanvas(QWidget):
                                     return
                                 if size_rect.contains(pos):
                                     self._annotation_edit_mode = not self._annotation_edit_mode
+                                    if self._annotation_edit_mode:
+                                        self._activate_select_for_annotation_edit()
                                     self.update()
                                     event.accept()
                                     return
@@ -2976,10 +3030,8 @@ class DocumentCanvas(QWidget):
                                 shape_name = str(shape_info.get("content") or "").lower()
                                 if rotate_hit and shape_code == getattr(fitz, "PDF_ANNOT_FREE_TEXT", 2):
                                     self._drag_rotation_step = 90.0
-                                if handle and not str(handle).startswith(("edge_", "p")) and (
-                                        shape_code == getattr(fitz, "PDF_ANNOT_SQUARE", 4) and
-                                        ("square" in shape_name or abs(bounds.width()-bounds.height()) <= max(4.0, bounds.width()*0.08))):
-                                    self._drag_aspect_ratio = bounds.width() / max(bounds.height(), 1.0)
+                                # Keep rectangle resize handles independent on both axes,
+                                # even when the original freehand shape was recognized as square.
                         except Exception:
                             self._drag_aspect_ratio = 0.0
                     self._drag_moved = False
@@ -3034,6 +3086,12 @@ class DocumentCanvas(QWidget):
             return
         self._drawing = True
         self._draw_page = index
+        self._pen_snap_target = None
+        if self.tab.active_tool == "pen":
+            snapped = self._nearest_pen_line_endpoint(index, pos)
+            if snapped is not None:
+                self._pen_snap_target = QPointF(snapped)
+                pos = QPointF(snapped)
         self._draw_start = pos
         self._draw_current = pos
         self._draw_points = [pos]
@@ -3411,6 +3469,7 @@ class DocumentCanvas(QWidget):
         except Exception as exc:
             QMessageBox.warning(self, APP_NAME, f"Could not add annotation:\n{exc}")
         self._draw_points = []
+        self._pen_snap_target = None
         self.update()
 
     def _clear_context_menu_suppression(self):
