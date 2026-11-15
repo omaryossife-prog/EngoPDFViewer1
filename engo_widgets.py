@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import time
+import zipfile
 from functools import lru_cache
 from pathlib import Path
 import pymupdf as fitz  # use the maintained import name; keep fitz alias for existing calls
@@ -341,8 +342,22 @@ class EngoFileSystemModel(QFileSystemModel):
         suffix = Path(path).suffix.lower()
         if suffix in IMAGE_DOCUMENT_EXTENSIONS:
             return 1
-        if suffix in WORD_DOCUMENT_EXTENSIONS or suffix in POWERPOINT_DOCUMENT_EXTENSIONS:
+        if suffix in WORD_DOCUMENT_EXTENSIONS:
+            # DOCX page count is produced by the Office layout engine and is
+            # not reliably persisted in the OOXML package.
             return "—"
+        if suffix in POWERPOINT_DOCUMENT_EXTENSIONS:
+            try:
+                with zipfile.ZipFile(path, "r") as archive:
+                    slides = [
+                        name for name in archive.namelist()
+                        if name.startswith("ppt/slides/slide")
+                        and name.endswith(".xml")
+                        and "/_rels/" not in name
+                    ]
+                return len(slides) if slides else "—"
+            except (OSError, zipfile.BadZipFile):
+                return "—"
         if suffix != ".pdf":
             return None
         try:
