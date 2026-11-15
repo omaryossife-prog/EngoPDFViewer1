@@ -6242,6 +6242,7 @@ class MainWindow(QMainWindow):
 
         card = QFrame(dialog)
         card.setObjectName("engoBusyCard")
+        card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(12, 4, 12, 4)
         card_layout.setSpacing(3)
@@ -6257,7 +6258,7 @@ class MainWindow(QMainWindow):
         progress.setObjectName("splashProgress")
         progress.setTextVisible(False)
         progress.setRange(0, 0)
-        progress.setFixedHeight(5)
+        progress.setFixedHeight(4)
         card_layout.addWidget(progress)
         outer_layout.addWidget(card)
 
