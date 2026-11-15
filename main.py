@@ -20,6 +20,7 @@ except ImportError as _office_xml_import_error:
 import re
 import base64
 import time
+import zipfile
 from pathlib import Path
 import pymupdf as fitz  # use the maintained import name; keep fitz alias for existing calls
 from PIL import Image, ImageOps, ImageChops, ImageFilter
@@ -3800,7 +3801,21 @@ class MainWindow(QMainWindow):
         suffix = Path(path).suffix.lower()
         if is_image_document(path):
             return "1"
+        if suffix == ".pptx":
+            try:
+                with zipfile.ZipFile(path, "r") as archive:
+                    slides = [
+                        name for name in archive.namelist()
+                        if name.startswith("ppt/slides/slide")
+                        and name.endswith(".xml")
+                        and "/_rels/" not in name
+                    ]
+                return str(len(slides)) if slides else "—"
+            except (OSError, zipfile.BadZipFile):
+                return "—"
         if suffix != ".pdf":
+            # DOCX pagination depends on the Office layout engine and is not
+            # stored as a reliable page count in the source package.
             return "—"
         try:
             with fitz.open(path) as document:
