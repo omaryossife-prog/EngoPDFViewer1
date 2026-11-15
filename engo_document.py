@@ -2379,8 +2379,11 @@ class DocumentCanvas(QWidget):
                         "edge_top": abs(pos.y() - bounds.top()),
                         "edge_bottom": abs(pos.y() - bounds.bottom()),
                     }
+                    available_edges = {
+                        str(item.get("name") or "") for item in geometry.get("handles", [])
+                    }
                     side, distance = min(distances.items(), key=lambda item: item[1])
-                    if distance <= tolerance:
+                    if distance <= tolerance and side in available_edges:
                         return side
             return ""
         points = {
