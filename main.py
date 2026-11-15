@@ -1555,6 +1555,9 @@ class MainWindow(QMainWindow):
             except RuntimeError:
                 pass
         self.document_host.setCurrentWidget(self.welcome_page)
+        self.welcome_page.setCursor(Qt.CursorShape.ArrowCursor)
+        self.home_browser_tree.setCursor(Qt.CursorShape.ArrowCursor)
+        self.home_browser_tree.viewport().setCursor(Qt.CursorShape.ArrowCursor)
         self.return_to_docs_btn.setVisible(self.tabs.count() > 0)
         if hasattr(self, "workspace"):
             total = max(1, self.workspace.width())
@@ -2915,7 +2918,7 @@ class MainWindow(QMainWindow):
             QStatusBar#appStatus { background:#e9eef5; color:#65758b; border-top:1px solid #cbd4e0; }
             QLabel#contextHelpIcon { color:#3269d8; font-size:9pt; font-weight:850; padding:0 5px 0 8px; }
             QLabel#contextHelpLabel { color:#596b83; font-size:8pt; font-weight:600; padding:2px 8px 2px 2px; }
-            QLabel#brandTitle, QLabel#zoomLabel { color: #1f2d42; }
+            QLabel#brandTitle, QLabel#zoomLabel, QLineEdit#zoomLabel { color: #1f2d42; }
             QTabBar#documentTabBar::tab { background: #e6ebf2; color: #526176; border-color: #c7d0dd; }
             QTabBar#documentTabBar::tab:selected { background: #ffffff; color: #1d2b40; border-color: #8ba9dc; }
             QTabBar#documentTabBar::tab:hover { background: #f7f9fc; color: #1d2b40; }
@@ -4411,7 +4414,7 @@ class MainWindow(QMainWindow):
         QToolButton#saveSplitButton::menu-button {{ border-left: 1px solid #52647b; width: 15px; }}
         QFrame#toolbarGroup {{ background: #202630; border: 1px solid #303b4a; border-radius: 9px; }}
         QFrame#annotationGroup {{ background: #191f29; border: 1px solid #3a4658; border-radius: 9px; }}
-        QLabel#zoomLabel {{ color: #e2ebfb; font-weight: 700; font-size: 8pt; padding: 0 2px; }}
+        QLabel#zoomLabel, QLineEdit#zoomLabel {{ color: #e2ebfb; font-weight: 700; font-size: 8pt; padding: 0 2px; }}
         QLabel#muted {{ color: {ui_muted}; font-size: 8pt; }}
         QPushButton {{ background: #252d39; border: 1px solid #384456; border-radius: 7px;
             padding: 3px 3px; min-height: 22px; spacing: 3px; color: #d8e1ef; font-size: 7.5pt; font-weight: 550; }}
@@ -4947,6 +4950,8 @@ class MainWindow(QMainWindow):
             self.delete_btn.setIcon(make_icon("delete", "#ef4444", 18))
         if hasattr(self, "select_tool_btn"):
             self._refresh_selector_tool_button()
+        if hasattr(self, "full_btn"):
+            self._sync_fullscreen_button_icon()
         if hasattr(self, "save_btn"):
             self.save_btn.setIcon(make_icon("save", icon_color, 18))
         if hasattr(self, "rotate_page_btn"):
@@ -4976,7 +4981,11 @@ class MainWindow(QMainWindow):
                 if hasattr(chat, "export_btn"):
                     chat.export_btn.setIcon(make_icon("export", chat_icon_color, 15))
                 if hasattr(chat, "focus_mode_btn"):
-                    chat.focus_mode_btn.setIcon(make_icon("fullscreen", chat_icon_color, 16))
+                    chat.set_focus_mode_button(bool(getattr(self, "_chat_focus_mode", False)))
+                    chat.focus_mode_btn.setIcon(make_icon(
+                        "minimize" if getattr(self, "_chat_focus_mode", False) else "fullscreen",
+                        chat_icon_color, 16
+                    ))
                 if hasattr(chat, "chat_search_btn"):
                     chat.chat_search_btn.setIcon(make_icon("search", chat_icon_color, 15))
                 if hasattr(chat, "voice_btn"):
@@ -11155,8 +11164,16 @@ class MainWindow(QMainWindow):
             return
         active = bool(getattr(self, "_fullscreen", False))
         button.setIcon(make_icon("minimize" if active else "fullscreen", "#b7c6dc", 16))
+        is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
         button.setToolTip(
-            "الخروج من ملء الشاشة (F11)" if active else "ملء الشاشة (F11)"
+            ("الخروج من ملء الشاشة (F11)" if active else "ملء الشاشة (F11)")
+            if is_ar else
+            ("Exit full screen (F11)" if active else "Full screen (F11)")
+        )
+        button.setAccessibleName(
+            ("الخروج من ملء الشاشة" if active else "ملء الشاشة")
+            if is_ar else
+            ("Exit full screen" if active else "Full screen")
         )
 
     def toggle_fullscreen(self):
