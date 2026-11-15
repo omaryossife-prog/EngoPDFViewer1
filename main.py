@@ -678,17 +678,29 @@ class MainWindow(QMainWindow):
                 btn.setFixedSize(40, 29)
                 btn.setCursor(Qt.CursorShape.PointingHandCursor)
                 btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-                btn.setToolTip(tip + " · click for marker pen, use the arrow for text highlighting")
-                btn.setAccessibleName("Highlight text or use the marker pen")
+                toolbar_is_ar = str(
+                    self.settings.value("interface_language", "en", type=str) or "en"
+                ).lower().startswith("ar")
+                btn.setToolTip(
+                    "اضغط لاستخدام قلم التظليل، أو افتح السهم لتظليل نص محدد."
+                    if toolbar_is_ar else
+                    "Click to use the marker pen, or open the arrow to highlight selected text."
+                )
+                btn.setAccessibleName(
+                    "قلم التظليل أو تظليل النص" if toolbar_is_ar
+                    else "Highlight text or use the marker pen"
+                )
                 btn.setProperty("engoIconName", "highlight")
                 btn.setProperty("engoIconBaseColor", color)
                 self.highlight_tool_btn = btn
                 self.highlight_tool_menu = QMenu(btn)
                 marker_action = self.highlight_tool_menu.addAction(
-                    make_icon("highlighter", color, 16), "Highlighter pen"
+                    make_icon("highlighter", color, 16),
+                    "قلم التظليل" if toolbar_is_ar else "Highlighter pen"
                 )
                 text_action = self.highlight_tool_menu.addAction(
-                    make_icon("text-cursor-input", color, 16), "Highlight selected text"
+                    make_icon("text-cursor-input", color, 16),
+                    "تظليل النص المحدد" if toolbar_is_ar else "Highlight selected text"
                 )
                 marker_action.triggered.connect(lambda checked=False: self._set_tool("highlight_pen"))
                 text_action.triggered.connect(lambda checked=False: self._set_tool("highlight"))
