@@ -2957,6 +2957,8 @@ class DocumentCanvas(QWidget):
                             else:
                                 if self._annotation_edit_button_rect(selected_bounds_pre).contains(pos):
                                     self._annotation_edit_mode = not self._annotation_edit_mode
+                                    if self._annotation_edit_mode:
+                                        self._activate_select_for_annotation_edit()
                                     self.update()
                                     event.accept()
                                     return
