@@ -1234,8 +1234,18 @@ class DocumentCanvas(QWidget):
         if self._drawing and self._draw_page in self.page_rects:
             tool = self.tab.active_tool
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            if tool == "pen":
-                painter.setPen(QPen(QColor(self.tab.annotation_colors.get("pen", DEFAULT_ANNOTATION_COLORS["pen"])), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            if tool in ("pen", "highlight_pen"):
+                if tool == "highlight_pen":
+                    marker_color = QColor(self.tab.annotation_colors.get(
+                        "highlight", DEFAULT_ANNOTATION_COLORS["highlight"]
+                    ))
+                    marker_color.setAlpha(105)
+                    painter.setPen(QPen(
+                        marker_color, 14, Qt.PenStyle.SolidLine,
+                        Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin
+                    ))
+                else:
+                    painter.setPen(QPen(QColor(self.tab.annotation_colors.get("pen", DEFAULT_ANNOTATION_COLORS["pen"])), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
                 if len(self._draw_points) > 1:
                     painter.drawPolyline(QPolygonF(self._draw_points))
                 elif self._draw_points:
@@ -3249,7 +3259,7 @@ class DocumentCanvas(QWidget):
                     self.setCursor(Qt.CursorShape.ArrowCursor)
             return super().mouseMoveEvent(event)
         self._draw_current = pos
-        if self.tab.active_tool == "pen":
+        if self.tab.active_tool in ("pen", "highlight_pen"):
             rect = self.page_rects.get(self._draw_page, QRectF())
             if rect.contains(self._draw_current):
                 self._draw_points.append(self._draw_current)
@@ -3432,6 +3442,15 @@ class DocumentCanvas(QWidget):
                              t.add_tag_region(i, r, n, c), scope_key=scope_key)
                     # Fail closed: never create a metered tag region directly if
                     # the host does not expose the account/usage gate.
+            elif tool == "highlight_pen" and len(self._draw_points) >= 2:
+                display_points = list(self._draw_points)
+                if not display_points or math.hypot(
+                        self._draw_current.x() - display_points[-1].x(),
+                        self._draw_current.y() - display_points[-1].y()) > 0.5:
+                    if page_rect.contains(self._draw_current):
+                        display_points.append(self._draw_current)
+                pdf_points = self._map_path(index, page_rect, display_points)
+                self.tab.add_highlighter_ink(index, pdf_points)
             elif tool == "pen" and (len(self._draw_points) < 2 or sum(
                     math.hypot(b.x()-a.x(), b.y()-a.y())
                     for a, b in zip(self._draw_points, self._draw_points[1:])) < 4.0):
@@ -7769,6 +7788,29 @@ class DocumentTab(QWidget):
         annot.set_opacity(0.95)
         annot.update()
         self._changed(index)
+
+    def add_highlighter_ink(self, index: int, points: list[fitz.Point]):
+        """Create a translucent marker stroke that leaves underlying text readable."""
+        if len(points) < 2:
+            return False
+        try:
+            page = self.doc.load_page(int(index))
+            self._record_undo()
+            annot = page.add_ink_annot([[
+                (float(point.x), float(point.y)) for point in points
+            ]])
+            annot.set_colors(stroke=color_tuple(
+                self.annotation_colors.get("highlight", DEFAULT_ANNOTATION_COLORS["highlight"])
+            ))
+            annot.set_border(width=8.0)
+            annot.set_opacity(0.36)
+            annot.set_info(title="Engo Highlighter Pen", content="Marker highlighter")
+            annot.update()
+            self._changed(int(index))
+            return True
+        except Exception as exc:
+            QMessageBox.warning(self, APP_NAME, f"Could not add highlighter stroke:\n{exc}")
+            return False
 
     def add_tag_region(self, index: int, rect: fitz.Rect, tag_name: str, color: str):
         """Attach a persistent user-defined tag to a rectangular PDF region."""
