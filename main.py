@@ -109,6 +109,7 @@ from engo_office import (
 from engo_widgets import (
     AnnotationColorsDialog,
     EngoFileSystemModel,
+    EyeProtectionDialog,
     MiddleMouseAutoScroll,
     MotionButton,
     PageThemeDialog,
@@ -9401,6 +9402,27 @@ class MainWindow(QMainWindow):
                     self.refresh_live_tutor_page(self._live_tutor_dialog)
                 self.show_status("Page Theme updated")
             apply_page_theme_changes()
+
+    def open_eye_protection_settings(self):
+        dialog = EyeProtectionDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        values = dialog.values()
+        self.settings.setValue("eye_protection_warmth_enabled", values["warmth_enabled"])
+        self.settings.setValue("eye_protection_warmth", int(values["warmth"]))
+        self.settings.setValue("eye_protection_brightness_enabled", values["brightness_enabled"])
+        self.settings.setValue("eye_protection_brightness", int(values["brightness"]))
+        self.settings.sync()
+        for index in range(self.tabs.count()):
+            tab = self.tabs.widget(index)
+            if isinstance(tab, DocumentTab):
+                tab.canvas.update()
+                secondary = getattr(tab, "_linked_view_secondary", None)
+                secondary_canvas = getattr(secondary, "canvas", None)
+                if secondary_canvas is not None:
+                    secondary_canvas.update()
+        is_ar = str(self.settings.value("interface_language", "en", type=str)).lower().startswith("ar")
+        self.show_status("تم تحديث حماية العين" if is_ar else "Eye protection updated")
 
     def open_annotation_colors(self):
         dlg = AnnotationColorsDialog(self, self.annotation_colors)
