@@ -6552,7 +6552,7 @@ class DocumentTab(QWidget):
                         stroke_points = [fitz.Point(float(pt[0]), float(pt[1])) if isinstance(pt, (tuple, list))
                                          else fitz.Point(pt) for pt in stroke]
                         candidate = _recognize_pen_shape(stroke_points)
-                        if candidate and candidate.get("kind") in ("line", "square", "rectangle", "circle", "triangle", "quadrilateral"):
+                        if candidate and candidate.get("kind") in ("line", "square", "rectangle", "circle", "ellipse", "triangle", "quadrilateral"):
                             recognized_ink = candidate
                             break
                     except Exception:
@@ -6566,7 +6566,7 @@ class DocumentTab(QWidget):
                     elif kind in ("triangle", "quadrilateral"):
                         subtype = polygon_type
                         vertices = [fitz.Point(pt) for pt in recognized_ink.get("points", [])]
-                    elif kind == "circle":
+                    elif kind in ("circle", "ellipse"):
                         subtype = circle_type
                         source_rect = fitz.Rect(recognized_ink.get("rect"))
                     else:
@@ -7705,7 +7705,7 @@ class DocumentTab(QWidget):
             elif kind in ("square", "rectangle"):
                 rect = fitz.Rect(shape.get("rect")) & page.rect
                 annot = page.add_rect_annot(rect)
-            elif kind == "circle":
+            elif kind in ("circle", "ellipse"):
                 rect = fitz.Rect(shape.get("rect")) & page.rect
                 annot = page.add_circle_annot(rect)
             elif kind in ("triangle", "quadrilateral"):
