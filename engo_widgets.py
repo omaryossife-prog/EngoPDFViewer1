@@ -1655,7 +1655,7 @@ class PageThemeDialog(QDialog):
         root.addWidget(heading)
         self.toggle = QCheckBox("تفعيل ألوان مظهر الصفحة" if self._is_ar else "Enable page recoloring")
         self.toggle.setChecked(self.enabled)
-        self.smart_toggle = QCheckBox("ثيم ذكي" if self._is_ar else "Smart Theme")
+        self.smart_toggle = QCheckBox("ثيم ذكي · ميزة تجريبية" if self._is_ar else "Smart Theme · Experimental")
         self.smart_toggle.setToolTip(
             "يحوّل الأبيض إلى لون خلفية المظهر، والأسود والأزرق إلى لون النص، مع الحفاظ على باقي الألوان كما هي."
             if self._is_ar else
