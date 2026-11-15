@@ -2299,6 +2299,117 @@ class _SmartPageThemeTask(QRunnable):
             pass
 
 
+class EyeProtectionDialog(QDialog):
+    """Configure a non-destructive warm tint and brightness overlay for PDF pages."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        settings = getattr(parent, "settings", None)
+        if settings is None and parent is not None:
+            settings = getattr(parent.window(), "settings", None)
+        self._settings = settings
+        language = str(
+            settings.value("interface_language", "en", type=str)
+            if settings is not None else "en"
+        ).lower()
+        self._is_ar = language.startswith("ar")
+        self.setObjectName("eyeProtectionDialog")
+        self.setWindowTitle("حماية العين" if self._is_ar else "Eye protection")
+        self.setMinimumWidth(365)
+        self.setModal(True)
+        self.setLayoutDirection(
+            Qt.LayoutDirection.RightToLeft if self._is_ar
+            else Qt.LayoutDirection.LeftToRight
+        )
+        root = QVBoxLayout(self)
+        root.setContentsMargins(20, 18, 20, 16)
+        root.setSpacing(12)
+
+        heading = QLabel("حماية العين" if self._is_ar else "EYE PROTECTION")
+        heading.setObjectName("dialogHeading")
+        root.addWidget(heading)
+        hint = QLabel(
+            "اضبط دفء الصفحة وسطوعها. اترك الخيار غير محدد لاستخدام المظهر الافتراضي."
+            if self._is_ar else
+            "Adjust page warmth and brightness. Leave an option unchecked to keep its default appearance."
+        )
+        hint.setObjectName("dialogHint")
+        hint.setWordWrap(True)
+        root.addWidget(hint)
+
+        warmth_row = QHBoxLayout()
+        self.warmth_check = QCheckBox(
+            "تخصيص دفء الصفحة" if self._is_ar else "Customize page warmth"
+        )
+        self.warmth_check.setChecked(bool(
+            settings.value("eye_protection_warmth_enabled", False, type=bool)
+            if settings is not None else False
+        ))
+        warmth_row.addWidget(self.warmth_check, 1)
+        root.addLayout(warmth_row)
+        self.warmth_slider = QSlider(Qt.Orientation.Horizontal)
+        self.warmth_slider.setRange(0, 100)
+        self.warmth_slider.setValue(int(
+            settings.value("eye_protection_warmth", 35, type=int)
+            if settings is not None else 35
+        ))
+        self.warmth_slider.setEnabled(self.warmth_check.isChecked())
+        self.warmth_slider.setToolTip(
+            "دفء لون الصفحة" if self._is_ar else "Page color warmth"
+        )
+        root.addWidget(self.warmth_slider)
+        self.warmth_check.toggled.connect(self.warmth_slider.setEnabled)
+
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setObjectName("dialogDivider")
+        root.addWidget(divider)
+
+        brightness_row = QHBoxLayout()
+        self.brightness_check = QCheckBox(
+            "تخصيص سطوع الصفحة" if self._is_ar else "Customize page brightness"
+        )
+        self.brightness_check.setChecked(bool(
+            settings.value("eye_protection_brightness_enabled", False, type=bool)
+            if settings is not None else False
+        ))
+        brightness_row.addWidget(self.brightness_check, 1)
+        root.addLayout(brightness_row)
+        self.brightness_slider = QSlider(Qt.Orientation.Horizontal)
+        self.brightness_slider.setRange(0, 100)
+        self.brightness_slider.setValue(int(
+            settings.value("eye_protection_brightness", 50, type=int)
+            if settings is not None else 50
+        ))
+        self.brightness_slider.setEnabled(self.brightness_check.isChecked())
+        self.brightness_slider.setToolTip(
+            "سطوع الصفحة" if self._is_ar else "Page brightness"
+        )
+        root.addWidget(self.brightness_slider)
+        self.brightness_check.toggled.connect(self.brightness_slider.setEnabled)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Cancel
+            | QDialogButtonBox.StandardButton.Save
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText(
+            "حفظ" if self._is_ar else "Save"
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(
+            "إلغاء" if self._is_ar else "Cancel"
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+
+    def values(self):
+        return {
+            "warmth_enabled": self.warmth_check.isChecked(),
+            "warmth": self.warmth_slider.value(),
+            "brightness_enabled": self.brightness_check.isChecked(),
+            "brightness": self.brightness_slider.value(),
+        }
+
+
 class TextAnnotationEditorDialog(QDialog):
     """Editor for PDF FreeText and sticky-note annotations."""
     @staticmethod
