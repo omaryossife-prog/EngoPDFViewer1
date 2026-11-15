@@ -384,7 +384,7 @@ class EngoFileSystemModel(QFileSystemModel):
                     count = self._display_page_count(path)
                     base = super().data(index, role)
                     if count is not None:
-                        return f"{base} ({count})"
+                        return f"{base} [{count}]"
             except (RuntimeError, TypeError, OSError, ValueError):
                 pass
         if (index.isValid() and index.column() == 0
@@ -1242,8 +1242,8 @@ def _configure_color_dialog(dialog, is_ar=False):
 
 
 def _engo_file_dialog(parent, title_en, title_ar, start_path, name_filter, *, save=False, multiple=False, native=False):
-    """Themed, translatable Qt file picker used instead of Windows native dialogs."""
-    if native and not save:
+    """Themed in-app picker, with an optional genuine Windows-native file dialog."""
+    if native:
         # Real Windows (native) open dialog, titled in the current interface language.
         try:
             _host = parent.window() if parent is not None else None
@@ -1254,6 +1254,9 @@ def _engo_file_dialog(parent, title_en, title_ar, start_path, name_filter, *, sa
         _title = title_ar if _lang.startswith("ar") else title_en
         _raw = str(start_path or Path.home())
         _filters = str(name_filter or "All files (*.*)")
+        if save:
+            _file, _ = QFileDialog.getSaveFileName(parent, _title, _raw, _filters)
+            return str(_file or "")
         if multiple:
             _files, _ = QFileDialog.getOpenFileNames(parent, _title, _raw, _filters)
             return [str(x) for x in _files]
@@ -1530,6 +1533,38 @@ class ColorSwatchButton(QPushButton):
             f"QPushButton:hover, QPushButton:focus {{ border:2px solid palette(highlight); }}"
         )
         self.update()
+
+    def setDiameter(self, diameter):
+        """Resize the color swatch while keeping its circular hit target."""
+        diameter = max(18, int(diameter))
+        if diameter == self._diameter:
+            return
+        self._diameter = diameter
+        self.setFixedSize(diameter, diameter)
+        self.setColor(self.color())
+
+
+def _theme_slider_stylesheet(tokens):
+    """Accent-filled horizontal slider shared by the annotation and eye dialogs."""
+    return f"""
+        QSlider::groove:horizontal {{
+            height:6px; background:{tokens['border']}; border-radius:3px;
+        }}
+        QSlider::sub-page:horizontal {{
+            background:{tokens['accent']}; border-radius:3px;
+        }}
+        QSlider::add-page:horizontal {{
+            background:{tokens['raised']}; border-radius:3px;
+        }}
+        QSlider::handle:horizontal {{
+            background:{tokens['accent']}; border:1px solid {tokens['accent']};
+            width:14px; height:14px; margin:-5px 0; border-radius:7px;
+        }}
+        QSlider::handle:horizontal:disabled {{
+            background:{tokens['muted']}; border-color:{tokens['muted']};
+        }}
+        QSlider:disabled::sub-page:horizontal {{ background:{tokens['muted']}; }}
+    """
 
 
 def _set_compact_dialog_button_heights(button_box, height=26):
@@ -1938,39 +1973,50 @@ class AnnotationColorsDialog(QDialog):
         hint.setObjectName("dialogHint")
         hint.setWordWrap(True)
         layout.addWidget(hint)
+        try:
+            ui_theme = parent_settings.value("ui_theme", "dark", type=str) if parent_settings is not None else "dark"
+        except Exception:
+            ui_theme = "dark"
+        self._slider_tokens = engo_ui_theme_tokens(ui_theme)
+        self.width_controls = {}
+        width_specs = {
+            "pen": ("pen_width", 2, 8, 3),
+            "highlight": ("highlight_width", 15, 35, 15),
+        }
+        translated_titles = {
+            "Pen / drawing color":"لون القلم / الرسم",
+            "Highlight color":"لون التظليل",
+            "Sticky note marker color":"لون علامة الملاحظة اللاصقة",
+            "Text box font color":"لون خط مربع النص",
+            "Text box background color":"لون خلفية مربع النص",
+        }
         for key, title in self.OPTIONS:
             row = QHBoxLayout()
-            translated_title = {"Pen / drawing color":"لون القلم / الرسم", "Highlight color":"لون التظليل", "Sticky note marker color":"لون علامة الملاحظة اللاصقة", "Text box font color":"لون خط مربع النص", "Text box background color":"لون خلفية مربع النص"}.get(title, title)
-            label = QLabel(translated_title if self._is_ar else title)
+            label = QLabel(translated_titles.get(title, title) if self._is_ar else title)
             label.setObjectName("dialogLabel")
             row.addWidget(label, 1)
             btn = ColorSwatchButton(self.colors[key], self)
             btn.clicked.connect(lambda checked=False, k=key: self._pick(k))
             self._buttons[key] = btn
-            row.addWidget(btn)
+            if key in width_specs:
+                width_key, low, high, default_value = width_specs[key]
+                thickness_label = QLabel("السمك" if self._is_ar else "Thickness")
+                thickness_label.setObjectName("dialogLabel")
+                row.addWidget(thickness_label)
+                slider = QSlider(Qt.Orientation.Horizontal)
+                slider.setRange(low, high)
+                slider.setValue(max(low, min(high, int(self.colors.get(width_key, default_value) or default_value))))
+                slider.setFixedWidth(128)
+                slider.setStyleSheet(_theme_slider_stylesheet(self._slider_tokens))
+                slider.valueChanged.connect(
+                    lambda value, tool_key=key: self._sync_swatch_size(tool_key, value)
+                )
+                self.width_controls[width_key] = slider
+                row.addWidget(slider, 1)
+            row.addWidget(btn, 0, Qt.AlignmentFlag.AlignVCenter)
             layout.addLayout(row)
-
-        width_title_map = {
-            "pen_width": ("سمك خط القلم" if self._is_ar else "Pen stroke thickness"),
-            "highlight_width": ("سمك قلم الهايلايت" if self._is_ar else "Highlighter thickness"),
-        }
-        self.width_controls = {}
-        for key, low, high, default_value in (
-            ("pen_width", 1, 12, 3),
-            ("highlight_width", 2, 30, 12),
-        ):
-            row = QHBoxLayout()
-            label = QLabel(width_title_map[key])
-            label.setObjectName("dialogLabel")
-            row.addWidget(label, 1)
-            spin = QSpinBox()
-            spin.setRange(low, high)
-            spin.setValue(max(low, min(high, int(self.colors.get(key, default_value) or default_value))))
-            spin.setSuffix(" pt")
-            spin.setFixedWidth(88)
-            row.addWidget(spin)
-            self.width_controls[key] = spin
-            layout.addLayout(row)
+            if key in width_specs:
+                self._sync_swatch_size(key, self.width_controls[width_specs[key][0]].value())
 
         self.apply_to_themes_check = QCheckBox(
             "تطبيق ألوان التعليقات التوضيحية على كل ثيمات البرنامج"
@@ -1984,13 +2030,30 @@ class AnnotationColorsDialog(QDialog):
         reset.clicked.connect(self._reset)
         layout.addWidget(reset, 0, Qt.AlignmentFlag.AlignLeft)
         box = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save)
-        box.button(QDialogButtonBox.StandardButton.Save).setText("حفظ الألوان" if self._is_ar else "Save colors")
+        box.button(QDialogButtonBox.StandardButton.Save).setText("حفظ" if self._is_ar else "Save")
         box.button(QDialogButtonBox.StandardButton.Cancel).setText("إلغاء" if self._is_ar else "Cancel")
         _set_compact_dialog_button_heights(box, 26)
         box.accepted.connect(self.accept)
         box.rejected.connect(self.reject)
         layout.addWidget(box)
         self._refresh()
+
+    def _sync_swatch_size(self, key, value):
+        """Make the color swatch preview match the selected pen/marker thickness."""
+        button = self._buttons.get(key)
+        if button is None:
+            return
+        value = int(value)
+        diameter = (22 + (value - 2) * 2) if key == "pen" else (22 + round((value - 15) * 0.8))
+        button.setDiameter(diameter)
+        width_key = "pen_width" if key == "pen" else "highlight_width"
+        slider = self.width_controls.get(width_key)
+        if slider is not None:
+            slider.setToolTip(
+                (f"سمك القلم: {value} pt" if self._is_ar else f"Pen thickness: {value} pt")
+                if key == "pen" else
+                (f"سمك الهايلايت: {value} pt" if self._is_ar else f"Highlighter thickness: {value} pt")
+            )
 
     def _refresh(self):
         for key, button in self._buttons.items():
@@ -2027,7 +2090,7 @@ class AnnotationColorsDialog(QDialog):
     def _reset(self):
         self.colors = dict(DEFAULT_ANNOTATION_COLORS)
         for key, control in self.width_controls.items():
-            control.setValue(int(self.colors.get(key, 3 if key == "pen_width" else 12)))
+            control.setValue(int(self.colors.get(key, 3 if key == "pen_width" else 15)))
         self._refresh()
 
 
@@ -2407,6 +2470,11 @@ class EyeProtectionDialog(QDialog):
             if settings is not None else "en"
         ).lower()
         self._is_ar = language.startswith("ar")
+        try:
+            ui_theme = settings.value("ui_theme", "dark", type=str) if settings is not None else "dark"
+        except Exception:
+            ui_theme = "dark"
+        self._slider_tokens = engo_ui_theme_tokens(ui_theme)
         self.setObjectName("eyeProtectionDialog")
         self.setWindowTitle("حماية العين" if self._is_ar else "Eye protection")
         self.setMinimumWidth(365)
@@ -2448,6 +2516,7 @@ class EyeProtectionDialog(QDialog):
             if settings is not None else 35
         ))
         self.warmth_slider.setEnabled(self.warmth_check.isChecked())
+        self.warmth_slider.setStyleSheet(_theme_slider_stylesheet(self._slider_tokens))
         self.warmth_slider.setToolTip(
             "دفء لون الصفحة" if self._is_ar else "Page color warmth"
         )
@@ -2476,6 +2545,7 @@ class EyeProtectionDialog(QDialog):
             if settings is not None else 50
         ))
         self.brightness_slider.setEnabled(self.brightness_check.isChecked())
+        self.brightness_slider.setStyleSheet(_theme_slider_stylesheet(self._slider_tokens))
         self.brightness_slider.setToolTip(
             "سطوع الصفحة" if self._is_ar else "Page brightness"
         )
