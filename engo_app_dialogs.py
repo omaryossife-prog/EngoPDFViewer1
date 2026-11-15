@@ -665,7 +665,7 @@ class FirstRunSetupDialog(QDialog):
         for column in range(3):
             theme_cards.setColumnStretch(column, 1)
         theme_layout.addWidget(theme_cards_widget)
-        self.theme_tip = QLabel("You can change the theme any time from Settings.")
+        self.theme_tip = QLabel("More themes are available in Settings.")
         self.theme_tip.setObjectName("firstRunPageCaption")
         theme_layout.addWidget(self.theme_tip)
         theme_layout.addStretch(1)
@@ -811,7 +811,7 @@ class FirstRunSetupDialog(QDialog):
         self.step_label.setText("الخطوة ٢ من ٣ · المظهر" if is_ar else "STEP 2 OF 3  ·  APPEARANCE")
         self.theme_heading.setText("اختر مظهر Engo" if is_ar else "Choose your Engo theme")
         self.theme_caption.setText("شاهد معاينة كل ثيم واختر الشكل الأنسب لك." if is_ar else "Preview each theme and choose the look you prefer.")
-        self.theme_tip.setText("توجد المزيد من الثيمات في إعدادات البرنامج." if is_ar else "More themes are available in the application Settings.")
+        self.theme_tip.setText("تتوفر ثيمات أخرى في إعدادات البرنامج." if is_ar else "More themes are available in Settings.")
         theme_labels = {"light": ("فاتح" if is_ar else "Light"),
                         "dark": ("داكن" if is_ar else "Dark"),
                         "midnight": ("منتصف الليل" if is_ar else "Midnight"),
