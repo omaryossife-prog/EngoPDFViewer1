@@ -993,6 +993,19 @@ def make_icon(name: str, color: str = "#b7c6dc", size: int = 18) -> QIcon:
     elif name == "highlight":
         path([(5, 16), (14, 7), (18, 11), (9, 20), (5, 20), (5, 16)])
         line(13, 8, 17, 12); line(4, 21, 12, 21); line(14, 5, 16, 3)
+    elif name == "highlighter":
+        path([(4, 17), (14, 7), (19, 12), (9, 22), (4, 22), (4, 17)])
+        path([(14, 7), (17, 4), (22, 9), (19, 12)])
+        line(8, 13, 13, 18); line(3, 22, 10, 22)
+    elif name == "text-cursor-input":
+        line(4, 5, 20, 5); line(4, 19, 20, 19)
+        line(12, 5, 12, 19); line(9, 5, 15, 5); line(9, 19, 15, 19)
+        line(19, 9, 22, 12); line(22, 12, 19, 15)
+    elif name == "eye":
+        path([(2, 12), (5, 7), (9, 4.5), (12, 4), (15, 4.5), (19, 7), (22, 12),
+              (19, 17), (15, 19.5), (12, 20), (9, 19.5), (5, 17), (2, 12)])
+        painter.drawEllipse(QRectF(8.5, 8.5, 7, 7))
+        painter.drawEllipse(QRectF(10.5, 10.5, 3, 3))
     elif name == "pen":
         path([(4, 18), (5, 14), (16, 3), (21, 8), (10, 19), (4, 20), (4, 18)])
         line(13, 6, 18, 11); line(4, 20, 8, 16)
