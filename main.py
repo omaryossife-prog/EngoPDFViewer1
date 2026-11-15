@@ -11728,7 +11728,8 @@ def main():
         # Guests have no signed account entitlement payload. Fetch only the
         # public Free-plan app-theme switch so the welcome wizard follows the
         # same database setting as signed-in Free accounts.
-        if not bool(getattr(state, "is_premium", False)):
+        if (not bool(getattr(state, "is_premium", False))
+                and not bool(launch_state.get("offline", False))):
             # Fetch this public switch off the GUI thread. A nested Qt event loop
             # keeps the startup progress animation running while the network responds.
             theme_result = {"value": {}}
