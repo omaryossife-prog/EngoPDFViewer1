@@ -1992,6 +1992,8 @@ class AnnotationColorsDialog(QDialog):
 
     def __init__(self, parent, colors, apply_to_themes=True):
         super().__init__(parent)
+        parent_settings = None
+        self.setProperty("engoOriginalWindowTitle", "Annotation Settings")
         try:
             parent_settings = getattr(parent, "settings", None)
             language_value = parent_settings.value("interface_language", "en", type=str) if parent_settings is not None else "en"
