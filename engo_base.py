@@ -34,6 +34,8 @@ DEFAULT_ANNOTATION_COLORS = {
     "note": "#a78bfa",
     "text_ink": "#263247",
     "text_fill": "#fff4bf",
+    "pen_width": 3,
+    "highlight_width": 12,
 }
 IPC_SERVER_NAME = "EngoPDFViewer_SingleInstance_v15_28"
 UI_BG = "#151820"

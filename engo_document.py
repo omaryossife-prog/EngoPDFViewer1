@@ -6,6 +6,7 @@ import os
 import tempfile
 import io
 import re
+from html import escape as html_escape
 import time
 import zlib
 from collections import OrderedDict, deque
@@ -117,6 +118,7 @@ class DocumentCanvas(QWidget):
         self._text_selecting = False
         self._text_selection_page = -1
         self._text_selection_tool = ""
+        self._editing_highlight_xref = 0
         self._text_selection_words = []
         self._text_selection_start_word = -1
         self._text_selection_end_word = -1
@@ -1126,7 +1128,10 @@ class DocumentCanvas(QWidget):
                         if not _is_pen_shape_sel or (self._dragging_annotation and self._drag_xref == xref):
                             for shape_path in geometry["paths"]:
                                 painter.drawPath(shape_path)
-                        if self._annotation_edit_mode and len(getattr(self.tab, "selected_annotations", []) or []) == 1:
+                        is_native_text_highlight = int((annot.type or (0, ""))[0]) == getattr(fitz, "PDF_ANNOT_HIGHLIGHT", 8)
+                        if (self._annotation_edit_mode
+                                and len(getattr(self.tab, "selected_annotations", []) or []) == 1
+                                and not is_native_text_highlight):
                             painter.setPen(QPen(QColor("#eaf2ff"), 1.0))
                             painter.setBrush(QBrush(QColor("#5b9cff")))
                             for handle in geometry.get("handles", []):
@@ -1276,12 +1281,20 @@ class DocumentCanvas(QWidget):
                         "highlight", DEFAULT_ANNOTATION_COLORS["highlight"]
                     ))
                     marker_color.setAlpha(105)
+                    display_scale = max(0.5, float(self.page_scales.get(self._draw_page, 1.0)))
+                    marker_width = max(1.0, float(self.tab.annotation_colors.get("highlight_width", 12)) * display_scale)
                     painter.setPen(QPen(
-                        marker_color, 14, Qt.PenStyle.SolidLine,
+                        marker_color, marker_width, Qt.PenStyle.SolidLine,
                         Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin
                     ))
                 else:
-                    painter.setPen(QPen(QColor(self.tab.annotation_colors.get("pen", DEFAULT_ANNOTATION_COLORS["pen"])), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+                    display_scale = max(0.5, float(self.page_scales.get(self._draw_page, 1.0)))
+                    pen_width = max(0.5, float(self.tab.annotation_colors.get("pen_width", 3)) * display_scale)
+                    painter.setPen(QPen(
+                        QColor(self.tab.annotation_colors.get("pen", DEFAULT_ANNOTATION_COLORS["pen"])),
+                        pen_width, Qt.PenStyle.SolidLine,
+                        Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin
+                    ))
                 if len(self._draw_points) > 1:
                     painter.drawPolyline(QPolygonF(self._draw_points))
                 elif self._draw_points:
@@ -1402,6 +1415,7 @@ class DocumentCanvas(QWidget):
         self._text_selecting = False
         self._text_selection_page = -1
         self._text_selection_tool = ""
+        self._editing_highlight_xref = 0
         self._text_selection_words = []
         self._text_selection_start_word = -1
         self._text_selection_end_word = -1
@@ -1483,16 +1497,17 @@ class DocumentCanvas(QWidget):
         self.update()
         return True
 
-    def _begin_text_selection(self, index: int, page_rect: QRectF, word_entry):
+    def _begin_text_selection(self, index: int, page_rect: QRectF, word_entry,
+                              selection_tool=None, preserve_annotation_selection=False):
         self._clear_text_selection()
         self._text_selecting = True
         self._text_selection_page = int(index)
-        self._text_selection_tool = str(self.tab.active_tool or "select")
+        self._text_selection_tool = str(selection_tool or self.tab.active_tool or "select")
         self._text_selection_words = self._text_words_for_page(index)
         self._text_selection_start_word = int(word_entry[0])
         self._text_selection_end_word = int(word_entry[0])
         self._text_selection_current_page_rect = QRectF(page_rect)
-        if self._text_selection_tool == "select":
+        if self._text_selection_tool == "select" and not preserve_annotation_selection:
             self.tab.clear_annotation_selection()
         self._refresh_text_selection_preview()
         self.setCursor(Qt.CursorShape.IBeamCursor)
@@ -1694,6 +1709,12 @@ class DocumentCanvas(QWidget):
             return
         if tool == "highlight":
             self.tab.add_highlight_words(index, records)
+            self._clear_text_selection()
+        elif tool == "highlight_edit":
+            xref = int(self._editing_highlight_xref or 0)
+            self.tab.edit_text_highlight_words(
+                index, xref, records, int(self._text_selection_start_word)
+            )
             self._clear_text_selection()
         else:
             self._show_pdf_text_selection_menu(global_pos, text, index, records)
@@ -2443,6 +2464,10 @@ class DocumentCanvas(QWidget):
             annot = next((a for a in (page.annots() or []) if int(a.xref) == xref), None)
             if annot is None:
                 return ""
+            if int((annot.type or (0, ""))[0]) == getattr(fitz, "PDF_ANNOT_HIGHLIGHT", 8):
+                # Native text highlights are edited by adding/removing words,
+                # never by dragging their bounding box or individual quad nodes.
+                return ""
             geometry = self._annotation_selection_geometry(int(page_index), annot, page=page)
             bounds = geometry.get("bounds") if geometry else None
             if bounds is None or bounds.isEmpty():
@@ -2464,15 +2489,7 @@ class DocumentCanvas(QWidget):
             annot_type = int((annot.type or (0, ""))[0])
             info = dict(annot.info or {})
             if annot_type == getattr(fitz, "PDF_ANNOT_FREE_TEXT", 2):
-                fontsize, fontname = 11, "Helv"
-                try:
-                    da = str(self.tab.doc.xref_get_key(int(xref), "DA")[1] or "")
-                    size_match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s+Tf", da)
-                    font_match = re.search(r"/([A-Za-z0-9]+)\s+[0-9.]+\s+Tf", da)
-                    if size_match: fontsize = float(size_match.group(1))
-                    if font_match: fontname = font_match.group(1)
-                except Exception:
-                    pass
+                fontsize, fontname, _text_color = self.tab._freetext_style_from_xref(int(xref))
                 dlg = TextAnnotationEditorDialog(info.get("content", ""), fontsize, fontname, self)
                 if dlg.exec() == QDialog.DialogCode.Accepted:
                     text, new_size, new_font = dlg.values()
@@ -2905,6 +2922,30 @@ class DocumentCanvas(QWidget):
         # Highlight uses the same rule, but a blank/image-started drag remains an
         # area highlight even if the pointer later crosses over text.
         current_tool = str(self.tab.active_tool or "")
+        if current_tool == "select" and self._annotation_edit_mode and not force_select:
+            selected_highlight = self.tab.selected_annotation
+            if selected_highlight is not None:
+                selected_page_index = int(selected_highlight[0])
+                selected_xref = int(selected_highlight[1])
+                selected_page = self.tab.doc.load_page(selected_page_index)
+                selected_annot = next(
+                    (a for a in (selected_page.annots() or []) if int(a.xref) == selected_xref),
+                    None
+                )
+                if (selected_annot is not None
+                        and int((selected_annot.type or (0, ""))[0]) == getattr(fitz, "PDF_ANNOT_HIGHLIGHT", 8)):
+                    text_page_index, text_page_rect = self._page_at(pos)
+                    if text_page_index == selected_page_index:
+                        word_entry = self._text_word_at(text_page_index, text_page_rect, pos)
+                        if word_entry is not None:
+                            self._begin_text_selection(
+                                text_page_index, text_page_rect, word_entry,
+                                selection_tool="highlight_edit",
+                                preserve_annotation_selection=True,
+                            )
+                            self._editing_highlight_xref = selected_xref
+                            event.accept()
+                            return
         if current_tool in ("select", "highlight") and not force_select:
             text_page_index, text_page_rect = self._page_at(pos)
             if text_page_index >= 0:
@@ -2973,6 +3014,25 @@ class DocumentCanvas(QWidget):
                     selected_now = list(getattr(self.tab, "selected_annotations", []) or [])
                     item = (int(index), int(xref))
                     was_selected = item in selected_now
+                    if was_selected and self._annotation_edit_mode:
+                        try:
+                            current_annot_page = self.tab.doc.load_page(int(index))
+                            current_annot = next(
+                                (entry for entry in (current_annot_page.annots() or [])
+                                 if int(entry.xref) == int(xref)),
+                                None
+                            )
+                            if (current_annot is not None
+                                    and int((current_annot.type or (0, ""))[0])
+                                    == getattr(fitz, "PDF_ANNOT_HIGHLIGHT", 8)):
+                                # The word-selection handler above owns clicks on actual
+                                # PDF words. A click on the rest of the highlight bounds
+                                # must not turn the text highlight into a resize drag.
+                                event.accept()
+                                self.setCursor(Qt.CursorShape.ArrowCursor)
+                                return
+                        except Exception:
+                            pass
                     modifiers = event.modifiers()
                     ctrl_add = bool(modifiers & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier))
                     if ctrl_add:
@@ -3281,7 +3341,27 @@ class DocumentCanvas(QWidget):
                     xref, bounds, _label, geometry = hit
                     current = self.tab.selected_annotation == (index, xref)
                     is_point = "pen shape · point" in str(_label).lower() or "pen shape - point" in str(_label).lower()
+                    is_text_highlight = False
                     if current and self._annotation_edit_mode:
+                        try:
+                            hover_page = self.tab.doc.load_page(int(index))
+                            hover_annot = next(
+                                (item for item in (hover_page.annots() or [])
+                                 if int(item.xref) == int(xref)),
+                                None
+                            )
+                            is_text_highlight = bool(
+                                hover_annot is not None
+                                and int((hover_annot.type or (0, ""))[0])
+                                == getattr(fitz, "PDF_ANNOT_HIGHLIGHT", 8)
+                            )
+                        except Exception:
+                            is_text_highlight = False
+                    if is_text_highlight:
+                        # The edit gesture is word selection, not a resize cursor.
+                        self.setCursor(Qt.CursorShape.IBeamCursor if text_hit is not None
+                                       else Qt.CursorShape.ArrowCursor)
+                    elif current and self._annotation_edit_mode:
                         if not is_point and self._rotation_handle_at(bounds, pos):
                             handle = "rotate"
                         else:
@@ -3939,8 +4019,9 @@ class DocumentTab(QWidget):
         for i in range(self.page_count):
             page = self.doc.load_page(i)
             self.page_sizes.append((float(page.rect.width), float(page.rect.height)))
-            if (i + 1) % 8 == 0:
-                self._pump_opening_dialog_events()
+            # Repaint/tick the compact progress popup even for one-page files;
+            # the previous every-eight-pages cadence left small PDFs frozen.
+            self._pump_opening_dialog_events()
         self.current_page = 0
         self.dark_mode = bool(dark_mode)
         self.smart_page_theme = bool(smart_page_theme)
@@ -4036,11 +4117,14 @@ class DocumentTab(QWidget):
         self._layout_deferred_by_focus = False
         self._layout_timer.timeout.connect(self._relayout)
         self._build_ui()
+        self._pump_opening_dialog_events()
         self._select_all_shortcut = QShortcut(QKeySequence.StandardKey.SelectAll, self.canvas)
         self._select_all_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self._select_all_shortcut.activated.connect(self._select_all_annotations_on_current_page)
         self._build_thumbnails()
+        self._pump_opening_dialog_events()
         self._build_outline()
+        self._pump_opening_dialog_events()
         self._schedule_sidebar_metrics_update()
         self._schedule_layout()
         self._last_page_wheel_turn = 0.0
@@ -4190,23 +4274,7 @@ class DocumentTab(QWidget):
         sidebar_actions_layout = QHBoxLayout(self.sidebar_page_actions)
         sidebar_actions_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_actions_layout.setSpacing(3)
-        self.eye_protection_btn = QToolButton(self.sidebar_page_actions)
-        self.eye_protection_btn.setObjectName("eyeProtectionButton")
-        self.eye_protection_btn.setIcon(make_icon("eye", sidebar_icon_color, 16))
-        self.eye_protection_btn.setIconSize(QSize(16, 16))
-        self.eye_protection_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.eye_protection_btn.setFixedSize(30, 32)
-        self.eye_protection_btn.setAutoRaise(False)
-        self.eye_protection_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.eye_protection_btn.setToolTip(
-            "حماية العين" if self._sidebar_language == "ar" else "Eye protection"
-        )
-        self.eye_protection_btn.setAccessibleName(
-            "حماية العين" if self._sidebar_language == "ar" else "Eye protection"
-        )
-        self.eye_protection_btn.clicked.connect(self._open_eye_protection_settings)
-        self.eye_protection_btn.setProperty("engoIconName", "eye")
-        sidebar_actions_layout.addWidget(self.eye_protection_btn)
+        # Eye Protection now lives in the main PDF toolbar, immediately after Translate.
 
         self.page_overview_btn = QToolButton(self.sidebar_page_actions)
         self.page_overview_btn.setObjectName("pageOverviewButton")
@@ -5240,7 +5308,7 @@ class DocumentTab(QWidget):
         try:
             toc = self.doc.get_toc()
             stack = []
-            for level, title, page_num, *rest in toc:
+            for toc_index, (level, title, page_num, *rest) in enumerate(toc):
                 item = QTreeWidgetItem([title or f"Page {page_num}"])
                 item.setData(0, Qt.ItemDataRole.UserRole, max(0, int(page_num) - 1))
                 item.setToolTip(0, f"Page {page_num}")
@@ -5251,6 +5319,9 @@ class DocumentTab(QWidget):
                 else:
                     self.outline.addTopLevelItem(item)
                 stack.append(item)
+                if (toc_index + 1) % 24 == 0:
+                    self._pump_opening_dialog_events()
+            self._pump_opening_dialog_events()
             self.outline.expandToDepth(1)
         except Exception:
             pass
@@ -7801,6 +7872,110 @@ class DocumentTab(QWidget):
         self._changed(int(index))
         return True
 
+    def edit_text_highlight_words(self, index: int, xref: int,
+                                  selected_word_records, start_word_index: int) -> bool:
+        """Toggle PDF text words inside one existing native highlight annotation."""
+        try:
+            page_index = int(index)
+            page = self.doc.load_page(page_index)
+            old = next(
+                (a for a in (page.annots() or []) if int(a.xref) == int(xref)),
+                None
+            )
+            if old is None or int((old.type or (0, ""))[0]) != getattr(fitz, "PDF_ANNOT_HIGHLIGHT", 8):
+                return False
+            all_words = list(self.canvas._text_words_for_page(page_index))
+            selected_set = {tuple(word) for word in (selected_word_records or [])}
+            selected_indexes = {
+                word_index for word_index, word in enumerate(all_words)
+                if tuple(word) in selected_set
+            }
+            if not selected_indexes:
+                return False
+
+            vertices = list(old.vertices or [])
+            highlight_rects = []
+            for offset in range(0, len(vertices) - 3, 4):
+                quad = [fitz.Point(point) for point in vertices[offset:offset + 4]]
+                if len(quad) == 4:
+                    highlight_rects.append(fitz.Rect(
+                        min(point.x for point in quad),
+                        min(point.y for point in quad),
+                        max(point.x for point in quad),
+                        max(point.y for point in quad),
+                    ))
+            highlighted_indexes = set()
+            for word_index, word in enumerate(all_words):
+                word_rect = fitz.Rect(word[:4])
+                area = max(0.001, float(word_rect.get_area()))
+                for highlight_rect in highlight_rects:
+                    overlap = word_rect & highlight_rect
+                    if not overlap.is_empty and float(overlap.get_area()) / area >= 0.40:
+                        highlighted_indexes.add(word_index)
+                        break
+
+            start_index = max(0, min(int(start_word_index), len(all_words) - 1))
+            remove_words = start_index in highlighted_indexes
+            remaining_indexes = (
+                highlighted_indexes - selected_indexes
+                if remove_words else highlighted_indexes | selected_indexes
+            )
+            remaining_records = [all_words[i] for i in sorted(remaining_indexes)]
+            old_colors = dict(old.colors or {})
+            old_stroke = old_colors.get("stroke")
+            try:
+                old_opacity = float(old.opacity)
+            except (TypeError, ValueError, RuntimeError):
+                old_opacity = 0.38
+
+            self._record_undo()
+            page.delete_annot(old)
+            new_annot = None
+            if remaining_records:
+                line_words = {}
+                for word in remaining_records:
+                    if len(word) < 8 or not str(word[4] or "").strip():
+                        continue
+                    word_rect = fitz.Rect(word[:4]) & page.cropbox
+                    if word_rect.is_empty or word_rect.width <= 0 or word_rect.height <= 0:
+                        continue
+                    line_key = (int(word[5]), int(word[6]))
+                    line_words.setdefault(line_key, []).append(word_rect)
+                merged_runs = []
+                for _line_key, words_on_line in line_words.items():
+                    words_on_line.sort(key=lambda item: (item.x0, item.x1))
+                    run = fitz.Rect(words_on_line[0])
+                    for word_rect in words_on_line[1:]:
+                        gap_limit = max(2.0, min(run.height, word_rect.height) * 0.65)
+                        if word_rect.x0 <= run.x1 + gap_limit:
+                            run |= word_rect
+                        else:
+                            merged_runs.append(fitz.Rect(run))
+                            run = fitz.Rect(word_rect)
+                    merged_runs.append(fitz.Rect(run))
+                if merged_runs:
+                    new_annot = page.add_highlight_annot([rect.quad for rect in merged_runs])
+                    if old_stroke:
+                        new_annot.set_colors(stroke=old_stroke)
+                    else:
+                        new_annot.set_colors(stroke=color_tuple(
+                            self.annotation_colors.get("highlight", DEFAULT_ANNOTATION_COLORS["highlight"])
+                        ))
+                    new_annot.set_opacity(max(0.05, min(1.0, old_opacity)))
+                    new_annot.update()
+
+            if new_annot is None:
+                self.clear_annotation_selection()
+            else:
+                self.selected_annotation = (page_index, int(new_annot.xref))
+                self.selected_annotations = [(page_index, int(new_annot.xref))]
+                self.annotationSelectionChanged.emit(True)
+            self._changed(page_index)
+            return True
+        except Exception as exc:
+            QMessageBox.warning(self, APP_NAME, f"Could not edit text highlight:\\n{exc}")
+            return False
+
     def add_area_highlight(self, index: int, rect: fitz.Rect):
         """Create an area/image highlight without converting crossed text into text markup."""
         page = self.doc.load_page(int(index))
@@ -7893,7 +8068,7 @@ class DocumentTab(QWidget):
                 return False
             pen_color = color_tuple(self.annotation_colors.get("pen", DEFAULT_ANNOTATION_COLORS["pen"]))
             annot.set_colors(stroke=pen_color)
-            annot.set_border(width=2.2)
+            annot.set_border(width=max(0.5, float(self.annotation_colors.get("pen_width", 3))))
             annot.set_opacity(0.95)
             annot.set_info(title="Engo Pen Shape", content=f"Pen shape · {kind.title()}")
             annot.update()
@@ -7940,7 +8115,7 @@ class DocumentTab(QWidget):
         self._record_undo()
         annot = page.add_ink_annot([[(float(point.x), float(point.y)) for point in points]])
         annot.set_colors(stroke=color_tuple(self.annotation_colors.get("pen", DEFAULT_ANNOTATION_COLORS["pen"])))
-        annot.set_border(width=2.0)
+        annot.set_border(width=max(0.5, float(self.annotation_colors.get("pen_width", 3))))
         annot.set_opacity(0.95)
         annot.update()
         self._changed(index)
@@ -7958,8 +8133,11 @@ class DocumentTab(QWidget):
             annot.set_colors(stroke=color_tuple(
                 self.annotation_colors.get("highlight", DEFAULT_ANNOTATION_COLORS["highlight"])
             ))
-            annot.set_border(width=8.0)
-            annot.set_opacity(0.36)
+            annot.set_border(width=max(1.0, float(self.annotation_colors.get("highlight_width", 12))))
+            annot.set_opacity(0.72)
+            # Multiply preserves the original dark ink while tinting the paper
+            # underneath the freehand marker, like a real translucent highlighter.
+            annot.set_blendmode("Multiply")
             annot.set_info(title="Engo Highlighter Pen", content="Marker highlighter")
             annot.update()
             self._changed(int(index))
@@ -8056,71 +8234,35 @@ class DocumentTab(QWidget):
             colors = dict(annot.colors or {})
             border = dict(annot.border or {})
 
-            self._record_undo()
             if annot_type == getattr(fitz, "PDF_ANNOT_FREE_TEXT", 2):
-                # FreeText annotations reject Annot.set_colors(). Their text color
-                # lives in /DA, while the optional background is stored in /C.
-                da = str(self.doc.xref_get_key(old_xref, "DA")[1] or "")
-                size_match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s+Tf", da)
-                font_match = re.search(r"/([A-Za-z0-9]+)\s+[0-9.]+\s+Tf", da)
-                fontsize = float(size_match.group(1)) if size_match else 11.0
-                fontname = font_match.group(1) if font_match else "Helv"
-                align_value = self.doc.xref_get_key(old_xref, "Q")
-                try:
-                    alignment = int(align_value[1]) if align_value and align_value[0] == "int" else 0
-                except Exception:
-                    alignment = 0
+                _size, fontname, _current_color = self._freetext_style_from_xref(old_xref)
                 fill = colors.get("stroke") or None
                 if background_color is not None:
                     picked_background = QColor(str(background_color))
                     if not picked_background.isValid():
                         return False
-                    fill = (picked_background.redF(), picked_background.greenF(), picked_background.blueF())
-                if isinstance(fill, (tuple, list)) and len(fill) not in (1, 3, 4):
-                    fill = None
-                rect = fitz.Rect(annot.rect)
-                content = str(info.get("content") or "")
-                title = str(info.get("title") or "Engo PDF Text")
-                subject = str(info.get("subject") or "")
-                flags = int(getattr(annot, "flags", 4))
-                try:
-                    opacity = float(getattr(annot, "opacity", -1))
-                except Exception:
-                    opacity = -1.0
-                page.delete_annot(annot)
-                updated = page.add_freetext_annot(
-                    rect, content, fontsize=max(6.0, min(48.0, fontsize)),
-                    fontname=fontname, text_color=rgb, fill_color=fill, align=alignment
+                    fill = (
+                        picked_background.redF(),
+                        picked_background.greenF(),
+                        picked_background.blueF(),
+                    )
+                return self.update_freetext_annotation(
+                    page_index, old_xref, str(info.get("content") or ""),
+                    int(round(_size)), fontname, text_color=rgb, fill_color=fill
                 )
-                if float(border.get("width", 0.0) or 0.0) > 0:
-                    updated.set_border(width=float(border.get("width", 0.4)))
-                updated.set_info(title=title, content=content, subject=subject)
-                try:
-                    updated.flags = flags
-                except Exception:
-                    pass
-                if opacity >= 0:
-                    try:
-                        updated.set_opacity(opacity)
-                    except Exception:
-                        pass
-                updated.update()
-                new_xref = int(updated.xref)
-                self.selected_annotation = (page_index, new_xref)
-                self.selected_annotations = [(page_index, new_xref)]
-                self.annotationSelectionChanged.emit(True)
+
+            self._record_undo()
+            # Highlight and Ink accept a stroke only; filled shapes preserve
+            # their fill by recoloring both stroke and fill together.
+            fill_values = colors.get("fill")
+            if isinstance(fill_values, (tuple, list)) and len(fill_values) > 0:
+                annot.set_colors(stroke=rgb, fill=rgb)
             else:
-                # Highlight and Ink accept a stroke only; filled shapes preserve
-                # their fill by recoloring both stroke and fill together.
-                fill_values = colors.get("fill")
-                if isinstance(fill_values, (tuple, list)) and len(fill_values) > 0:
-                    annot.set_colors(stroke=rgb, fill=rgb)
-                else:
-                    annot.set_colors(stroke=rgb)
-                annot.update()
-                self.selected_annotation = (page_index, old_xref)
-                self.selected_annotations = [(page_index, old_xref)]
-                self.annotationSelectionChanged.emit(True)
+                annot.set_colors(stroke=rgb)
+            annot.update()
+            self.selected_annotation = (page_index, old_xref)
+            self.selected_annotations = [(page_index, old_xref)]
+            self.annotationSelectionChanged.emit(True)
             self._changed(page_index)
             return True
         except Exception as exc:
@@ -8137,11 +8279,7 @@ class DocumentTab(QWidget):
             old = next((item for item in (page.annots() or []) if int(item.xref) == xref), None)
             if old is None or int((old.type or (0, ""))[0]) != getattr(fitz, "PDF_ANNOT_FREE_TEXT", 2):
                 return False
-            da = str(self.doc.xref_get_key(xref, "DA")[1] or "")
-            size_match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s+Tf", da)
-            font_match = re.search(r"/([A-Za-z0-9]+)\s+[0-9.]+\s+Tf", da)
-            fontsize = float(size_match.group(1)) if size_match else 11.0
-            fontname = font_match.group(1) if font_match else "Helv"
+            fontsize, fontname, _text_color = self._freetext_style_from_xref(xref)
             page_display = canvas.page_rects.get(page_index, QRectF())
             if page_display.isEmpty():
                 return True
@@ -8156,8 +8294,47 @@ class DocumentTab(QWidget):
             QMessageBox.warning(self, APP_NAME, f"Could not resize text box:\\n{exc}")
             return True
 
+    def _freetext_style_from_xref(self, xref: int):
+        """Read the persisted rich FreeText style, falling back to its PDF appearance."""
+        da = ""
+        rich = ""
+        try:
+            da = str(self.doc.xref_get_key(int(xref), "DA")[1] or "")
+            rich = str(self.doc.xref_get_key(int(xref), "RC")[1] or "")
+        except Exception:
+            pass
+        size_match = re.search(r"font-size\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*pt", rich, re.IGNORECASE)
+        if size_match is None:
+            size_match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s+Tf", da)
+        fontsize = float(size_match.group(1)) if size_match else 11.0
+        bold = bool(
+            re.search(r"<b(?:\s|>)|font-weight\s*:\s*(?:bold|[6-9]00)", rich, re.IGNORECASE)
+        )
+        italic = bool(
+            re.search(r"<i(?:\s|>)|font-style\s*:\s*italic", rich, re.IGNORECASE)
+        )
+        fontname = "HelvBI" if bold and italic else ("HelvB" if bold else ("HelvI" if italic else "Helv"))
+        font_match = re.search(r"/([A-Za-z0-9]+)\s+[0-9.]+\s+Tf", da)
+        if font_match and not rich:
+            fontname = font_match.group(1)
+        color_match = re.search(r"color\s*:\s*#([0-9a-f]{6})", rich, re.IGNORECASE)
+        if color_match:
+            color = "#" + color_match.group(1)
+        else:
+            color_match = re.search(
+                r"([-+]?(?:\d+\.?\d*|\.\d+))\s+([-+]?(?:\d+\.?\d*|\.\d+))\s+([-+]?(?:\d+\.?\d*|\.\d+))\s+rg",
+                da,
+            )
+            if color_match:
+                values = [max(0.0, min(1.0, float(v))) for v in color_match.groups()]
+                color = QColor.fromRgbF(*values).name()
+            else:
+                color = "#263247"
+        return max(6, min(48, int(round(fontsize)))), fontname, color
+
     def update_freetext_annotation(self, index: int, xref: int, text: str,
-                                    fontsize: int, fontname: str, target_rect=None):
+                                    fontsize: int, fontname: str, target_rect=None,
+                                    text_color=None, fill_color=None):
         page = self.doc.load_page(int(index))
         old = next((a for a in (page.annots() or []) if int(a.xref) == int(xref)), None)
         if old is None:
@@ -8166,30 +8343,15 @@ class DocumentTab(QWidget):
         old_rect = fitz.Rect(target_rect) if target_rect is not None else fitz.Rect(old.rect)
         old_colors = dict(old.colors or {})
         old_border = dict(old.border or {})
-        # FreeText's text ink is stored in /DA, not Annot.colors. Its /C entry
-        # is surfaced by PyMuPDF as the stroke color, which represents the box fill.
-        try:
-            default_appearance = str(self.doc.xref_get_key(int(xref), "DA")[1] or "")
-        except Exception:
-            default_appearance = ""
-        rgb_match = re.search(
-            r"([-+]?(?:\d+\.?\d*|\.\d+))\s+([-+]?(?:\d+\.?\d*|\.\d+))\s+([-+]?(?:\d+\.?\d*|\.\d+))\s+rg",
-            default_appearance,
-        )
-        gray_match = re.search(
-            r"([-+]?(?:\d+\.?\d*|\.\d+))\s+g(?:\s|$)",
-            default_appearance,
-        )
-        if rgb_match:
-            stroke = tuple(max(0.0, min(1.0, float(value))) for value in rgb_match.groups())
-        elif gray_match:
-            gray = max(0.0, min(1.0, float(gray_match.group(1))))
-            stroke = (gray, gray, gray)
+        old_size, old_font, old_text_color = self._freetext_style_from_xref(int(xref))
+        # Preserve the original text appearance unless the caller explicitly changes it.
+        if text_color is None:
+            stroke = color_tuple(old_text_color)
+        elif isinstance(text_color, (tuple, list)):
+            stroke = tuple(max(0.0, min(1.0, float(value))) for value in text_color[:3])
         else:
-            stroke = color_tuple(self.annotation_colors.get(
-                "text_ink", DEFAULT_ANNOTATION_COLORS["text_ink"]
-            ))
-        fill = old_colors.get("stroke")
+            stroke = color_tuple(text_color)
+        fill = fill_color if fill_color is not None else old_colors.get("stroke")
         if fill is None:
             fill = color_tuple(self.annotation_colors.get(
                 "text_fill", DEFAULT_ANNOTATION_COLORS["text_fill"]
@@ -8208,19 +8370,30 @@ class DocumentTab(QWidget):
         border_width = old_border.get("width", 0.4)
         border_width = 0.4 if border_width is None else max(0.0, float(border_width))
         subject = str(old_info.get("subject") or "")
+        title = str(old_info.get("title") or "Engo PDF Text")
         safe_size = max(6, min(48, int(fontsize)))
-        safe_font = str(fontname or "Helv")
+        safe_font = str(fontname or old_font or "Helv")
+        bold = safe_font in ("HelvB", "HelvBI")
+        italic = safe_font in ("HelvI", "HelvBI")
+        escaped_text = html_escape(str(text or ""), quote=False).replace(chr(10), "<br>")
+        if bold:
+            escaped_text = f"<b>{escaped_text}</b>"
+        if italic:
+            escaped_text = f"<i>{escaped_text}</i>"
+        text_color_hex = QColor.fromRgbF(*stroke[:3]).name()
+        alignment_css = {0: "left", 1: "center", 2: "right"}.get(alignment, "left")
+        rich_html = (
+            f'<p style="font-family:Helvetica;font-size:{safe_size}pt;'
+            f'color:{text_color_hex};text-align:{alignment_css};margin:0">'
+            f'{escaped_text}</p>'
+        )
         self._record_undo()
         page.delete_annot(old)
         new_annot = page.add_freetext_annot(
-            old_rect, str(text or ""), fontsize=safe_size, fontname=safe_font,
-            text_color=stroke, fill_color=fill, align=alignment
-        )  # Keep PDF text left-to-right; never inherit the UI's RTL layout.
+            old_rect, rich_html, fontsize=safe_size, fontname="Helv",
+            text_color=stroke, fill_color=fill, align=alignment, richtext=True
+        )  # PDF FreeText rich text keeps Bold/Italic across saves.
         new_annot.set_border(width=border_width)
-        new_annot.set_info(
-            title=str(old_info.get("title") or "Engo PDF Text"),
-            content=str(text or ""), subject=subject
-        )
         try:
             new_annot.flags = flags
         except Exception:
@@ -8233,8 +8406,15 @@ class DocumentTab(QWidget):
         except Exception:
             pass
         new_annot.update()
-        self.selected_annotation = (int(index), int(new_annot.xref))
-        self.selected_annotations = [(int(index), int(new_annot.xref))]
+        # Calling Annot.set_info() after rich-text creation would replace /RC and
+        # drop the <b>/<i> styles. Update metadata at the xref level instead.
+        new_xref = int(new_annot.xref)
+        self.doc.xref_set_key(new_xref, "Contents", fitz.get_pdf_str(str(text or "")))
+        self.doc.xref_set_key(new_xref, "T", fitz.get_pdf_str(title))
+        if subject:
+            self.doc.xref_set_key(new_xref, "Subj", fitz.get_pdf_str(subject))
+        self.selected_annotation = (int(index), new_xref)
+        self.selected_annotations = [(int(index), new_xref)]
         self.annotationSelectionChanged.emit(True)
         self._changed(index)
         return True

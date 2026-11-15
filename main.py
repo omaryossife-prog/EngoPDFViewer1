@@ -24,7 +24,7 @@ import zipfile
 from pathlib import Path
 import pymupdf as fitz  # use the maintained import name; keep fitz alias for existing calls
 from PIL import Image, ImageOps, ImageChops, ImageFilter
-from PyQt6.QtCore import QObject, Qt, QSize, QSizeF, QRect, QRectF, QPoint, QPointF, QEvent, QTimer, QPropertyAnimation, QParallelAnimationGroup, QVariantAnimation, QEasingCurve, QSettings, QUrl, QThread, QRunnable, QThreadPool, QMarginsF, QStandardPaths, QDir, pyqtSignal, QBuffer, QByteArray, QIODevice, QMimeData, QSignalBlocker, QProcess
+from PyQt6.QtCore import QObject, Qt, QSize, QSizeF, QRect, QRectF, QPoint, QPointF, QEvent, QEventLoop, QTimer, QPropertyAnimation, QParallelAnimationGroup, QVariantAnimation, QEasingCurve, QSettings, QUrl, QThread, QRunnable, QThreadPool, QMarginsF, QStandardPaths, QDir, pyqtSignal, QBuffer, QByteArray, QIODevice, QMimeData, QSignalBlocker, QProcess
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtGui import QColor, QPalette, QImage, QPixmap, QIcon, QFileSystemModel, QPainter, QPen, QBrush, QKeySequence, QShortcut, QAction, QCursor, QPolygonF, QPainterPath, QPainterPathStroker, QDesktopServices, QPdfWriter, QPageSize, QTextDocument, QTextCursor, QFont, QDrag, QContextMenuEvent, QMouseEvent
 from PyQt6.QtWidgets import (
@@ -221,6 +221,31 @@ class MainWindow(QMainWindow):
             self.annotation_colors.update(json.loads(raw_annot_colors) if isinstance(raw_annot_colors, str) else dict(raw_annot_colors))
         except Exception:
             self.annotation_colors = dict(DEFAULT_ANNOTATION_COLORS)
+        self.annotation_colors_apply_to_themes = self.settings.value(
+            "annotation_colors_apply_to_themes", True, type=bool
+        )
+        try:
+            raw_palette_map = self.settings.value("annotation_colors_by_theme", "{}", type=str)
+            self._annotation_color_theme_map = json.loads(raw_palette_map) if raw_palette_map else {}
+            if not isinstance(self._annotation_color_theme_map, dict):
+                self._annotation_color_theme_map = {}
+        except Exception:
+            self._annotation_color_theme_map = {}
+        self._annotation_palette_theme = normalize_ui_theme(
+            self.settings.value("ui_theme", "dark", type=str)
+        )
+        if not self.annotation_colors_apply_to_themes:
+            self.annotation_colors = dict(
+                DEFAULT_ANNOTATION_COLORS,
+                **dict(self._annotation_color_theme_map.get(self._annotation_palette_theme, self.annotation_colors))
+            )
+            self._annotation_color_theme_map.setdefault(
+                self._annotation_palette_theme, dict(self.annotation_colors)
+            )
+        self._pending_document_opens = []
+        self._document_open_in_progress = False
+        self._document_open_loading_owner = False
+        self._document_open_worker = None
         self._fullscreen = False
         self._presentation = False
         self._pre_present_mode = None
@@ -312,6 +337,9 @@ class MainWindow(QMainWindow):
                 app.setWindowIcon(app_icon)
         self.setAcceptDrops(True)
         self._build_ui()
+        # Let the startup splash repaint between the expensive, synchronous UI
+        # construction phases. The main window is still created on the GUI thread.
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         # Home is the first screen. Hide the complete document-tab strip as well
         # as the PDF toolbar so the Home page occupies the full content area.
         # The strip is shown again only when a document view becomes active.
@@ -322,7 +350,9 @@ class MainWindow(QMainWindow):
         self.topbar.hide()
         self._sync_toolbar_pin_button()
         self._apply_style()
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         self._apply_user_interface_preferences()
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         self._apply_interface_language()
         self._set_default_context_help(force=True)
         self._shortcuts()
@@ -787,6 +817,16 @@ class MainWindow(QMainWindow):
         self.translate_btn.setToolTip("Translate a selected PDF region in Engo · choose a region, then see a popup card")
         self.translate_btn.clicked.connect(self.start_translate_selection)
         utility_row.addWidget(self.translate_btn)
+        self.eye_protection_toolbar_btn = self._button(
+            "Eye protection", "action", "eye", "#e7c76a"
+        )
+        self.eye_protection_toolbar_btn.setAccessibleName("Eye protection")
+        self.eye_protection_toolbar_btn.setToolTip(
+            "حماية العين" if str(self.settings.value("interface_language", "en", type=str)).lower().startswith("ar")
+            else "Eye protection"
+        )
+        self.eye_protection_toolbar_btn.clicked.connect(self.open_eye_protection_settings)
+        utility_row.addWidget(self.eye_protection_toolbar_btn)
         self.present_btn = self._button("Present", "action", "present")
         self.present_btn.setToolTip("Presentation mode (F5)")
         self.present_btn.clicked.connect(self.toggle_presentation)
@@ -2764,6 +2804,37 @@ class MainWindow(QMainWindow):
             str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar"),
         )
 
+    def _apply_annotation_color_theme(self, theme):
+        """Load the saved annotation palette for the selected app theme."""
+        theme = normalize_ui_theme(theme)
+        if not hasattr(self, "_annotation_color_theme_map"):
+            self._annotation_color_theme_map = {}
+        previous = str(getattr(self, "_annotation_palette_theme", "") or "")
+        share_all = bool(getattr(self, "annotation_colors_apply_to_themes", True))
+        if previous and previous != theme and not share_all:
+            self._annotation_color_theme_map[previous] = dict(getattr(self, "annotation_colors", {}) or {})
+        if not share_all:
+            palette = self._annotation_color_theme_map.get(theme)
+            if not isinstance(palette, dict):
+                palette = dict(DEFAULT_ANNOTATION_COLORS)
+                self._annotation_color_theme_map[theme] = dict(palette)
+            merged = dict(DEFAULT_ANNOTATION_COLORS)
+            merged.update(palette)
+            self.annotation_colors = merged
+            self.settings.setValue(
+                "annotation_colors_by_theme",
+                json.dumps(self._annotation_color_theme_map, ensure_ascii=False)
+            )
+            if hasattr(self, "tabs"):
+                for index in range(self.tabs.count()):
+                    tab = self.tabs.widget(index)
+                    if isinstance(tab, DocumentTab):
+                        tab.annotation_colors = dict(self.annotation_colors)
+                        tab.canvas.update()
+        else:
+            self._annotation_color_theme_map[theme] = dict(getattr(self, "annotation_colors", {}) or {})
+        self._annotation_palette_theme = theme
+
     def _apply_user_interface_preferences(self):
         scale_text = str(self.settings.value("ui_scale", "1.00", type=str) or "1.00")
         try:
@@ -2771,6 +2842,7 @@ class MainWindow(QMainWindow):
         except Exception:
             scale = 1.0
         theme = normalize_ui_theme(self.settings.value("ui_theme", "dark", type=str))
+        self._apply_annotation_color_theme(theme)
         check_icon_path = resource_path("checkbox_checked.png").replace("\\", "/")
         combo_chevron_asset = "combo_chevron_light.png" if theme == "light" else "combo_chevron_dark.png"
         combo_chevron_path = resource_path(combo_chevron_asset).replace("\\", "/")
@@ -3706,6 +3778,12 @@ class MainWindow(QMainWindow):
             self._apply_toolbar_density(force=True)
         if hasattr(self, "recent_files_table"):
             self._refresh_files_home()
+        eye_button = getattr(self, "eye_protection_toolbar_btn", None)
+        if eye_button is not None:
+            eye_label = "حماية العين" if language == "ar" else "Eye protection"
+            eye_button.setText(eye_label)
+            eye_button.setToolTip(eye_label)
+            eye_button.setAccessibleName(eye_label)
 
         if hasattr(self, "context_help_label"):
             direction = Qt.LayoutDirection.RightToLeft if language == "ar" else Qt.LayoutDirection.LeftToRight
@@ -3910,7 +3988,7 @@ class MainWindow(QMainWindow):
             ])
             item.setToolTip(1, Path(path).name)
             item.setToolTip(2, path)
-            item.setSizeHint(0, QSize(0, 42))
+            item.setSizeHint(0, QSize(0, 84))
             table.addTopLevelItem(item)
 
             type_badge = QLabel(kind)
@@ -4169,10 +4247,10 @@ class MainWindow(QMainWindow):
                     tab.deleteLater()
             self._tab_order.clear()
         for entry in valid_entries:
-            # Give the compact busy dialog another paint/timer turn between
-            # documents when restoring a multi-file session.
-            QApplication.processEvents()
             self.open_pdf(str(entry.get("source_path") or entry["path"]))
+        # Session metadata is applied only after every queued tab has finished
+        # opening; the nested loop continues processing the loading animation.
+        self._wait_for_document_open_queue()
         # Restore explicit links only because the user explicitly requested the
         # previous session. Ordinary multi-file opening never auto-links files.
         for pair in snapshot.get("linked_pairs", []):
@@ -6303,23 +6381,88 @@ class MainWindow(QMainWindow):
                 pass
 
     def _open_supported_document(self, source_path):
-        """Open a supported document after its format entitlement has been approved."""
-        loading_owner = self._begin_operation_loading("file")
-        try:
-            return self._open_supported_document_impl(source_path)
-        finally:
-            self._finish_operation_loading(loading_owner)
+        """Queue a document open so image preparation never blocks the Qt event loop."""
+        source_path = os.path.abspath(str(source_path or ""))
+        if not source_path:
+            return
+        self._pending_document_opens.append(source_path)
+        if not self._document_open_in_progress:
+            self._document_open_in_progress = True
+            self._document_open_loading_owner = self._begin_operation_loading("file")
+        QTimer.singleShot(0, self._start_next_document_open)
 
-    def _open_supported_document_impl(self, source_path):
+    def _start_next_document_open(self):
+        """Prepare queued files sequentially while the compact loading popup animates."""
+        if not self._pending_document_opens:
+            owner = bool(self._document_open_loading_owner)
+            self._document_open_loading_owner = False
+            self._document_open_in_progress = False
+            self._finish_operation_loading(owner)
+            return
+        if self._document_open_worker is not None:
+            return
+        source_path = self._pending_document_opens.pop(0)
+        if is_office_document(source_path):
+            try:
+                self._open_supported_document_impl(source_path)
+            finally:
+                QTimer.singleShot(0, self._start_next_document_open)
+            return
+        worker = ServiceActionWorker(
+            lambda value=source_path: prepare_document_for_viewer(value), self
+        )
+        self._document_open_worker = worker
+        worker.completed.connect(
+            lambda result, error, path=source_path, task=worker:
+                self._document_prepare_completed(path, result, error, task)
+        )
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+
+    def _document_prepare_completed(self, source_path, viewer_path, error, worker):
+        if self._document_open_worker is worker:
+            self._document_open_worker = None
+        if error:
+            QMessageBox.critical(
+                self, APP_NAME, f"Could not prepare this document:\n{error}"
+            )
+        else:
+            self._open_supported_document_impl(source_path, viewer_path=viewer_path)
+        QTimer.singleShot(0, self._start_next_document_open)
+
+    def _wait_for_document_open_queue(self):
+        """Wait with a nested Qt loop, keeping all popup animations and UI timers live."""
+        if not self._document_open_in_progress and not self._pending_document_opens:
+            return
+        loop = QEventLoop(self)
+        poll = QTimer(self)
+        poll.setInterval(25)
+
+        def check_complete():
+            if (not self._document_open_in_progress
+                    and not self._pending_document_opens
+                    and self._document_open_worker is None):
+                loop.quit()
+
+        poll.timeout.connect(check_complete)
+        poll.start()
+        check_complete()
+        if self._document_open_in_progress or self._pending_document_opens or self._document_open_worker is not None:
+            loop.exec()
+        poll.stop()
+        poll.deleteLater()
+
+    def _open_supported_document_impl(self, source_path, viewer_path=None):
         """Perform the actual document preparation and tab creation."""
         if is_office_document(source_path):
             self.open_office_document(source_path)
             return
-        try:
-            viewer_path = prepare_document_for_viewer(source_path)
-        except Exception as exc:
-            QMessageBox.critical(self, APP_NAME, f"Could not prepare this document:\n{exc}")
-            return
+        if viewer_path is None:
+            try:
+                viewer_path = prepare_document_for_viewer(source_path)
+            except Exception as exc:
+                QMessageBox.critical(self, APP_NAME, f"Could not prepare this document:\n{exc}")
+                return
         QApplication.processEvents()
         is_image = is_image_document(source_path)
         for i in range(self.tabs.count()):
@@ -6339,6 +6482,7 @@ class MainWindow(QMainWindow):
         try:
             tab = DocumentTab(viewer_path, self.dark_mode, self.bg_color, self.ink_color, self,
                               self.annotation_colors, self.smart_page_theme)
+            QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
             tab.source_path = source_path
             tab.display_path = source_path
             tab.is_image_source = bool(is_image)
@@ -6379,6 +6523,9 @@ class MainWindow(QMainWindow):
         self._record_recent_file(source_path)
         self.show_status(f"Opened {Path(source_path).name}  ·  {tab.page_count} page(s)")
         self._update_controls()
+        # Paint the opened page while the loading popup is still owned by the
+        # queue; the next queued turn closes it only after this first layout pass.
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
 
     def _open_document_tab_by_path(self, path: str):
         wanted = os.path.normcase(os.path.abspath(path or ""))
@@ -9482,17 +9629,40 @@ class MainWindow(QMainWindow):
         self.show_status("تم تحديث حماية العين" if is_ar else "Eye protection updated")
 
     def open_annotation_colors(self):
-        dlg = AnnotationColorsDialog(self, self.annotation_colors)
+        dlg = AnnotationColorsDialog(
+            self, self.annotation_colors, self.annotation_colors_apply_to_themes
+        )
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            self.annotation_colors = dict(dlg.colors)
+            self.annotation_colors = dict(dlg.values())
+            self.annotation_colors_apply_to_themes = bool(dlg.apply_to_themes)
+            current_theme = normalize_ui_theme(
+                self.settings.value("ui_theme", "dark", type=str)
+            )
+            if self.annotation_colors_apply_to_themes:
+                for theme_name in ("light", "dark", "midnight", "grass", "pink", "orange"):
+                    self._annotation_color_theme_map[theme_name] = dict(self.annotation_colors)
+            else:
+                self._annotation_color_theme_map[current_theme] = dict(self.annotation_colors)
+            self._annotation_palette_theme = current_theme
             self.settings.setValue("annotation_colors", json.dumps(self.annotation_colors))
-            # Apply immediately to open tabs, so every tab uses the same saved color palette.
+            self.settings.setValue(
+                "annotation_colors_by_theme",
+                json.dumps(self._annotation_color_theme_map, ensure_ascii=False)
+            )
+            self.settings.setValue(
+                "annotation_colors_apply_to_themes", self.annotation_colors_apply_to_themes
+            )
+            self.settings.sync()
             for i in range(self.tabs.count()):
                 tab = self.tabs.widget(i)
                 if isinstance(tab, DocumentTab):
                     tab.annotation_colors = dict(self.annotation_colors)
                     tab.canvas.update()
-            self.show_status("Annotation colors saved for new highlights, pen strokes, notes, and text boxes")
+            is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
+            self.show_status(
+                "تم حفظ ألوان وسمك أدوات التعليقات التوضيحية" if is_ar
+                else "Annotation colors and tool thickness saved"
+            )
 
     def _all_document_tags(self):
         """Read the legacy per-document tag registry (used only for migration)."""
@@ -11558,14 +11728,27 @@ def main():
         # Guests have no signed account entitlement payload. Fetch only the
         # public Free-plan app-theme switch so the welcome wizard follows the
         # same database setting as signed-in Free accounts.
-        if not bool(getattr(state, "is_premium", False)):
-            try:
-                public_theme_settings = service.get_public_theme_settings()
-                if public_theme_settings.get("free_app_themes_enabled"):
-                    state.entitlements = dict(getattr(state, "entitlements", {}) or {})
-                    state.entitlements["app_themes"] = {"enabled": True, "limit": None}
-            except Exception:
-                pass
+        if (not bool(getattr(state, "is_premium", False))
+                and not bool(launch_state.get("offline", False))):
+            # Fetch this public switch off the GUI thread. A nested Qt event loop
+            # keeps the startup progress animation running while the network responds.
+            theme_result = {"value": {}}
+            theme_loop = QEventLoop(splash)
+            theme_worker = ServiceActionWorker(service.get_public_theme_settings, splash)
+
+            def public_theme_ready(value, error):
+                theme_result["value"] = value if not error and isinstance(value, dict) else {}
+                theme_loop.quit()
+
+            theme_worker.completed.connect(public_theme_ready)
+            theme_worker.finished.connect(theme_worker.deleteLater)
+            theme_worker.start()
+            theme_loop.exec()
+            theme_worker.wait()
+            public_theme_settings = theme_result["value"]
+            if public_theme_settings.get("free_app_themes_enabled"):
+                state.entitlements = dict(getattr(state, "entitlements", {}) or {})
+                state.entitlements["app_themes"] = {"enabled": True, "limit": None}
         window = MainWindow(license_service=service)
         window._offline_mode = bool(launch_state.get("offline", False))
         if window._offline_mode:
