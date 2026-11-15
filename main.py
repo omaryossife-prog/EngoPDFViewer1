@@ -6482,6 +6482,7 @@ class MainWindow(QMainWindow):
         try:
             tab = DocumentTab(viewer_path, self.dark_mode, self.bg_color, self.ink_color, self,
                               self.annotation_colors, self.smart_page_theme)
+            QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
             tab.source_path = source_path
             tab.display_path = source_path
             tab.is_image_source = bool(is_image)
@@ -6522,6 +6523,9 @@ class MainWindow(QMainWindow):
         self._record_recent_file(source_path)
         self.show_status(f"Opened {Path(source_path).name}  ·  {tab.page_count} page(s)")
         self._update_controls()
+        # Paint the opened page while the loading popup is still owned by the
+        # queue; the next queued turn closes it only after this first layout pass.
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
 
     def _open_document_tab_by_path(self, path: str):
         wanted = os.path.normcase(os.path.abspath(path or ""))
