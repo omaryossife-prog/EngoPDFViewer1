@@ -1183,7 +1183,7 @@ def make_icon(name: str, color: str = "#b7c6dc", size: int = 18) -> QIcon:
         painter.save()
         painter.setPen(QPen(QColor(color), 1.0, Qt.PenStyle.SolidLine,
                             Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-        glyph_font = QFont("Segoe UI", 7, QFont.Weight.Bold)
+        glyph_font = QFont("Segoe UI", 8, QFont.Weight.Bold)
         painter.setFont(glyph_font)
         painter.drawText(QRectF(4.0, 4.0, 9.0, 8.0), Qt.AlignmentFlag.AlignCenter, "A")
         painter.drawText(QRectF(10.5, 11.0, 9.0, 8.0), Qt.AlignmentFlag.AlignCenter, "文")
