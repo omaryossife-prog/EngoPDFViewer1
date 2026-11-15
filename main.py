@@ -9401,7 +9401,12 @@ class MainWindow(QMainWindow):
                 if self._live_tutor_dialog is not None and self._live_tutor_dialog.isVisible():
                     self.refresh_live_tutor_page(self._live_tutor_dialog)
                 self.show_status("Page Theme updated")
-            apply_page_theme_changes()
+            # Smart Theme is a free experimental feature. Other page-theme
+            # applications continue to consume the existing page_themes quota.
+            if not dlg.toggle.isChecked() or dlg.smart_toggle.isChecked():
+                apply_page_theme_changes()
+            else:
+                self._request_feature_access("page_themes", apply_page_theme_changes)
 
     def open_eye_protection_settings(self):
         dialog = EyeProtectionDialog(self)
