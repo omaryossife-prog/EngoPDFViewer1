@@ -6789,7 +6789,7 @@ class MainWindow(QMainWindow):
         self.page_total.setText(f"/ {total}")
         tab = self.active_tab()
         if tab:
-            self.zoom_label.setText({"width": "Fit width", "page": "Fit page"}.get(tab.fit_mode, f"{int(tab.custom_scale * 100)}%"))
+            self.zoom_label.setText({"width": "Fit width", "page": "Fit page"}.get(tab.fit_mode, f"{int(round(float(getattr(tab, '_zoom_target_scale', None) or tab.custom_scale) * 100))}%"))
             self.prev_btn.setEnabled(current > 0)
             self.next_btn.setEnabled(current < total - (2 if tab.book_mode else 1))
             live_worker = getattr(self, "_live_tutor_worker", None)
@@ -6879,7 +6879,7 @@ class MainWindow(QMainWindow):
         tab = self._view_target_tab()
         if tab:
             tab.zoom_by(factor)
-            self.zoom_label.setText(f"{int(tab.custom_scale * 100)}%")
+            self.zoom_label.setText(f"{int(round(float(getattr(tab, '_zoom_target_scale', None) or tab.custom_scale) * 100))}%")
 
     def _apply_zoom_entry(self):
         tab = self._view_target_tab()
@@ -6905,7 +6905,7 @@ class MainWindow(QMainWindow):
         if getattr(tab, "fit_mode", "") == "custom":
             current = float(getattr(tab, "_zoom_target_scale", None) or tab.custom_scale or 1.0)
         tab.zoom_by(requested / max(0.05, current))
-        self.zoom_label.setText(f"{int(round(tab.custom_scale * 100))}%")
+        self.zoom_label.setText(f"{int(round(requested * 100))}%")
         self.zoom_label.clearFocus()
 
     def _set_fit_mode(self, mode):
@@ -10436,7 +10436,7 @@ class MainWindow(QMainWindow):
                 for action in self.rotate_page_menu.actions():
                     action.setEnabled(rotate_allowed)
             self._sync_book_unlink_button(tab)
-            self.zoom_label.setText({"width": "Fit width", "page": "Fit page"}.get(tab.fit_mode, f"{int(tab.custom_scale * 100)}%"))
+            self.zoom_label.setText({"width": "Fit width", "page": "Fit page"}.get(tab.fit_mode, f"{int(round(float(getattr(tab, '_zoom_target_scale', None) or tab.custom_scale) * 100))}%"))
             self.prev_btn.setEnabled(tab.current_page > 0)
             self.next_btn.setEnabled(tab.current_page < tab.page_count - (2 if tab.book_mode else 1))
             companion_for_save = self.linked_supplementary_tab(tab.path)
@@ -10964,7 +10964,7 @@ class MainWindow(QMainWindow):
                     if (key in (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down)
                             and event.modifiers() == Qt.KeyboardModifier.NoModifier
                             and not self._files_screen_active):
-                        tab = self.active_tab()
+                        tab = self._view_target_tab() or self.active_tab()
                         blocked_targets = (
                             QLineEdit, QTextEdit, QComboBox, QSpinBox, QCheckBox,
                             QAbstractItemView, QPushButton, QToolButton, QTabBar, QSlider,
@@ -10984,7 +10984,7 @@ class MainWindow(QMainWindow):
                         if tab is not None and bool(getattr(tab, "book_mode", False)) and not blocked:
                             step = 2
                             next_spread = key in (Qt.Key.Key_Right, Qt.Key.Key_Down)
-                            last_start = max(0, int(tab.page_count) - 2)
+                            last_start = max(0, ((int(tab.page_count) - 1) // 2) * 2)
                             target = int(tab.current_page) + (step if next_spread else -step)
                             target = max(0, min(last_start, target))
                             if target != int(tab.current_page):
