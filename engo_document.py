@@ -1119,10 +1119,10 @@ class DocumentCanvas(QWidget):
                             QColor("#5b9cff"), 2.0, Qt.PenStyle.SolidLine,
                             Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin
                         )
-                        # The geometry is transformed while dragging, but the
-                        # selection stroke is a screen-space guide. A cosmetic pen
-                        # keeps its visible thickness constant at every zoom/size.
-                        selection_outline_pen.setCosmetic(True)
+                        # Transform the preview outline with the annotation itself.
+                        # Its rendered thickness then matches the scaled PDF border
+                        # committed by transform_annotation() on mouse release.
+                        selection_outline_pen.setCosmetic(False)
                         painter.setPen(selection_outline_pen)
                         painter.setBrush(Qt.BrushStyle.NoBrush)
                         # A selected Pen-tool shape keeps its own stroke untouched:
@@ -7350,6 +7350,18 @@ class DocumentTab(QWidget):
             opacity = annot.opacity
             border = dict(annot.border or {})
             original_line_ends = tuple(getattr(annot, "line_ends", (0, 0)) or (0, 0))
+            scale_x = abs(float(new_display.width())) / max(abs(float(old_display.width())), 1.0)
+            scale_y = abs(float(new_display.height())) / max(abs(float(old_display.height())), 1.0)
+            # A PDF annotation stores stroke width separately from its geometry.
+            # Scale it too; otherwise the live transformed preview looks correct,
+            # then MuPDF recreates the released shape with the old, thinner border.
+            border_scale = math.sqrt(max(0.0025, scale_x * scale_y))
+            border_scale = max(0.05, min(20.0, border_scale))
+            original_border_width = border.get("width")
+            scaled_border_width = (
+                max(0.1, min(72.0, float(original_border_width) * border_scale))
+                if original_border_width is not None else None
+            )
 
             def remap_pdf_point(point):
                 display_point = canvas._pdf_to_display(page_index, page_rect, fitz.Point(point))
@@ -7444,8 +7456,8 @@ class DocumentTab(QWidget):
                     updated.set_line_ends(int(original_line_ends[0]), int(original_line_ends[1]))
                 if colors.get("stroke") or colors.get("fill"):
                     updated.set_colors(stroke=colors.get("stroke"), fill=colors.get("fill"))
-                if border.get("width") is not None and replacement_kind != "highlight":
-                    updated.set_border(width=float(border.get("width", 2.0)))
+                if scaled_border_width is not None and replacement_kind != "highlight":
+                    updated.set_border(width=scaled_border_width)
                 if opacity is not None and opacity >= 0:
                     updated.set_opacity(opacity)
                 if info.get("content") or info.get("title"):
@@ -7470,6 +7482,9 @@ class DocumentTab(QWidget):
                 xref = new_xref
             else:
                 annot.set_rect(replacement_data)
+                if (scaled_border_width is not None
+                        and subtype_code != getattr(fitz, "PDF_ANNOT_TEXT", 0)):
+                    annot.set_border(width=scaled_border_width)
                 annot.update()
                 refreshed = next((a for a in (page.annots() or []) if int(a.xref) == int(xref)), None)
                 if refreshed is None:
