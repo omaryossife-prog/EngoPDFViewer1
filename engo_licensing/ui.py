@@ -171,7 +171,7 @@ class EngoSplashScreen(QWidget):
         outer.addWidget(self.card)
         layout = QVBoxLayout(self.card)
         layout.setContentsMargins(42, 16, 42, 28)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 0, 0)
         top_row.addStretch(1)
@@ -200,6 +200,7 @@ class EngoSplashScreen(QWidget):
         logo_row.addWidget(self.logo)
         logo_row.addStretch(1)
         layout.addLayout(logo_row)
+        layout.addSpacing(5)
 
         self.brand = QLabel("ENGO")
         self.brand.setObjectName("splashBrand")
@@ -229,10 +230,10 @@ class EngoSplashScreen(QWidget):
         action_row.setContentsMargins(0, 10, 0, 0)
         action_row.setSpacing(10)
         self.retry_button = QPushButton("إعادة المحاولة" if self.language == "ar" else "Retry")
-        self.free_button = QPushButton("متابعة بالنسخة المجانية" if self.language == "ar" else "Continue with Free")
+        self.free_button = QPushButton("متابعة بدون اتصال" if self.language == "ar" else "Continue offline")
         self.free_button.setObjectName("freeButton")
         self.retry_button.clicked.connect(self.retry_requested.emit)
-        self.free_button.clicked.connect(self.continue_free_requested.emit)
+        self.free_button.clicked.connect(self._confirm_continue_offline)
         action_row.addWidget(self.retry_button)
         action_row.addWidget(self.free_button)
         self.actions.hide()
@@ -276,19 +277,18 @@ class EngoSplashScreen(QWidget):
             self.move(geometry.center() - self.rect().center())
 
     def _animate_logo(self):
+        # Keep the logo's size fixed so the vertical layout always reserves its
+        # full height; the opacity and glow animations provide the entrance effect.
         self._logo_scale = min(100, self._logo_scale + 7)
-        size = 64 + round(26 * self._logo_scale / 100)
-        self.logo.setFixedSize(size, size)
         if not self._logo_icon.isNull():
-            self.logo.setPixmap(self._logo_icon.pixmap(QSize(max(32, size - 24), max(32, size - 24))))
+            self.logo.setPixmap(self._logo_icon.pixmap(QSize(44, 44)))
         else:
             acc = getattr(self, "_splash_accent", "#76a9ff")
             panel = getattr(self, "_splash_panel", "#15243a")
             bdr = getattr(self, "_splash_bdr", "#30496b")
             self.logo.setStyleSheet(
                 f"background:{panel}; border:2px solid {bdr}; "
-                f"border-radius:{max(18, round(size * .31))}px; color:{acc}; "
-                f"font-size:{38 + int(self._logo_scale * .10)}px; font-weight:900;"
+                f"border-radius:24px; color:{acc}; font-size:38px; font-weight:900;"
             )
         if self._logo_scale >= 100:
             self._logo_animation.stop()
@@ -338,6 +338,25 @@ class EngoSplashScreen(QWidget):
         self.detail.setText(message[:240])
         self.actions.show()
         self.retry_button.setEnabled(True)
+
+    def _confirm_continue_offline(self):
+        is_ar = self.language == "ar"
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("متابعة بدون اتصال" if is_ar else "Continue offline")
+        box.setText(
+            "قد لا تتمكن من استخدام بعض الميزات التي تتطلب اتصالًا بالإنترنت أو تحققًا من الحساب والتراخيص."
+            if is_ar else
+            "You may be unable to use some features that require an internet connection or account and license verification."
+        )
+        continue_button = box.addButton(
+            "متابعة بدون اتصال" if is_ar else "Continue offline",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        box.addButton("إلغاء" if is_ar else "Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is continue_button:
+            self.continue_free_requested.emit()
 
     def begin_retry(self):
         self.actions.hide()
