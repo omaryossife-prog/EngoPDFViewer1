@@ -1174,8 +1174,20 @@ def make_icon(name: str, color: str = "#b7c6dc", size: int = 18) -> QIcon:
         painter.drawEllipse(QRectF(6, 3, 12, 12)); path([(9, 15), (9, 18), (15, 18), (15, 15)]); line(10,21,14,21)
         line(12,6,12,10); painter.drawEllipse(QRectF(11.3,11.5,1.4,1.4))
     elif name == "translate":
-        line(3,5,15,5); line(9,3,9,5); path([(5,8),(9,13),(13,8)]); line(5,8,13,8)
-        path([(13,13),(21,21),(16,21),(13,13)]); line(16,16,20,16)
+        # Two overlapping speech cards with language marks: a clearer visual for
+        # translating selected text between languages than the previous abstract glyph.
+        painter.drawRoundedRect(QRectF(2.5, 2.5, 12.5, 11.5), 2.2, 2.2)
+        path([(5.0, 14.0), (4.0, 17.0), (8.0, 14.0)])
+        painter.drawRoundedRect(QRectF(9.0, 10.0, 12.5, 11.5), 2.2, 2.2)
+        path([(17.0, 21.5), (16.0, 23.0), (20.0, 21.5)])
+        painter.save()
+        painter.setPen(QPen(QColor(color), 1.0, Qt.PenStyle.SolidLine,
+                            Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        glyph_font = QFont("Segoe UI", 7, QFont.Weight.Bold)
+        painter.setFont(glyph_font)
+        painter.drawText(QRectF(4.0, 4.0, 9.0, 8.0), Qt.AlignmentFlag.AlignCenter, "A")
+        painter.drawText(QRectF(10.5, 11.0, 9.0, 8.0), Qt.AlignmentFlag.AlignCenter, "文")
+        painter.restore()
     elif name == "ocr":
         path([(8,3),(3,3),(3,8)]); path([(16,3),(21,3),(21,8)]); path([(3,16),(3,21),(8,21)]); path([(21,16),(21,21),(16,21)])
         line(7,9,17,9); line(7,12,17,12); line(7,15,14,15)
