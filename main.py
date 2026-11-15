@@ -3581,8 +3581,10 @@ class MainWindow(QMainWindow):
             "Dark Mode / Custom Document Colors": "الوضع الداكن / ألوان مخصصة للمستند", "Recolors rendered page pixels, including scanned notes and embedded images.": "يغيّر ألوان الصفحة المعروضة، بما في ذلك الملاحظات الممسوحة ضوئيًا والصور المضمّنة.",
             "Page background": "خلفية الصفحة", "Text / ink": "لون النص", "Text / ink color": "لون النص", "Quick presets": "مظاهر سريعة",
             "Save current as…": "حفظ الإعدادات الحالية باسم…", "Delete saved theme": "حذف المظهر المحفوظ", "Apply": "تطبيق",
-            "ANNOTATION COLORS": "ألوان التعليقات التوضيحية", "Annotation Colors": "ألوان التعليقات التوضيحية",
+            "ANNOTATION SETTINGS": "إعدادات التعليقات التوضيحية",
+            "Annotation Settings": "إعدادات التعليقات التوضيحية",
             "These colors are used for new annotations. Existing annotations keep their saved colors.": "تُستخدم هذه الألوان للتعليقات التوضيحية الجديدة، بينما تحتفظ التعليقات الحالية بألوانها المحفوظة.",
+            "Click the circle beside an option to change its color.": "يمكنك تغيير اللون بالضغط على الدائرة بجانب الخيار.",
             "Pen / drawing color": "لون القلم / الرسم", "Highlight color": "لون التظليل", "Sticky note marker color": "لون علامة الملاحظة اللاصقة",
             "Text box font color": "لون خط مربع النص", "Text box background color": "لون خلفية مربع النص", "Save colors": "حفظ الألوان",
         }
@@ -3594,7 +3596,10 @@ class MainWindow(QMainWindow):
                 return translations.get(source, _engo_translate_tooltip(source, "ar"))
             return _reverse_ui_translations.get(source, _engo_translate_tooltip(source, "en"))
         # Window titles are not QLabel/Button text, so translate them explicitly.
-        dialog_title_translations = {"Page Theme": "مظهر الصفحة", "Annotation Colors": "ألوان التعليقات التوضيحية"}
+        dialog_title_translations = {
+            "Page Theme": "مظهر الصفحة",
+            "Annotation Settings": "إعدادات التعليقات التوضيحية",
+        }
         for dialog_widget in self.findChildren(QDialog):
             try:
                 original_title = dialog_widget.property("engoOriginalWindowTitle")
