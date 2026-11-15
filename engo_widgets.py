@@ -1244,7 +1244,7 @@ def _configure_color_dialog(dialog, is_ar=False):
 def _engo_file_dialog(parent, title_en, title_ar, start_path, name_filter, *, save=False, multiple=False, native=False):
     """Themed in-app picker, with an optional genuine Windows-native file dialog."""
     if native:
-        # Real Windows (native) open dialog, titled in the current interface language.
+        # Use the Windows shell's native picker, titled in the current interface language.
         try:
             _host = parent.window() if parent is not None else None
             _settings = getattr(_host, "settings", None)
@@ -1692,6 +1692,7 @@ class PageThemeDialog(QDialog):
     def __init__(self, parent, enabled: bool, bg: str, ink: str, custom_themes=None, smart_enabled: bool = False,
                  is_premium: bool = False):
         super().__init__(parent)
+        parent_settings = None
         try:
             parent_settings = getattr(parent, "settings", None)
             language_value = parent_settings.value("interface_language", "en", type=str) if parent_settings is not None else "en"
