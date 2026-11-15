@@ -856,6 +856,42 @@ class DocumentCanvas(QWidget):
                          or pixmap.height() != max(1, round(rect.height())))):
                 painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
             painter.drawPixmap(rect.toRect(), pixmap)
+
+            # Eye Protection is a display-only overlay. It never modifies the PDF
+            # raster cache or saved document, and later annotation/tag drawing
+            # stays visible above this page tint.
+            try:
+                host_window = self.window()
+                eye_settings = getattr(host_window, "settings", None)
+                if eye_settings is not None:
+                    warmth_enabled = eye_settings.value(
+                        "eye_protection_warmth_enabled", False, type=bool
+                    )
+                    warmth = max(0, min(100, int(eye_settings.value(
+                        "eye_protection_warmth", 35, type=int
+                    ))))
+                    brightness_enabled = eye_settings.value(
+                        "eye_protection_brightness_enabled", False, type=bool
+                    )
+                    brightness = max(0, min(100, int(eye_settings.value(
+                        "eye_protection_brightness", 50, type=int
+                    ))))
+                    if warmth_enabled and warmth > 0:
+                        painter.fillRect(
+                            rect,
+                            QColor(255, 211, 145, round(warmth * 0.82))
+                        )
+                    if brightness_enabled and brightness != 50:
+                        amount = abs(brightness - 50)
+                        alpha = round(amount * 1.55)
+                        overlay_color = (
+                            QColor(255, 255, 255, alpha)
+                            if brightness > 50 else QColor(0, 0, 0, alpha)
+                        )
+                        painter.fillRect(rect, overlay_color)
+            except (RuntimeError, TypeError, ValueError, AttributeError):
+                pass
+
             # Region tags are re-drawn above the themed page image so each tag keeps
             # its own chosen color in both light and dark page themes.
             if abs(visual_scale - 1.0) < 0.001:
