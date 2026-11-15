@@ -75,3 +75,36 @@ def test_startup_splash_logo_is_larger():
     splash = read("engo_licensing/ui.py")
     assert "self.logo.setFixedSize(76, 76)" in splash
     assert "pixmap(QSize(56, 56))" in splash
+
+
+def test_recent_files_table_uses_real_tall_rows_and_stretches_to_window():
+    main = read("main.py")
+    start = main.index("self.recent_files_table = QTreeWidget()")
+    end = main.index("root.addWidget(self.recent_files_table, 1)", start)
+    table_setup = main[start:end]
+    assert "setUniformRowHeights(False)" in table_setup
+    assert "QHeaderView.ResizeMode.Stretch" in table_setup
+    assert "self.recent_files_table.setMinimumHeight(300)" in table_setup
+    refresh_start = main.index("def _refresh_files_home(self):")
+    refresh_end = main.index("\n    def ", refresh_start + 10)
+    refresh = main[refresh_start:refresh_end]
+    assert '["النوع", "اسم الملف", "المكان", "ع", "آخر فتح", "فتح"]' in refresh
+    assert '["Type", "File name", "Location", "n", "Last opened", "Open"]' in refresh
+    assert "item.setSizeHint(0, QSize(0, 76))" in refresh
+
+
+def test_annotation_settings_name_note_and_fixed_preview_rows():
+    widgets = read("engo_widgets.py")
+    assert 'إعدادات التعليقات التوضيحية' in widgets
+    assert 'Click the circle beside an option to change its color.' in widgets
+    assert 'يمكنك تغيير اللون بالضغط على الدائرة بجانب الخيار.' in widgets
+    assert 'container_size=64 if is_resizable_swatch else None' in widgets
+    assert 'value * self._display_scale' in widgets
+
+
+def test_annotation_and_eye_sliders_have_transparent_track_and_rtl_direction():
+    widgets = read("engo_widgets.py")
+    assert 'QSlider::groove:horizontal {\n            height:5px; background:transparent; border:0;' in widgets
+    assert "slider.setInvertedAppearance(self._is_ar)" in widgets
+    assert "self.warmth_slider.setInvertedAppearance(self._is_ar)" in widgets
+    assert "self.brightness_slider.setInvertedAppearance(self._is_ar)" in widgets
