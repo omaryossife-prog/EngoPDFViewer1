@@ -162,8 +162,13 @@ class ResponsiveSidebarTabs(QWidget):
                 color = "#e6efff"
         color = str(color)
         icon_widgets = list(self._buttons)
+        trailing_buttons = []
         if self._trailing_widget is not None:
-            icon_widgets.append(self._trailing_widget)
+            if isinstance(self._trailing_widget, QToolButton):
+                trailing_buttons = [self._trailing_widget]
+            else:
+                trailing_buttons = list(self._trailing_widget.findChildren(QToolButton))
+            icon_widgets.extend(trailing_buttons)
         for button in icon_widgets:
             icon_name = str(button.property("engoIconName") or "")
             if not icon_name:
@@ -172,38 +177,40 @@ class ResponsiveSidebarTabs(QWidget):
             button.setIconSize(QSize(15, 15) if button in self._buttons else QSize(16, 16))
             button.update()
 
-        # The compact page-overview action is a real third sidebar card, not a
-        # transparent floating glyph. Keep its shape/states aligned with Pages
-        # and Contents while allowing it to remain narrower than the text tabs.
-        if self._trailing_widget is not None and self._trailing_widget.objectName() == "pageOverviewButton":
-            try:
-                host = self.window()
-                settings = getattr(host, "settings", None)
-                theme_name = normalize_ui_theme(
-                    settings.value("ui_theme", "dark", type=str) if settings is not None else "dark"
-                )
-                tokens = engo_ui_theme_tokens(theme_name)
-                selected_bg = tokens["panel"] if theme_name == "midnight" else tokens["selection"]
-                self._trailing_widget.setStyleSheet(f"""
-                    QToolButton#pageOverviewButton {{
+        # Both Eye Protection and Page Overview remain real compact controls.
+        # Reapply their themed surfaces whenever the document UI theme changes.
+        try:
+            host = self.window()
+            settings = getattr(host, "settings", None)
+            theme_name = normalize_ui_theme(
+                settings.value("ui_theme", "dark", type=str) if settings is not None else "dark"
+            )
+            tokens = engo_ui_theme_tokens(theme_name)
+            selected_bg = tokens["panel"] if theme_name == "midnight" else tokens["selection"]
+            for trailing_button in trailing_buttons:
+                object_name = trailing_button.objectName()
+                if object_name not in ("pageOverviewButton", "eyeProtectionButton"):
+                    continue
+                trailing_button.setStyleSheet(f"""
+                    QToolButton#{object_name} {{
                         background: {tokens['panel_alt']}; color: {tokens['muted']};
                         border: 1px solid {tokens['border']}; border-radius: 7px;
                         padding: 0px; margin: 0px;
                     }}
-                    QToolButton#pageOverviewButton:hover {{
+                    QToolButton#{object_name}:hover {{
                         background: {tokens['hover']}; color: {tokens['text']};
                         border: 1px solid {tokens['accent']};
                     }}
-                    QToolButton#pageOverviewButton:checked,
-                    QToolButton#pageOverviewButton:checked:hover {{
+                    QToolButton#{object_name}:checked,
+                    QToolButton#{object_name}:checked:hover {{
                         background: {selected_bg}; color: {tokens['text']};
                         border: 1px solid {tokens['accent']};
                         border-bottom: 1px solid {tokens['accent']};
                     }}
                 """)
-                self._trailing_widget.setAutoRaise(False)
-            except (RuntimeError, AttributeError):
-                pass
+                trailing_button.setAutoRaise(False)
+        except (RuntimeError, AttributeError):
+            pass
 
     def showEvent(self, event):
         super().showEvent(event)
