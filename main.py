@@ -24,7 +24,7 @@ import zipfile
 from pathlib import Path
 import pymupdf as fitz  # use the maintained import name; keep fitz alias for existing calls
 from PIL import Image, ImageOps, ImageChops, ImageFilter
-from PyQt6.QtCore import QObject, Qt, QSize, QSizeF, QRect, QRectF, QPoint, QPointF, QEvent, QTimer, QPropertyAnimation, QParallelAnimationGroup, QVariantAnimation, QEasingCurve, QSettings, QUrl, QThread, QRunnable, QThreadPool, QMarginsF, QStandardPaths, QDir, pyqtSignal, QBuffer, QByteArray, QIODevice, QMimeData, QSignalBlocker, QProcess
+from PyQt6.QtCore import QObject, Qt, QSize, QSizeF, QRect, QRectF, QPoint, QPointF, QEvent, QEventLoop, QTimer, QPropertyAnimation, QParallelAnimationGroup, QVariantAnimation, QEasingCurve, QSettings, QUrl, QThread, QRunnable, QThreadPool, QMarginsF, QStandardPaths, QDir, pyqtSignal, QBuffer, QByteArray, QIODevice, QMimeData, QSignalBlocker, QProcess
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtGui import QColor, QPalette, QImage, QPixmap, QIcon, QFileSystemModel, QPainter, QPen, QBrush, QKeySequence, QShortcut, QAction, QCursor, QPolygonF, QPainterPath, QPainterPathStroker, QDesktopServices, QPdfWriter, QPageSize, QTextDocument, QTextCursor, QFont, QDrag, QContextMenuEvent, QMouseEvent
 from PyQt6.QtWidgets import (
@@ -221,6 +221,31 @@ class MainWindow(QMainWindow):
             self.annotation_colors.update(json.loads(raw_annot_colors) if isinstance(raw_annot_colors, str) else dict(raw_annot_colors))
         except Exception:
             self.annotation_colors = dict(DEFAULT_ANNOTATION_COLORS)
+        self.annotation_colors_apply_to_themes = self.settings.value(
+            "annotation_colors_apply_to_themes", True, type=bool
+        )
+        try:
+            raw_palette_map = self.settings.value("annotation_colors_by_theme", "{}", type=str)
+            self._annotation_color_theme_map = json.loads(raw_palette_map) if raw_palette_map else {}
+            if not isinstance(self._annotation_color_theme_map, dict):
+                self._annotation_color_theme_map = {}
+        except Exception:
+            self._annotation_color_theme_map = {}
+        self._annotation_palette_theme = normalize_ui_theme(
+            self.settings.value("ui_theme", "dark", type=str)
+        )
+        if not self.annotation_colors_apply_to_themes:
+            self.annotation_colors = dict(
+                DEFAULT_ANNOTATION_COLORS,
+                **dict(self._annotation_color_theme_map.get(self._annotation_palette_theme, self.annotation_colors))
+            )
+            self._annotation_color_theme_map.setdefault(
+                self._annotation_palette_theme, dict(self.annotation_colors)
+            )
+        self._pending_document_opens = []
+        self._document_open_in_progress = False
+        self._document_open_loading_owner = False
+        self._document_open_worker = None
         self._fullscreen = False
         self._presentation = False
         self._pre_present_mode = None
@@ -787,6 +812,16 @@ class MainWindow(QMainWindow):
         self.translate_btn.setToolTip("Translate a selected PDF region in Engo · choose a region, then see a popup card")
         self.translate_btn.clicked.connect(self.start_translate_selection)
         utility_row.addWidget(self.translate_btn)
+        self.eye_protection_toolbar_btn = self._button(
+            "Eye protection", "action", "eye", "#e7c76a"
+        )
+        self.eye_protection_toolbar_btn.setAccessibleName("Eye protection")
+        self.eye_protection_toolbar_btn.setToolTip(
+            "حماية العين" if str(self.settings.value("interface_language", "en", type=str)).lower().startswith("ar")
+            else "Eye protection"
+        )
+        self.eye_protection_toolbar_btn.clicked.connect(self.open_eye_protection_settings)
+        utility_row.addWidget(self.eye_protection_toolbar_btn)
         self.present_btn = self._button("Present", "action", "present")
         self.present_btn.setToolTip("Presentation mode (F5)")
         self.present_btn.clicked.connect(self.toggle_presentation)
@@ -2764,6 +2799,35 @@ class MainWindow(QMainWindow):
             str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar"),
         )
 
+    def _apply_annotation_color_theme(self, theme):
+        """Load the saved annotation palette for the selected app theme."""
+        theme = normalize_ui_theme(theme)
+        if not hasattr(self, "_annotation_color_theme_map"):
+            self._annotation_color_theme_map = {}
+        previous = str(getattr(self, "_annotation_palette_theme", "") or "")
+        if previous and previous != theme and not bool(getattr(self, "annotation_colors_apply_to_themes", True)):
+            self._annotation_color_theme_map[previous] = dict(getattr(self, "annotation_colors", {}) or {})
+        if not bool(getattr(self, "annotation_colors_apply_to_themes", True)):
+            palette = self._annotation_color_theme_map.get(theme)
+            if not isinstance(palette, dict):
+                palette = dict(DEFAULT_ANNOTATION_COLORS)
+                self._annotation_color_theme_map[theme] = dict(palette)
+            merged = dict(DEFAULT_ANNOTATION_COLORS)
+            merged.update(palette)
+            self.annotation_colors = merged
+            self.settings.setValue(
+                "annotation_colors_by_theme",
+                json.dumps(self._annotation_color_theme_map, ensure_ascii=False)
+            )
+            for index in range(getattr(self, "tabs", QStackedWidget()).count() if hasattr(self, "tabs") else 0):
+                tab = self.tabs.widget(index)
+                if isinstance(tab, DocumentTab):
+                    tab.annotation_colors = dict(self.annotation_colors)
+                    tab.canvas.update()
+        else:
+            self._annotation_color_theme_map[theme] = dict(getattr(self, "annotation_colors", {}) or {})
+        self._annotation_palette_theme = theme
+
     def _apply_user_interface_preferences(self):
         scale_text = str(self.settings.value("ui_scale", "1.00", type=str) or "1.00")
         try:
@@ -2771,6 +2835,7 @@ class MainWindow(QMainWindow):
         except Exception:
             scale = 1.0
         theme = normalize_ui_theme(self.settings.value("ui_theme", "dark", type=str))
+        self._apply_annotation_color_theme(theme)
         check_icon_path = resource_path("checkbox_checked.png").replace("\\", "/")
         combo_chevron_asset = "combo_chevron_light.png" if theme == "light" else "combo_chevron_dark.png"
         combo_chevron_path = resource_path(combo_chevron_asset).replace("\\", "/")
@@ -3910,7 +3975,7 @@ class MainWindow(QMainWindow):
             ])
             item.setToolTip(1, Path(path).name)
             item.setToolTip(2, path)
-            item.setSizeHint(0, QSize(0, 42))
+            item.setSizeHint(0, QSize(0, 84))
             table.addTopLevelItem(item)
 
             type_badge = QLabel(kind)
@@ -9482,17 +9547,40 @@ class MainWindow(QMainWindow):
         self.show_status("تم تحديث حماية العين" if is_ar else "Eye protection updated")
 
     def open_annotation_colors(self):
-        dlg = AnnotationColorsDialog(self, self.annotation_colors)
+        dlg = AnnotationColorsDialog(
+            self, self.annotation_colors, self.annotation_colors_apply_to_themes
+        )
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            self.annotation_colors = dict(dlg.colors)
+            self.annotation_colors = dict(dlg.values())
+            self.annotation_colors_apply_to_themes = bool(dlg.apply_to_themes)
+            current_theme = normalize_ui_theme(
+                self.settings.value("ui_theme", "dark", type=str)
+            )
+            if self.annotation_colors_apply_to_themes:
+                for theme_name in ("light", "dark", "midnight", "grass", "pink", "orange"):
+                    self._annotation_color_theme_map[theme_name] = dict(self.annotation_colors)
+            else:
+                self._annotation_color_theme_map[current_theme] = dict(self.annotation_colors)
+            self._annotation_palette_theme = current_theme
             self.settings.setValue("annotation_colors", json.dumps(self.annotation_colors))
-            # Apply immediately to open tabs, so every tab uses the same saved color palette.
+            self.settings.setValue(
+                "annotation_colors_by_theme",
+                json.dumps(self._annotation_color_theme_map, ensure_ascii=False)
+            )
+            self.settings.setValue(
+                "annotation_colors_apply_to_themes", self.annotation_colors_apply_to_themes
+            )
+            self.settings.sync()
             for i in range(self.tabs.count()):
                 tab = self.tabs.widget(i)
                 if isinstance(tab, DocumentTab):
                     tab.annotation_colors = dict(self.annotation_colors)
                     tab.canvas.update()
-            self.show_status("Annotation colors saved for new highlights, pen strokes, notes, and text boxes")
+            is_ar = str(self.settings.value("interface_language", "en", type=str) or "en").lower().startswith("ar")
+            self.show_status(
+                "تم حفظ ألوان وسمك أدوات التعليقات التوضيحية" if is_ar
+                else "Annotation colors and tool thickness saved"
+            )
 
     def _all_document_tags(self):
         """Read the legacy per-document tag registry (used only for migration)."""
