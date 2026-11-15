@@ -1572,6 +1572,8 @@ class AIChatPanel(QFrame):
         """Use the active theme's foreground for the chat expand/restore glyph."""
         try:
             theme = normalize_ui_theme(self.settings.value("ui_theme", "dark", type=str))
+            if theme == "light":
+                return "#111111"
             return engo_ui_theme_tokens(theme)["text"]
         except Exception:
             return "#b7c6dc"
