@@ -2805,9 +2805,10 @@ class MainWindow(QMainWindow):
         if not hasattr(self, "_annotation_color_theme_map"):
             self._annotation_color_theme_map = {}
         previous = str(getattr(self, "_annotation_palette_theme", "") or "")
-        if previous and previous != theme and not bool(getattr(self, "annotation_colors_apply_to_themes", True)):
+        share_all = bool(getattr(self, "annotation_colors_apply_to_themes", True))
+        if previous and previous != theme and not share_all:
             self._annotation_color_theme_map[previous] = dict(getattr(self, "annotation_colors", {}) or {})
-        if not bool(getattr(self, "annotation_colors_apply_to_themes", True)):
+        if not share_all:
             palette = self._annotation_color_theme_map.get(theme)
             if not isinstance(palette, dict):
                 palette = dict(DEFAULT_ANNOTATION_COLORS)
@@ -2819,11 +2820,12 @@ class MainWindow(QMainWindow):
                 "annotation_colors_by_theme",
                 json.dumps(self._annotation_color_theme_map, ensure_ascii=False)
             )
-            for index in range(getattr(self, "tabs", QStackedWidget()).count() if hasattr(self, "tabs") else 0):
-                tab = self.tabs.widget(index)
-                if isinstance(tab, DocumentTab):
-                    tab.annotation_colors = dict(self.annotation_colors)
-                    tab.canvas.update()
+            if hasattr(self, "tabs"):
+                for index in range(self.tabs.count()):
+                    tab = self.tabs.widget(index)
+                    if isinstance(tab, DocumentTab):
+                        tab.annotation_colors = dict(self.annotation_colors)
+                        tab.canvas.update()
         else:
             self._annotation_color_theme_map[theme] = dict(getattr(self, "annotation_colors", {}) or {})
         self._annotation_palette_theme = theme
@@ -4234,10 +4236,10 @@ class MainWindow(QMainWindow):
                     tab.deleteLater()
             self._tab_order.clear()
         for entry in valid_entries:
-            # Give the compact busy dialog another paint/timer turn between
-            # documents when restoring a multi-file session.
-            QApplication.processEvents()
             self.open_pdf(str(entry.get("source_path") or entry["path"]))
+        # Session metadata is applied only after every queued tab has finished
+        # opening; the nested loop continues processing the loading animation.
+        self._wait_for_document_open_queue()
         # Restore explicit links only because the user explicitly requested the
         # previous session. Ordinary multi-file opening never auto-links files.
         for pair in snapshot.get("linked_pairs", []):
@@ -6368,23 +6370,88 @@ class MainWindow(QMainWindow):
                 pass
 
     def _open_supported_document(self, source_path):
-        """Open a supported document after its format entitlement has been approved."""
-        loading_owner = self._begin_operation_loading("file")
-        try:
-            return self._open_supported_document_impl(source_path)
-        finally:
-            self._finish_operation_loading(loading_owner)
+        """Queue a document open so image preparation never blocks the Qt event loop."""
+        source_path = os.path.abspath(str(source_path or ""))
+        if not source_path:
+            return
+        self._pending_document_opens.append(source_path)
+        if not self._document_open_in_progress:
+            self._document_open_in_progress = True
+            self._document_open_loading_owner = self._begin_operation_loading("file")
+        QTimer.singleShot(0, self._start_next_document_open)
 
-    def _open_supported_document_impl(self, source_path):
+    def _start_next_document_open(self):
+        """Prepare queued files sequentially while the compact loading popup animates."""
+        if not self._pending_document_opens:
+            owner = bool(self._document_open_loading_owner)
+            self._document_open_loading_owner = False
+            self._document_open_in_progress = False
+            self._finish_operation_loading(owner)
+            return
+        if self._document_open_worker is not None:
+            return
+        source_path = self._pending_document_opens.pop(0)
+        if is_office_document(source_path):
+            try:
+                self._open_supported_document_impl(source_path)
+            finally:
+                QTimer.singleShot(0, self._start_next_document_open)
+            return
+        worker = ServiceActionWorker(
+            lambda value=source_path: prepare_document_for_viewer(value), self
+        )
+        self._document_open_worker = worker
+        worker.completed.connect(
+            lambda result, error, path=source_path, task=worker:
+                self._document_prepare_completed(path, result, error, task)
+        )
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+
+    def _document_prepare_completed(self, source_path, viewer_path, error, worker):
+        if self._document_open_worker is worker:
+            self._document_open_worker = None
+        if error:
+            QMessageBox.critical(
+                self, APP_NAME, f"Could not prepare this document:\n{error}"
+            )
+        else:
+            self._open_supported_document_impl(source_path, viewer_path=viewer_path)
+        QTimer.singleShot(0, self._start_next_document_open)
+
+    def _wait_for_document_open_queue(self):
+        """Wait with a nested Qt loop, keeping all popup animations and UI timers live."""
+        if not self._document_open_in_progress and not self._pending_document_opens:
+            return
+        loop = QEventLoop(self)
+        poll = QTimer(self)
+        poll.setInterval(25)
+
+        def check_complete():
+            if (not self._document_open_in_progress
+                    and not self._pending_document_opens
+                    and self._document_open_worker is None):
+                loop.quit()
+
+        poll.timeout.connect(check_complete)
+        poll.start()
+        check_complete()
+        if self._document_open_in_progress or self._pending_document_opens or self._document_open_worker is not None:
+            loop.exec()
+        poll.stop()
+        poll.deleteLater()
+
+    def _open_supported_document_impl(self, source_path, viewer_path=None):
         """Perform the actual document preparation and tab creation."""
         if is_office_document(source_path):
             self.open_office_document(source_path)
             return
-        try:
-            viewer_path = prepare_document_for_viewer(source_path)
-        except Exception as exc:
-            QMessageBox.critical(self, APP_NAME, f"Could not prepare this document:\n{exc}")
-            return
+        if viewer_path is None:
+            try:
+                viewer_path = prepare_document_for_viewer(source_path)
+            except Exception as exc:
+                QMessageBox.critical(self, APP_NAME, f"Could not prepare this document:\n{exc}")
+                return
         QApplication.processEvents()
         is_image = is_image_document(source_path)
         for i in range(self.tabs.count()):
