@@ -66,6 +66,8 @@ def test_light_theme_book_and_chat_focus_icons_use_dark_foreground():
     assert 'book_icon_color = "#111111" if current_theme == "light"' in main
     assert 'book_color = "#111111" if book_theme == "light"' in main
     assert "def _focus_mode_icon_color(self):" in chat
+    assert 'if theme == "light":\n                return "#111111"' in chat
+    assert 'focus_icon_color = "#111111" if current_theme == "light"' in main
     assert 'engo_ui_theme_tokens(theme)["text"]' in chat
 
 
