@@ -3341,7 +3341,27 @@ class DocumentCanvas(QWidget):
                     xref, bounds, _label, geometry = hit
                     current = self.tab.selected_annotation == (index, xref)
                     is_point = "pen shape · point" in str(_label).lower() or "pen shape - point" in str(_label).lower()
+                    is_text_highlight = False
                     if current and self._annotation_edit_mode:
+                        try:
+                            hover_page = self.tab.doc.load_page(int(index))
+                            hover_annot = next(
+                                (item for item in (hover_page.annots() or [])
+                                 if int(item.xref) == int(xref)),
+                                None
+                            )
+                            is_text_highlight = bool(
+                                hover_annot is not None
+                                and int((hover_annot.type or (0, ""))[0])
+                                == getattr(fitz, "PDF_ANNOT_HIGHLIGHT", 8)
+                            )
+                        except Exception:
+                            is_text_highlight = False
+                    if is_text_highlight:
+                        # The edit gesture is word selection, not a resize cursor.
+                        self.setCursor(Qt.CursorShape.IBeamCursor if text_hit is not None
+                                       else Qt.CursorShape.ArrowCursor)
+                    elif current and self._annotation_edit_mode:
                         if not is_point and self._rotation_handle_at(bounds, pos):
                             handle = "rotate"
                         else:
