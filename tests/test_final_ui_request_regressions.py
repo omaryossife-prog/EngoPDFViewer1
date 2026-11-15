@@ -108,3 +108,8 @@ def test_annotation_and_eye_sliders_have_transparent_track_and_rtl_direction():
     assert "slider.setInvertedAppearance(self._is_ar)" in widgets
     assert "self.warmth_slider.setInvertedAppearance(self._is_ar)" in widgets
     assert "self.brightness_slider.setInvertedAppearance(self._is_ar)" in widgets
+
+def test_annotation_settings_dialog_starts_with_a_stable_english_title_key():
+    widgets = read("engo_widgets.py")
+    assert 'self.setProperty("engoOriginalWindowTitle", "Annotation Settings")' in widgets
+    assert "parent_settings = None" in widgets
