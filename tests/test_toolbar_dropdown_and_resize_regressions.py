@@ -44,6 +44,8 @@ def test_vector_ink_shapes_resize_from_their_whole_bounds():
     end = document.index("\n    def _geometry_with_vertex_preview", start)
     geometry = document[start:end]
     assert "bounds_resize_types = (type_line, type_polygon, type_polyline, type_ink)" in geometry
+    assert '"anchor": QPointF(right, bottom), "mode": "bounds"' in geometry
+    assert '"anchor": QPointF(left, top), "mode": "bounds"' in geometry
     for name in ('"tl"', '"tr"', '"bl"', '"br"', '"edge_top"', '"edge_bottom"', '"edge_left"', '"edge_right"'):
         assert name in geometry
     # The commit path remaps every original point to the resized bounding rectangle.
