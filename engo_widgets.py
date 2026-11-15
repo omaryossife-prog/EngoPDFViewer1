@@ -1274,6 +1274,9 @@ def _engo_file_dialog(parent, title_en, title_ar, start_path, name_filter, *, sa
             dialog.setDirectory(raw_path)
         dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
         dialog.setFileMode(QFileDialog.FileMode.AnyFile)
+        # DontConfirmOverwrite is false by default; keep it explicit using
+        # QFileDialog.Option instead of the unsupported setConfirmOverwrite API.
+        dialog.setOption(QFileDialog.Option.DontConfirmOverwrite, False)
     else:
         dialog.setDirectory(raw_path if candidate.is_dir() else str(candidate.parent if candidate.suffix else candidate))
         dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
