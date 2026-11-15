@@ -2235,12 +2235,33 @@ def _recognize_pen_shape(points):
     ) if len(simplified) >= 3 else 0.0
     closed_path_length = path_len + endpoint
     curve_excess = (closed_path_length / max(simplified_perimeter, 1e-6)) - 1.0
-    # An oval has a nearly constant normalized radius and a curved perimeter
-    # noticeably longer than its simplified chord polygon. Require both signals
-    # to be strong: a rounded/wobbly rectangle should remain a quadrilateral.
+    # Measure how far the original samples bow away from the simplified
+    # polygon edges. An ellipse remains well away from its four chords; a wobbly
+    # rectangle stays close to its straight sides even when its pen samples are noisy.
+    curve_deviation = 0.0
+    if len(simplified) >= 3 and diagonal > 1e-6:
+        edge_distances = [
+            min(
+                _distance_point_to_segment(point, simplified[edge_index],
+                                           simplified[(edge_index + 1) % len(simplified)])
+                for edge_index in range(len(simplified))
+            )
+            for point in ring
+        ]
+        curve_deviation = (
+            math.sqrt(sum(distance * distance for distance in edge_distances)
+                      / max(1, len(edge_distances))) / diagonal
+        )
+
+    # An oval needs three independent signals: an almost constant normalized
+    # radius, a curved perimeter longer than its chord polygon, and real bowing
+    # between the chord edges. The last condition keeps hand-wobbled rectangles
+    # from being classified as ellipses.
     looks_like_oval = (
         len(ring) >= 10 and len(simplified) >= 3
-        and radial_error <= 0.12 and curve_excess >= 0.05
+        and radial_error <= 0.16
+        and curve_excess >= 0.035
+        and curve_deviation >= 0.035
         and 0.38 <= ratio <= 2.65
     )
     if looks_like_oval:
