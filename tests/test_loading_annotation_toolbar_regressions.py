@@ -19,7 +19,7 @@ def test_opening_queue_runs_document_preparation_off_thread_and_waits_for_sessio
     assert "QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents" in main
 
 
-def test_recent_file_rows_are_twice_the_previous_height():
+def test_recent_file_rows_are_taller_and_keep_paths_readable():
     main = read("main.py")
     start = main.index("def _refresh_files_home(self):")
     end = main.index("\n    def ", start + 10)
