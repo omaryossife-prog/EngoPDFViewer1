@@ -2235,15 +2235,19 @@ def _recognize_pen_shape(points):
     ) if len(simplified) >= 3 else 0.0
     closed_path_length = path_len + endpoint
     curve_excess = (closed_path_length / max(simplified_perimeter, 1e-6)) - 1.0
-    # A smooth oval has nearly constant normalized radius around its center.
-    # Boxes can have a similarly long, wobbly pen path, but their normalized
-    # radius varies markedly between side midpoints and corners. Tighten the
-    # radial-fit tolerance so an imperfect square cannot become a circle.
+    # An oval has a nearly constant normalized radius and a curved perimeter
+    # noticeably longer than its simplified chord polygon. Require both signals
+    # to be strong: a rounded/wobbly rectangle should remain a quadrilateral.
     looks_like_oval = (
-        len(ring) >= 9 and len(simplified) >= 3
-        and radial_error <= 0.18 and curve_excess >= 0.012
+        len(ring) >= 10 and len(simplified) >= 3
+        and radial_error <= 0.12 and curve_excess >= 0.05
         and 0.38 <= ratio <= 2.65
     )
+    if looks_like_oval:
+        oval_rect = fitz.Rect(x0, y0, x1, y1)
+        oval_kind = "circle" if abs(width-height) <= max(4.0, diagonal*0.06) else "ellipse"
+        return {"kind": oval_kind, "rect": oval_rect}
+
     # Rough rectangles / squares (including mildly rotated ones).
     if len(simplified) == 4:
         vectors, lengths = [], []
@@ -2304,13 +2308,6 @@ def _recognize_pen_shape(points):
         if min(side_lengths) >= max(6.0, diagonal*0.09):
             return {"kind": "triangle", "points": triangle_points}
 
-    # Only paths not claimed as a line, rectangle, quadrilateral or triangle
-    # can be classified as a smooth ellipse/circle. This avoids converting a
-    # slightly wobbly rectangle into an oval just because its corners are rounded.
-    if looks_like_oval:
-        oval_rect = fitz.Rect(x0, y0, x1, y1)
-        oval_kind = "circle" if abs(width-height) <= max(4.0, diagonal*0.06) else "ellipse"
-        return {"kind": oval_kind, "rect": oval_rect}
     return None
 
 
