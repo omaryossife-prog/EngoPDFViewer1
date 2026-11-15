@@ -2938,12 +2938,12 @@ class DocumentCanvas(QWidget):
                     if text_page_index == selected_page_index:
                         word_entry = self._text_word_at(text_page_index, text_page_rect, pos)
                         if word_entry is not None:
-                            self._editing_highlight_xref = selected_xref
                             self._begin_text_selection(
                                 text_page_index, text_page_rect, word_entry,
                                 selection_tool="highlight_edit",
                                 preserve_annotation_selection=True,
                             )
+                            self._editing_highlight_xref = selected_xref
                             event.accept()
                             return
         if current_tool in ("select", "highlight") and not force_select:
@@ -8297,7 +8297,12 @@ class DocumentTab(QWidget):
         old_border = dict(old.border or {})
         old_size, old_font, old_text_color = self._freetext_style_from_xref(int(xref))
         # Preserve the original text appearance unless the caller explicitly changes it.
-        stroke = color_tuple(text_color or old_text_color)
+        if text_color is None:
+            stroke = color_tuple(old_text_color)
+        elif isinstance(text_color, (tuple, list)):
+            stroke = tuple(max(0.0, min(1.0, float(value))) for value in text_color[:3])
+        else:
+            stroke = color_tuple(text_color)
         fill = fill_color if fill_color is not None else old_colors.get("stroke")
         if fill is None:
             fill = color_tuple(self.annotation_colors.get(
@@ -8322,7 +8327,7 @@ class DocumentTab(QWidget):
         safe_font = str(fontname or old_font or "Helv")
         bold = safe_font in ("HelvB", "HelvBI")
         italic = safe_font in ("HelvI", "HelvBI")
-        escaped_text = html_escape(str(text or ""), quote=False).replace("\\n", "<br>")
+        escaped_text = html_escape(str(text or ""), quote=False).replace(chr(10), "<br>")
         if bold:
             escaped_text = f"<b>{escaped_text}</b>"
         if italic:
