@@ -6,6 +6,7 @@ import os
 import tempfile
 import io
 import re
+from html import escape as html_escape
 import time
 import zlib
 from collections import OrderedDict, deque
@@ -1276,12 +1277,20 @@ class DocumentCanvas(QWidget):
                         "highlight", DEFAULT_ANNOTATION_COLORS["highlight"]
                     ))
                     marker_color.setAlpha(105)
+                    display_scale = max(0.5, float(self.page_scales.get(self._draw_page, 1.0)))
+                    marker_width = max(1.0, float(self.tab.annotation_colors.get("highlight_width", 12)) * display_scale)
                     painter.setPen(QPen(
-                        marker_color, 14, Qt.PenStyle.SolidLine,
+                        marker_color, marker_width, Qt.PenStyle.SolidLine,
                         Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin
                     ))
                 else:
-                    painter.setPen(QPen(QColor(self.tab.annotation_colors.get("pen", DEFAULT_ANNOTATION_COLORS["pen"])), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+                    display_scale = max(0.5, float(self.page_scales.get(self._draw_page, 1.0)))
+                    pen_width = max(0.5, float(self.tab.annotation_colors.get("pen_width", 3)) * display_scale)
+                    painter.setPen(QPen(
+                        QColor(self.tab.annotation_colors.get("pen", DEFAULT_ANNOTATION_COLORS["pen"])),
+                        pen_width, Qt.PenStyle.SolidLine,
+                        Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin
+                    ))
                 if len(self._draw_points) > 1:
                     painter.drawPolyline(QPolygonF(self._draw_points))
                 elif self._draw_points:
@@ -2464,15 +2473,7 @@ class DocumentCanvas(QWidget):
             annot_type = int((annot.type or (0, ""))[0])
             info = dict(annot.info or {})
             if annot_type == getattr(fitz, "PDF_ANNOT_FREE_TEXT", 2):
-                fontsize, fontname = 11, "Helv"
-                try:
-                    da = str(self.tab.doc.xref_get_key(int(xref), "DA")[1] or "")
-                    size_match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s+Tf", da)
-                    font_match = re.search(r"/([A-Za-z0-9]+)\s+[0-9.]+\s+Tf", da)
-                    if size_match: fontsize = float(size_match.group(1))
-                    if font_match: fontname = font_match.group(1)
-                except Exception:
-                    pass
+                fontsize, fontname, _text_color = self.tab._freetext_style_from_xref(int(xref))
                 dlg = TextAnnotationEditorDialog(info.get("content", ""), fontsize, fontname, self)
                 if dlg.exec() == QDialog.DialogCode.Accepted:
                     text, new_size, new_font = dlg.values()
@@ -7878,7 +7879,7 @@ class DocumentTab(QWidget):
                 return False
             pen_color = color_tuple(self.annotation_colors.get("pen", DEFAULT_ANNOTATION_COLORS["pen"]))
             annot.set_colors(stroke=pen_color)
-            annot.set_border(width=2.2)
+            annot.set_border(width=max(0.5, float(self.annotation_colors.get("pen_width", 3))))
             annot.set_opacity(0.95)
             annot.set_info(title="Engo Pen Shape", content=f"Pen shape · {kind.title()}")
             annot.update()
@@ -7925,7 +7926,7 @@ class DocumentTab(QWidget):
         self._record_undo()
         annot = page.add_ink_annot([[(float(point.x), float(point.y)) for point in points]])
         annot.set_colors(stroke=color_tuple(self.annotation_colors.get("pen", DEFAULT_ANNOTATION_COLORS["pen"])))
-        annot.set_border(width=2.0)
+        annot.set_border(width=max(0.5, float(self.annotation_colors.get("pen_width", 3))))
         annot.set_opacity(0.95)
         annot.update()
         self._changed(index)
@@ -7943,8 +7944,11 @@ class DocumentTab(QWidget):
             annot.set_colors(stroke=color_tuple(
                 self.annotation_colors.get("highlight", DEFAULT_ANNOTATION_COLORS["highlight"])
             ))
-            annot.set_border(width=8.0)
-            annot.set_opacity(0.36)
+            annot.set_border(width=max(1.0, float(self.annotation_colors.get("highlight_width", 12))))
+            annot.set_opacity(0.72)
+            # Multiply preserves the original dark ink while tinting the paper
+            # underneath the freehand marker, like a real translucent highlighter.
+            annot.set_blendmode("Multiply")
             annot.set_info(title="Engo Highlighter Pen", content="Marker highlighter")
             annot.update()
             self._changed(int(index))
@@ -8041,71 +8045,35 @@ class DocumentTab(QWidget):
             colors = dict(annot.colors or {})
             border = dict(annot.border or {})
 
-            self._record_undo()
             if annot_type == getattr(fitz, "PDF_ANNOT_FREE_TEXT", 2):
-                # FreeText annotations reject Annot.set_colors(). Their text color
-                # lives in /DA, while the optional background is stored in /C.
-                da = str(self.doc.xref_get_key(old_xref, "DA")[1] or "")
-                size_match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s+Tf", da)
-                font_match = re.search(r"/([A-Za-z0-9]+)\s+[0-9.]+\s+Tf", da)
-                fontsize = float(size_match.group(1)) if size_match else 11.0
-                fontname = font_match.group(1) if font_match else "Helv"
-                align_value = self.doc.xref_get_key(old_xref, "Q")
-                try:
-                    alignment = int(align_value[1]) if align_value and align_value[0] == "int" else 0
-                except Exception:
-                    alignment = 0
+                _size, fontname, _current_color = self._freetext_style_from_xref(old_xref)
                 fill = colors.get("stroke") or None
                 if background_color is not None:
                     picked_background = QColor(str(background_color))
                     if not picked_background.isValid():
                         return False
-                    fill = (picked_background.redF(), picked_background.greenF(), picked_background.blueF())
-                if isinstance(fill, (tuple, list)) and len(fill) not in (1, 3, 4):
-                    fill = None
-                rect = fitz.Rect(annot.rect)
-                content = str(info.get("content") or "")
-                title = str(info.get("title") or "Engo PDF Text")
-                subject = str(info.get("subject") or "")
-                flags = int(getattr(annot, "flags", 4))
-                try:
-                    opacity = float(getattr(annot, "opacity", -1))
-                except Exception:
-                    opacity = -1.0
-                page.delete_annot(annot)
-                updated = page.add_freetext_annot(
-                    rect, content, fontsize=max(6.0, min(48.0, fontsize)),
-                    fontname=fontname, text_color=rgb, fill_color=fill, align=alignment
+                    fill = (
+                        picked_background.redF(),
+                        picked_background.greenF(),
+                        picked_background.blueF(),
+                    )
+                return self.update_freetext_annotation(
+                    page_index, old_xref, str(info.get("content") or ""),
+                    int(round(_size)), fontname, text_color=rgb, fill_color=fill
                 )
-                if float(border.get("width", 0.0) or 0.0) > 0:
-                    updated.set_border(width=float(border.get("width", 0.4)))
-                updated.set_info(title=title, content=content, subject=subject)
-                try:
-                    updated.flags = flags
-                except Exception:
-                    pass
-                if opacity >= 0:
-                    try:
-                        updated.set_opacity(opacity)
-                    except Exception:
-                        pass
-                updated.update()
-                new_xref = int(updated.xref)
-                self.selected_annotation = (page_index, new_xref)
-                self.selected_annotations = [(page_index, new_xref)]
-                self.annotationSelectionChanged.emit(True)
+
+            self._record_undo()
+            # Highlight and Ink accept a stroke only; filled shapes preserve
+            # their fill by recoloring both stroke and fill together.
+            fill_values = colors.get("fill")
+            if isinstance(fill_values, (tuple, list)) and len(fill_values) > 0:
+                annot.set_colors(stroke=rgb, fill=rgb)
             else:
-                # Highlight and Ink accept a stroke only; filled shapes preserve
-                # their fill by recoloring both stroke and fill together.
-                fill_values = colors.get("fill")
-                if isinstance(fill_values, (tuple, list)) and len(fill_values) > 0:
-                    annot.set_colors(stroke=rgb, fill=rgb)
-                else:
-                    annot.set_colors(stroke=rgb)
-                annot.update()
-                self.selected_annotation = (page_index, old_xref)
-                self.selected_annotations = [(page_index, old_xref)]
-                self.annotationSelectionChanged.emit(True)
+                annot.set_colors(stroke=rgb)
+            annot.update()
+            self.selected_annotation = (page_index, old_xref)
+            self.selected_annotations = [(page_index, old_xref)]
+            self.annotationSelectionChanged.emit(True)
             self._changed(page_index)
             return True
         except Exception as exc:
@@ -8122,11 +8090,7 @@ class DocumentTab(QWidget):
             old = next((item for item in (page.annots() or []) if int(item.xref) == xref), None)
             if old is None or int((old.type or (0, ""))[0]) != getattr(fitz, "PDF_ANNOT_FREE_TEXT", 2):
                 return False
-            da = str(self.doc.xref_get_key(xref, "DA")[1] or "")
-            size_match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s+Tf", da)
-            font_match = re.search(r"/([A-Za-z0-9]+)\s+[0-9.]+\s+Tf", da)
-            fontsize = float(size_match.group(1)) if size_match else 11.0
-            fontname = font_match.group(1) if font_match else "Helv"
+            fontsize, fontname, _text_color = self._freetext_style_from_xref(xref)
             page_display = canvas.page_rects.get(page_index, QRectF())
             if page_display.isEmpty():
                 return True
@@ -8141,8 +8105,47 @@ class DocumentTab(QWidget):
             QMessageBox.warning(self, APP_NAME, f"Could not resize text box:\\n{exc}")
             return True
 
+    def _freetext_style_from_xref(self, xref: int):
+        """Read the persisted rich FreeText style, falling back to its PDF appearance."""
+        da = ""
+        rich = ""
+        try:
+            da = str(self.doc.xref_get_key(int(xref), "DA")[1] or "")
+            rich = str(self.doc.xref_get_key(int(xref), "RC")[1] or "")
+        except Exception:
+            pass
+        size_match = re.search(r"font-size\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*pt", rich, re.IGNORECASE)
+        if size_match is None:
+            size_match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s+Tf", da)
+        fontsize = float(size_match.group(1)) if size_match else 11.0
+        bold = bool(
+            re.search(r"<b(?:\s|>)|font-weight\s*:\s*(?:bold|[6-9]00)", rich, re.IGNORECASE)
+        )
+        italic = bool(
+            re.search(r"<i(?:\s|>)|font-style\s*:\s*italic", rich, re.IGNORECASE)
+        )
+        fontname = "HelvBI" if bold and italic else ("HelvB" if bold else ("HelvI" if italic else "Helv"))
+        font_match = re.search(r"/([A-Za-z0-9]+)\s+[0-9.]+\s+Tf", da)
+        if font_match and not rich:
+            fontname = font_match.group(1)
+        color_match = re.search(r"color\s*:\s*#([0-9a-f]{6})", rich, re.IGNORECASE)
+        if color_match:
+            color = "#" + color_match.group(1)
+        else:
+            color_match = re.search(
+                r"([-+]?(?:\d+\.?\d*|\.\d+))\s+([-+]?(?:\d+\.?\d*|\.\d+))\s+([-+]?(?:\d+\.?\d*|\.\d+))\s+rg",
+                da,
+            )
+            if color_match:
+                values = [max(0.0, min(1.0, float(v))) for v in color_match.groups()]
+                color = QColor.fromRgbF(*values).name()
+            else:
+                color = "#263247"
+        return max(6, min(48, int(round(fontsize)))), fontname, color
+
     def update_freetext_annotation(self, index: int, xref: int, text: str,
-                                    fontsize: int, fontname: str, target_rect=None):
+                                    fontsize: int, fontname: str, target_rect=None,
+                                    text_color=None, fill_color=None):
         page = self.doc.load_page(int(index))
         old = next((a for a in (page.annots() or []) if int(a.xref) == int(xref)), None)
         if old is None:
@@ -8151,30 +8154,10 @@ class DocumentTab(QWidget):
         old_rect = fitz.Rect(target_rect) if target_rect is not None else fitz.Rect(old.rect)
         old_colors = dict(old.colors or {})
         old_border = dict(old.border or {})
-        # FreeText's text ink is stored in /DA, not Annot.colors. Its /C entry
-        # is surfaced by PyMuPDF as the stroke color, which represents the box fill.
-        try:
-            default_appearance = str(self.doc.xref_get_key(int(xref), "DA")[1] or "")
-        except Exception:
-            default_appearance = ""
-        rgb_match = re.search(
-            r"([-+]?(?:\d+\.?\d*|\.\d+))\s+([-+]?(?:\d+\.?\d*|\.\d+))\s+([-+]?(?:\d+\.?\d*|\.\d+))\s+rg",
-            default_appearance,
-        )
-        gray_match = re.search(
-            r"([-+]?(?:\d+\.?\d*|\.\d+))\s+g(?:\s|$)",
-            default_appearance,
-        )
-        if rgb_match:
-            stroke = tuple(max(0.0, min(1.0, float(value))) for value in rgb_match.groups())
-        elif gray_match:
-            gray = max(0.0, min(1.0, float(gray_match.group(1))))
-            stroke = (gray, gray, gray)
-        else:
-            stroke = color_tuple(self.annotation_colors.get(
-                "text_ink", DEFAULT_ANNOTATION_COLORS["text_ink"]
-            ))
-        fill = old_colors.get("stroke")
+        old_size, old_font, old_text_color = self._freetext_style_from_xref(int(xref))
+        # Preserve the original text appearance unless the caller explicitly changes it.
+        stroke = color_tuple(text_color or old_text_color)
+        fill = fill_color if fill_color is not None else old_colors.get("stroke")
         if fill is None:
             fill = color_tuple(self.annotation_colors.get(
                 "text_fill", DEFAULT_ANNOTATION_COLORS["text_fill"]
@@ -8193,19 +8176,30 @@ class DocumentTab(QWidget):
         border_width = old_border.get("width", 0.4)
         border_width = 0.4 if border_width is None else max(0.0, float(border_width))
         subject = str(old_info.get("subject") or "")
+        title = str(old_info.get("title") or "Engo PDF Text")
         safe_size = max(6, min(48, int(fontsize)))
-        safe_font = str(fontname or "Helv")
+        safe_font = str(fontname or old_font or "Helv")
+        bold = safe_font in ("HelvB", "HelvBI")
+        italic = safe_font in ("HelvI", "HelvBI")
+        escaped_text = html_escape(str(text or ""), quote=False).replace("\\n", "<br>")
+        if bold:
+            escaped_text = f"<b>{escaped_text}</b>"
+        if italic:
+            escaped_text = f"<i>{escaped_text}</i>"
+        text_color_hex = QColor.fromRgbF(*stroke[:3]).name()
+        alignment_css = {0: "left", 1: "center", 2: "right"}.get(alignment, "left")
+        rich_html = (
+            f'<p style="font-family:Helvetica;font-size:{safe_size}pt;'
+            f'color:{text_color_hex};text-align:{alignment_css};margin:0">'
+            f'{escaped_text}</p>'
+        )
         self._record_undo()
         page.delete_annot(old)
         new_annot = page.add_freetext_annot(
-            old_rect, str(text or ""), fontsize=safe_size, fontname=safe_font,
-            text_color=stroke, fill_color=fill, align=alignment
-        )  # Keep PDF text left-to-right; never inherit the UI's RTL layout.
+            old_rect, rich_html, fontsize=safe_size, fontname="Helv",
+            text_color=stroke, fill_color=fill, align=alignment, richtext=True
+        )  # PDF FreeText rich text keeps Bold/Italic across saves.
         new_annot.set_border(width=border_width)
-        new_annot.set_info(
-            title=str(old_info.get("title") or "Engo PDF Text"),
-            content=str(text or ""), subject=subject
-        )
         try:
             new_annot.flags = flags
         except Exception:
@@ -8218,8 +8212,15 @@ class DocumentTab(QWidget):
         except Exception:
             pass
         new_annot.update()
-        self.selected_annotation = (int(index), int(new_annot.xref))
-        self.selected_annotations = [(int(index), int(new_annot.xref))]
+        # Calling Annot.set_info() after rich-text creation would replace /RC and
+        # drop the <b>/<i> styles. Update metadata at the xref level instead.
+        new_xref = int(new_annot.xref)
+        self.doc.xref_set_key(new_xref, "Contents", fitz.get_pdf_str(str(text or "")))
+        self.doc.xref_set_key(new_xref, "T", fitz.get_pdf_str(title))
+        if subject:
+            self.doc.xref_set_key(new_xref, "Subj", fitz.get_pdf_str(subject))
+        self.selected_annotation = (int(index), new_xref)
+        self.selected_annotations = [(int(index), new_xref)]
         self.annotationSelectionChanged.emit(True)
         self._changed(index)
         return True
