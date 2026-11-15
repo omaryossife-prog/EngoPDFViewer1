@@ -665,7 +665,7 @@ class MainWindow(QMainWindow):
             ("text", "Text", "Place editable text on the page", "#83d6c5"),
             ("link", "Link", "Draw an internal link to another page", "#7ad4dc"),
         ]
-        # Annotation/note tools are intentionally icon-only. Keep full labels in
+        # Annotation tools are intentionally icon-only. Keep full labels in
         # tooltips and accessibility names; leave every other toolbar group untouched.
         for key, label, tip, color in tool_items:
             if key == "select":
@@ -5153,10 +5153,11 @@ class MainWindow(QMainWindow):
                 if hasattr(chat, "export_btn"):
                     chat.export_btn.setIcon(make_icon("export", chat_icon_color, 15))
                 if hasattr(chat, "focus_mode_btn"):
+                    focus_icon_color = "#111111" if current_theme == "light" else chat_icon_color
                     chat.set_focus_mode_button(bool(getattr(self, "_chat_focus_mode", False)))
                     chat.focus_mode_btn.setIcon(make_icon(
                         "minimize" if getattr(self, "_chat_focus_mode", False) else "fullscreen",
-                        chat_icon_color, 16
+                        focus_icon_color, 16
                     ))
                 if hasattr(chat, "chat_search_btn"):
                     chat.chat_search_btn.setIcon(make_icon("search", chat_icon_color, 15))
