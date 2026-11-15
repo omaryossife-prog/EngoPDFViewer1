@@ -108,6 +108,7 @@ class DocumentCanvas(QWidget):
         self._view_w = 900
         self._view_h = 760
         self._drawing = False
+        self._brush_cursor_cache = {}
         self._draw_page = -1
         self._draw_start = QPointF()
         self._draw_current = QPointF()
@@ -2499,21 +2500,28 @@ class DocumentCanvas(QWidget):
         scale = max(0.35, float(self.page_scales.get(int(page_index), 1.0)))
         diameter = max(5, min(58, int(round(width * scale))))
         side = max(18, diameter + 10)
-        pixmap = QPixmap(side, side)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        center = side / 2.0
-        radius = max(1.5, diameter / 2.0)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(QColor(12, 18, 28, 225), 2.2))
-        painter.drawEllipse(QRectF(center-radius, center-radius, radius*2, radius*2))
-        painter.setPen(QPen(QColor(255, 255, 255, 245), 1.0))
-        inset = 1.2
-        painter.drawEllipse(QRectF(center-radius+inset, center-radius+inset,
-                                   max(1.0, radius*2-inset*2), max(1.0, radius*2-inset*2)))
-        painter.end()
-        self.setCursor(QCursor(pixmap, side // 2, side // 2))
+        cache_key = (tool, round(width, 2), round(scale, 2), diameter)
+        cursor = self._brush_cursor_cache.get(cache_key)
+        if cursor is None:
+            pixmap = QPixmap(side, side)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            center = side / 2.0
+            radius = max(1.5, diameter / 2.0)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(QPen(QColor(12, 18, 28, 225), 2.2))
+            painter.drawEllipse(QRectF(center-radius, center-radius, radius*2, radius*2))
+            painter.setPen(QPen(QColor(255, 255, 255, 245), 1.0))
+            inset = 1.2
+            painter.drawEllipse(QRectF(center-radius+inset, center-radius+inset,
+                                       max(1.0, radius*2-inset*2), max(1.0, radius*2-inset*2)))
+            painter.end()
+            cursor = QCursor(pixmap, side // 2, side // 2)
+            if len(self._brush_cursor_cache) >= 64:
+                self._brush_cursor_cache.clear()
+            self._brush_cursor_cache[cache_key] = cursor
+        self.setCursor(cursor)
         return True
 
     def _tool_default_cursor(self):
