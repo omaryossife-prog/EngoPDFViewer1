@@ -4196,8 +4196,12 @@ class DocumentTab(QWidget):
         self.eye_protection_btn.setFixedSize(30, 32)
         self.eye_protection_btn.setAutoRaise(False)
         self.eye_protection_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.eye_protection_btn.setToolTip(_engo_translate_tooltip("Eye protection", self._sidebar_language))
-        self.eye_protection_btn.setAccessibleName("Eye protection")
+        self.eye_protection_btn.setToolTip(
+            "حماية العين" if self._sidebar_language == "ar" else "Eye protection"
+        )
+        self.eye_protection_btn.setAccessibleName(
+            "حماية العين" if self._sidebar_language == "ar" else "Eye protection"
+        )
         self.eye_protection_btn.clicked.connect(self._open_eye_protection_settings)
         self.eye_protection_btn.setProperty("engoIconName", "eye")
         sidebar_actions_layout.addWidget(self.eye_protection_btn)
