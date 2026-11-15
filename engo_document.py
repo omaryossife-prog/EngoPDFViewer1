@@ -4097,11 +4097,14 @@ class DocumentTab(QWidget):
         self._layout_deferred_by_focus = False
         self._layout_timer.timeout.connect(self._relayout)
         self._build_ui()
+        self._pump_opening_dialog_events()
         self._select_all_shortcut = QShortcut(QKeySequence.StandardKey.SelectAll, self.canvas)
         self._select_all_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self._select_all_shortcut.activated.connect(self._select_all_annotations_on_current_page)
         self._build_thumbnails()
+        self._pump_opening_dialog_events()
         self._build_outline()
+        self._pump_opening_dialog_events()
         self._schedule_sidebar_metrics_update()
         self._schedule_layout()
         self._last_page_wheel_turn = 0.0
@@ -5285,7 +5288,7 @@ class DocumentTab(QWidget):
         try:
             toc = self.doc.get_toc()
             stack = []
-            for level, title, page_num, *rest in toc:
+            for toc_index, (level, title, page_num, *rest) in enumerate(toc):
                 item = QTreeWidgetItem([title or f"Page {page_num}"])
                 item.setData(0, Qt.ItemDataRole.UserRole, max(0, int(page_num) - 1))
                 item.setToolTip(0, f"Page {page_num}")
@@ -5296,6 +5299,9 @@ class DocumentTab(QWidget):
                 else:
                     self.outline.addTopLevelItem(item)
                 stack.append(item)
+                if (toc_index + 1) % 24 == 0:
+                    self._pump_opening_dialog_events()
+            self._pump_opening_dialog_events()
             self.outline.expandToDepth(1)
         except Exception:
             pass
