@@ -57,10 +57,12 @@ def test_vector_ink_shapes_resize_from_their_whole_bounds():
     assert "updated.set_border(width=float(border.get(\"width\", 2.0)))" in transform
 
 
-def test_selection_outline_uses_a_cosmetic_pen_during_live_resize():
+def test_selection_outline_scales_with_live_resize_and_matches_saved_border():
     document = read("engo_document.py")
-    assert "selection_outline_pen.setCosmetic(True)" in document
-    assert "painter.setPen(selection_outline_pen)" in document
+    assert "selection_outline_pen.setCosmetic(False)" in document
+    assert "border_scale = math.sqrt(max(0.0025, scale_x * scale_y))" in document
+    assert "updated.set_border(width=scaled_border_width)" in document
+    assert "annot.set_border(width=scaled_border_width)" in document
 
 
 def test_resize_can_start_from_the_visible_annotation_frame_edge():
