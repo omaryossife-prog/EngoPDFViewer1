@@ -118,7 +118,7 @@ def test_fullscreen_and_chat_focus_use_the_corner_only_restore_icon():
 
 def test_pen_shape_recognition_keeps_wobbly_quadrilaterals_and_detects_ovals():
     pytest.importorskip("PyQt6")
-    from PyQt6.QtCore import QPointF
+    import pymupdf as fitz
     from engo_widgets import _recognize_pen_shape
 
     def rectangle_points(wobble=3.0, samples_per_edge=20):
@@ -136,15 +136,15 @@ def test_pen_shape_recognition_keeps_wobbly_quadrilaterals_and_detects_ovals():
                     y += offset
                 else:
                     x += offset
-                points.append(QPointF(x, y))
-        points.append(QPointF(*corners[0]))
+                points.append(fitz.Point(x, y))
+        points.append(fitz.Point(*corners[0]))
         return points
 
     def ellipse_points(rx, ry, count=120):
         import math
         return [
-            QPointF(120 + rx * math.cos(2 * math.pi * i / count),
-                    100 + ry * math.sin(2 * math.pi * i / count))
+            fitz.Point(120 + rx * math.cos(2 * math.pi * i / count),
+                       100 + ry * math.sin(2 * math.pi * i / count))
             for i in range(count + 1)
         ]
 
