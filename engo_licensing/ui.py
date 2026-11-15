@@ -324,7 +324,7 @@ class EngoSplashScreen(QWidget):
             if "another device" in lowered:
                 message = "هذا الحساب مرتبط بجهاز آخر. يمكنك نقل الحساب من شاشة الحساب."
             elif "not configured" in lowered:
-                message = "لم يتم إعداد خدمة الحسابات بعد. يمكنك المتابعة بالنسخة المجانية."
+                message = "لم يتم إعداد خدمة الحسابات بعد. يمكنك المتابعة بدون اتصال."
             elif "no account" in lowered or "sign in" in lowered:
                 message = "لم يتم تسجيل الدخول. سجّل الدخول لاحقًا من قسم الحساب."
             elif any(token in lowered for token in ("could not contact", "timeout", "http ", "server returned", "connection")):
@@ -332,7 +332,7 @@ class EngoSplashScreen(QWidget):
             elif any(token in lowered for token in ("signature", "expired", "untrusted_build", "invalid")):
                 message = "تعذر التحقق من صحة الترخيص أو اعتماد هذا الإصدار."
             else:
-                message = "تعذر إكمال التحقق. يمكنك إعادة المحاولة أو متابعة استخدام النسخة المجانية."
+                message = "تعذر إكمال التحقق. يمكنك إعادة المحاولة أو المتابعة بدون اتصال."
         else:
             message = raw
         self.detail.setText(message[:240])
