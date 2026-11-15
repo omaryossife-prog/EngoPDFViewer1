@@ -327,7 +327,44 @@ class EngoFileSystemModel(QFileSystemModel):
         cls._engo_icons[kind] = icon
         return icon
 
+    _page_count_cache = {}
+
+    @classmethod
+    def _display_page_count(cls, path):
+        suffix = Path(path).suffix.lower()
+        if suffix in IMAGE_DOCUMENT_EXTENSIONS:
+            return 1
+        if suffix in WORD_DOCUMENT_EXTENSIONS or suffix in POWERPOINT_DOCUMENT_EXTENSIONS:
+            return "—"
+        if suffix != ".pdf":
+            return None
+        try:
+            stat = Path(path).stat()
+            cached = cls._page_count_cache.get(path)
+            signature = (int(stat.st_mtime_ns), int(stat.st_size))
+            if cached and cached[0] == signature:
+                return cached[1]
+            with fitz.open(path) as document:
+                count = int(document.page_count)
+            if len(cls._page_count_cache) > 2048:
+                cls._page_count_cache.clear()
+            cls._page_count_cache[path] = (signature, count)
+            return count
+        except Exception:
+            return "—"
+
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if (index.isValid() and index.column() == 0
+                and role == Qt.ItemDataRole.DisplayRole):
+            try:
+                if not self.isDir(index):
+                    path = self.filePath(index)
+                    count = self._display_page_count(path)
+                    base = super().data(index, role)
+                    if count is not None:
+                        return f"{base} ({count})"
+            except (RuntimeError, TypeError, OSError, ValueError):
+                pass
         if (index.isValid() and index.column() == 0
                 and role == Qt.ItemDataRole.DecorationRole):
             try:
