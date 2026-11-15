@@ -9,7 +9,7 @@ def read(name):
 
 def test_book_icon_uses_dark_contrast_in_light_theme():
     main = read("main.py")
-    assert 'book_icon_color = "#172033" if current_theme == "light"' in main
+    assert 'book_icon_color = "#111111" if current_theme == "light"' in main
     assert 'self.book_btn.setIcon(make_icon("book", book_icon_color, 18))' in main
 
 
@@ -54,7 +54,7 @@ def test_vector_ink_shapes_resize_from_their_whole_bounds():
     transform = document[transform_start:transform_end]
     assert "def remap_pdf_point(point):" in transform
     assert "mapped = [remap_pdf_point(point) for point in vertices]" in transform
-    assert "updated.set_border(width=float(border.get(\"width\", 2.0)))" in transform
+    assert "updated.set_border(width=scaled_border_width)" in transform
 
 
 def test_selection_outline_scales_with_live_resize_and_matches_saved_border():
