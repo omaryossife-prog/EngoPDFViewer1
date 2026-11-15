@@ -3362,6 +3362,11 @@ class DocumentCanvas(QWidget):
                 elif drag_kind == "resize" and control_mode == "vertex":
                     self.tab.transform_annotation_vertex(page_index, xref, control_meta,
                                                           control_target, canvas=self)
+                elif drag_kind == "resize" and self.tab.resize_highlight_to_text(
+                        page_index, xref, new_bounds, canvas=self):
+                    # The highlight now follows the text words covered by the
+                    # resized selection frame; it is not stretched as artwork.
+                    pass
                 else:
                     self.tab.transform_annotation(page_index, xref, original_bounds, new_bounds, canvas=self)
             self.update()
@@ -6983,6 +6988,82 @@ class DocumentTab(QWidget):
             canvas.update()
             self._update_linked_display(page_index)
             return False
+
+    def resize_highlight_to_text(self, page_index: int, xref: int,
+                                 display_rect: QRectF, canvas=None) -> bool:
+        """Replace a text highlight with the words inside its resized selection frame."""
+        canvas = canvas or self.canvas
+        try:
+            page_index, xref = int(page_index), int(xref)
+            page = self.doc.load_page(page_index)
+            old = next((item for item in (page.annots() or [])
+                        if int(item.xref) == xref), None)
+            if old is None or int((old.type or (0, ""))[0]) != getattr(fitz, "PDF_ANNOT_HIGHLIGHT", 8):
+                return False
+            page_display = canvas.page_rects.get(page_index, QRectF())
+            if page_display.isEmpty():
+                return True
+            target = canvas._rect_to_pdf(page_index, page_display, QRectF(display_rect))
+            target = fitz.Rect(target) & page.rect
+            if target.is_empty:
+                return True
+
+            words = page.get_text("words", sort=True) or []
+            chosen = []
+            for word in words:
+                if len(word) < 7:
+                    continue
+                word_rect = fitz.Rect(word[:4])
+                if word_rect.is_empty or not target.intersects(word_rect):
+                    continue
+                center = word_rect.tl + (word_rect.br - word_rect.tl) * 0.5
+                # Include words whose centers lie inside the editable selection.
+                # This avoids selecting neighboring words touched by only a pixel.
+                if target.contains(center):
+                    chosen.append((word, word_rect))
+            if not chosen:
+                return True
+
+            # Preserve visual style and annotation metadata, but let the selected
+            # word records define the actual new highlight geometry.
+            old_info = dict(old.info or {})
+            old_colors = dict(old.colors or {})
+            old_opacity = float(old.opacity)
+            stroke = old_colors.get("stroke") or color_tuple(
+                self.annotation_colors.get("highlight", DEFAULT_ANNOTATION_COLORS["highlight"])
+            )
+            self._record_undo()
+            quads = [word_rect.quad for _word, word_rect in chosen]
+            updated = page.add_highlight_annot(quads)
+            updated.set_colors(stroke=stroke)
+            if old_opacity >= 0:
+                updated.set_opacity(old_opacity)
+            if old_info.get("title") or old_info.get("content") or old_info.get("subject"):
+                updated.set_info(
+                    title=str(old_info.get("title") or ""),
+                    content=str(old_info.get("content") or ""),
+                    subject=str(old_info.get("subject") or ""),
+                )
+            updated.update()
+            new_xref = int(updated.xref)
+            page = self.doc.reload_page(page)
+            old_now = next((item for item in (page.annots() or [])
+                            if int(item.xref) == xref), None)
+            new_now = next((item for item in (page.annots() or [])
+                            if int(item.xref) == new_xref), None)
+            if old_now is None or new_now is None:
+                raise RuntimeError("The updated text highlight could not be verified.")
+            page.delete_annot(old_now)
+            self.selected_annotation = (page_index, new_xref)
+            self.selected_annotations = [(page_index, new_xref)]
+            self.annotationSelectionChanged.emit(True)
+            self._changed(page_index)
+            self.canvas.update()
+            self._update_linked_display(page_index)
+            return True
+        except Exception as exc:
+            QMessageBox.warning(self, APP_NAME, f"Could not edit text highlight:\\n{exc}")
+            return True
 
     def transform_annotation(self, page_index: int, xref: int, old_display: QRectF,
                              new_display: QRectF, canvas=None, record_undo=True):
