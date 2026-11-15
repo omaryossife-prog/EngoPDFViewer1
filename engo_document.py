@@ -2169,10 +2169,14 @@ class DocumentCanvas(QWidget):
             right, bottom = bounds.right(), bounds.bottom()
             cx, cy = bounds.center().x(), bounds.center().y()
             handles = [
-                {"name": "tl", "point": QPointF(left, top), "mode": "bounds"},
-                {"name": "tr", "point": QPointF(right, top), "mode": "bounds"},
-                {"name": "bl", "point": QPointF(left, bottom), "mode": "bounds"},
-                {"name": "br", "point": QPointF(right, bottom), "mode": "bounds"},
+                {"name": "tl", "point": QPointF(left, top),
+                 "anchor": QPointF(right, bottom), "mode": "bounds"},
+                {"name": "tr", "point": QPointF(right, top),
+                 "anchor": QPointF(left, bottom), "mode": "bounds"},
+                {"name": "bl", "point": QPointF(left, bottom),
+                 "anchor": QPointF(right, top), "mode": "bounds"},
+                {"name": "br", "point": QPointF(right, bottom),
+                 "anchor": QPointF(left, top), "mode": "bounds"},
                 {"name": "edge_top", "point": QPointF(cx, top),
                  "anchor": QPointF(cx, bottom), "mode": "bounds", "side": "top"},
                 {"name": "edge_bottom", "point": QPointF(cx, bottom),
@@ -2467,8 +2471,41 @@ class DocumentCanvas(QWidget):
         except (RuntimeError, AttributeError):
             self.tab.set_tool("select")
 
+    def _set_brush_cursor(self, page_index=None):
+        """Show a centered outline cursor whose diameter follows the active brush size."""
+        tool = str(getattr(self.tab, "active_tool", "") or "")
+        if tool not in ("pen", "highlight_pen"):
+            return False
+        key = "highlight_width" if tool == "highlight_pen" else "pen_width"
+        default_width = 15 if tool == "highlight_pen" else 3
+        width = max(0.5, float(self.tab.annotation_colors.get(key, default_width)))
+        if page_index is None or int(page_index) not in self.page_scales:
+            page_index = int(getattr(self.tab, "current_page", 0))
+        scale = max(0.35, float(self.page_scales.get(int(page_index), 1.0)))
+        diameter = max(5, min(58, int(round(width * scale))))
+        side = max(18, diameter + 10)
+        pixmap = QPixmap(side, side)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        center = side / 2.0
+        radius = max(1.5, diameter / 2.0)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor(12, 18, 28, 225), 2.2))
+        painter.drawEllipse(QRectF(center-radius, center-radius, radius*2, radius*2))
+        painter.setPen(QPen(QColor(255, 255, 255, 245), 1.0))
+        inset = 1.2
+        painter.drawEllipse(QRectF(center-radius+inset, center-radius+inset,
+                                   max(1.0, radius*2-inset*2), max(1.0, radius*2-inset*2)))
+        painter.end()
+        self.setCursor(QCursor(pixmap, side // 2, side // 2))
+        return True
+
     def _tool_default_cursor(self):
         tool = str(getattr(self.tab, "active_tool", "") or "")
+        if tool in ("pen", "highlight_pen"):
+            self._set_brush_cursor()
+            return self.cursor()
         if tool == "select":
             return Qt.CursorShape.ArrowCursor
         if tool == "pan":
@@ -3234,7 +3271,10 @@ class DocumentCanvas(QWidget):
         self._draw_start = pos
         self._draw_current = pos
         self._draw_points = [pos]
-        self.setCursor(Qt.CursorShape.CrossCursor)
+        if self.tab.active_tool in ("pen", "highlight_pen"):
+            self._set_brush_cursor(index)
+        else:
+            self.setCursor(Qt.CursorShape.CrossCursor)
         self.update()
 
     def mouseDoubleClickEvent(self, event):
@@ -3357,7 +3397,10 @@ class DocumentCanvas(QWidget):
                     self.setCursor(Qt.CursorShape.PointingHandCursor if _ctl == "action"
                                    else self._cursor_for_handle(_ctl))
                     return super().mouseMoveEvent(event)
-                if self.tab.active_tool not in ("highlight",):
+                if self.tab.active_tool in ("pen", "highlight_pen"):
+                    brush_page, _brush_rect = self._page_at(pos)
+                    self._set_brush_cursor(brush_page if brush_page >= 0 else None)
+                elif self.tab.active_tool not in ("highlight",):
                     self.setCursor(self._tool_default_cursor())
             if self.tab.active_tool in ("select", "highlight"):
                 index, page_rect = self._page_at(pos)
@@ -3412,6 +3455,7 @@ class DocumentCanvas(QWidget):
             rect = self.page_rects.get(self._draw_page, QRectF())
             if rect.contains(self._draw_current):
                 self._draw_points.append(self._draw_current)
+            self._set_brush_cursor(self._draw_page)
         self.update()
 
     def mouseReleaseEvent(self, event):
@@ -3532,7 +3576,10 @@ class DocumentCanvas(QWidget):
         page_rect = self.page_rects.get(index, QRectF())
         selection = QRectF(self._draw_start, self._draw_current).normalized().intersected(page_rect)
         self._drawing = False
-        self.setCursor(Qt.CursorShape.ArrowCursor if tool == "select" else Qt.CursorShape.CrossCursor)
+        if tool in ("pen", "highlight_pen"):
+            self._set_brush_cursor(index)
+        else:
+            self.setCursor(Qt.CursorShape.ArrowCursor if tool == "select" else Qt.CursorShape.CrossCursor)
         try:
             if tool in ("ai_select", "translate_select") and selection.width() > 10 and selection.height() > 10:
                 # Render the exact selected area; works with text, charts, scans, and handwriting.
@@ -6138,6 +6185,8 @@ class DocumentTab(QWidget):
         cursor = (Qt.CursorShape.ArrowCursor if tool == "select" else
                   Qt.CursorShape.OpenHandCursor if tool == "pan" else Qt.CursorShape.CrossCursor)
         self.canvas.setCursor(cursor)
+        if tool in ("pen", "highlight_pen"):
+            self.canvas._set_brush_cursor()
         self.canvas.update()
         # A linked pair shares the active annotation/selection tool, while each
         # document still writes annotations into its own PDF.
@@ -6152,6 +6201,8 @@ class DocumentTab(QWidget):
                             primary._secondary_canvas.setCursor(
                                 Qt.CursorShape.ArrowCursor if tool == "select" else
                                 Qt.CursorShape.OpenHandCursor if tool == "pan" else Qt.CursorShape.CrossCursor)
+                            if tool in ("pen", "highlight_pen"):
+                                primary._secondary_canvas._set_brush_cursor()
                             primary._secondary_canvas.update()
                     elif getattr(primary, "_linked_view_secondary", None) is not None and primary._linked_view_secondary is not self:
                         continue
@@ -6162,6 +6213,8 @@ class DocumentTab(QWidget):
             self._secondary_canvas.setCursor(
                 Qt.CursorShape.ArrowCursor if tool == "select" else
                 Qt.CursorShape.OpenHandCursor if tool == "pan" else Qt.CursorShape.CrossCursor)
+            if tool in ("pen", "highlight_pen"):
+                self._secondary_canvas._set_brush_cursor()
             self._secondary_canvas.update()
 
     def _update_linked_display(self, page_index=None, clear_cache=False):
@@ -8551,7 +8604,7 @@ class DocumentTab(QWidget):
         if save_as or image_source or office_source:
             source_for_name = str(getattr(self, "source_path", original_path) or original_path)
             suggested = str(Path(source_for_name).with_name(Path(source_for_name).stem + "_edited.pdf"))
-            target = _engo_file_dialog(self, "Save edited document as PDF", "حفظ المستند المعدّل كملف PDF", suggested, "PDF files (*.pdf)", save=True)
+            target = _engo_file_dialog(self, "Save edited document as PDF", "حفظ المستند المعدّل كملف PDF", suggested, "PDF files (*.pdf)", save=True, native=True)
             if not target:
                 return False
             if not target.lower().endswith(".pdf"):
