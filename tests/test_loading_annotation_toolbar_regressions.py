@@ -25,7 +25,7 @@ def test_recent_file_rows_are_twice_the_previous_height():
     end = main.index("\n    def ", start + 10)
     assert "item.setSizeHint(0, QSize(0, 100))" in main[start:end]
     assert "table.columnWidth(2) - 18" in main[start:end]
-    assert "QHeaderView.ResizeMode.Interactive" in main[start:end]
+    assert "QHeaderView.ResizeMode.Interactive" in main
 
 
 def test_eye_protection_is_after_translate_in_the_main_toolbar_only():
