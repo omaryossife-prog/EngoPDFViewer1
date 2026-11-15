@@ -649,7 +649,7 @@ class FirstRunSetupDialog(QDialog):
         self.theme_cards = {}
         theme_labels = {"light": "Light", "dark": "Dark", "midnight": "Midnight",
                         "grass": "Grass", "pink": "Pink", "orange": "Orange"}
-        for position, value in enumerate(("light", "dark", "midnight", "grass", "pink", "orange")):
+        for position, value in enumerate(("light", "dark", "midnight")):
             is_locked = value not in FREE_UI_THEMES and not self._can_use_premium_themes
             card = ThemePreviewButton(
                 value, theme_labels[value], theme_page, QSize(142, 80), locked=is_locked
@@ -811,7 +811,7 @@ class FirstRunSetupDialog(QDialog):
         self.step_label.setText("الخطوة ٢ من ٣ · المظهر" if is_ar else "STEP 2 OF 3  ·  APPEARANCE")
         self.theme_heading.setText("اختر مظهر Engo" if is_ar else "Choose your Engo theme")
         self.theme_caption.setText("شاهد معاينة كل ثيم واختر الشكل الأنسب لك." if is_ar else "Preview each theme and choose the look you prefer.")
-        self.theme_tip.setText("الثيمات المقفولة تحتاج اشتراك Premium. يمكنك تغيير الثيم لاحقًا من الإعدادات." if is_ar else "Locked themes require Premium. You can change your theme later in Settings.")
+        self.theme_tip.setText("توجد المزيد من الثيمات في إعدادات البرنامج." if is_ar else "More themes are available in the application Settings.")
         theme_labels = {"light": ("فاتح" if is_ar else "Light"),
                         "dark": ("داكن" if is_ar else "Dark"),
                         "midnight": ("منتصف الليل" if is_ar else "Midnight"),
