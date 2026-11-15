@@ -23,7 +23,7 @@ def test_recent_file_rows_are_taller_and_keep_paths_readable():
     main = read("main.py")
     start = main.index("def _refresh_files_home(self):")
     end = main.index("\n    def ", start + 10)
-    assert "item.setSizeHint(0, QSize(0, 100))" in main[start:end]
+    assert "item.setSizeHint(0, QSize(0, 76))" in main[start:end]
     assert "table.columnWidth(2) - 18" in main[start:end]
     assert "QHeaderView.ResizeMode.Interactive" in main
 
@@ -116,8 +116,8 @@ def test_fullscreen_and_chat_focus_use_the_corner_only_restore_icon():
     main = read("main.py")
     chat = read("engo_ai_chat.py")
     assert 'make_icon("minimize" if active else "fullscreen"' in main
-    assert 'make_icon("minimize", "#b7c6dc", 16)' in chat
-    assert 'make_icon("fullscreen", "#b7c6dc", 16)' in chat
+    assert 'make_icon("minimize", icon_color, 16)' in chat
+    assert 'make_icon("fullscreen", icon_color, 16)' in chat
 
 
 def test_pen_shape_recognition_keeps_wobbly_quadrilaterals_and_detects_ovals():
