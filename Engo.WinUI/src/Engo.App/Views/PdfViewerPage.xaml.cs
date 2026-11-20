@@ -38,6 +38,8 @@ public sealed partial class PdfViewerPage : Page
 
     public event EventHandler<string>? AnnotatedCopySaved;
 
+    public bool HasUnsavedAnnotations => _pendingAnnotations.Count > 0;
+
     public PdfViewerPage()
     {
         InitializeComponent();
