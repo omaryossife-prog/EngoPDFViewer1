@@ -403,6 +403,41 @@ public sealed partial class PdfViewerPage : Page
         PdfScrollViewer.ChangeView(null, null, 1.0f);
     }
 
+    private void FitPageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (PageImage.Source is null || PageImage.Width <= 0 || PageImage.Height <= 0)
+        {
+            return;
+        }
+
+        var availableWidth = Math.Max(1, PdfScrollViewer.ActualWidth - 32);
+        var availableHeight = Math.Max(1, PdfScrollViewer.ActualHeight - 32);
+        var fitScale = Math.Min(
+            availableWidth / PageImage.Width,
+            availableHeight / PageImage.Height);
+
+        PdfScrollViewer.ChangeView(
+            null,
+            null,
+            (float)Math.Clamp(fitScale, 0.5, 4.0));
+    }
+
+    private void FitWidthButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (PageImage.Source is null || PageImage.Width <= 0)
+        {
+            return;
+        }
+
+        var availableWidth = Math.Max(1, PdfScrollViewer.ActualWidth - 32);
+        var fitScale = availableWidth / PageImage.Width;
+
+        PdfScrollViewer.ChangeView(
+            null,
+            null,
+            (float)Math.Clamp(fitScale, 0.5, 4.0));
+    }
+
     private void PdfScrollViewer_ViewChanged(
         object sender,
         ScrollViewerViewChangedEventArgs e)
