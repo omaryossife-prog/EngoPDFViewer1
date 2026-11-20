@@ -36,11 +36,13 @@ try
         textFile,
         missingPdf);
     await VerifyPdfAnnotationRoundTripAsync(annotationSource, annotationOutput);
+    VerifyAnnotationEraserHitTesting();
     VerifyNoTemporaryFilesRemain(root);
 
     Console.WriteLine("PASS: recent PDF and image persistence");
     Console.WriteLine("PASS: PDF/image session persistence and path filtering");
     Console.WriteLine("PASS: PDF annotations save as a separate round-trip-readable copy");
+    Console.WriteLine("PASS: annotation eraser hit testing respects stroke geometry and draw order");
     Console.WriteLine("PASS: atomic JSON writes leave no temporary files");
     Console.WriteLine("All Engo smoke checks passed.");
     return 0;
@@ -222,6 +224,72 @@ static async Task VerifyPdfAnnotationRoundTripAsync(
     await AssertThrowsAsync<InvalidOperationException>(
         () => service.SaveAnnotatedCopyAsync(sourcePath, sourcePath, annotations),
         "The annotation service must never overwrite the original source PDF.");
+}
+
+static void VerifyAnnotationEraserHitTesting()
+{
+    var rectangle = new PdfAnnotationDraft(
+        1,
+        PdfAnnotationKind.Rectangle,
+        0.10, 0.10, 0.30, 0.30,
+        [],
+        null,
+        PdfAnnotationColor.Red,
+        1.5);
+
+    var highlight = new PdfAnnotationDraft(
+        1,
+        PdfAnnotationKind.Highlight,
+        0.20, 0.20, 0.40, 0.40,
+        [],
+        null,
+        PdfAnnotationColor.Yellow,
+        1);
+
+    var ink = new PdfAnnotationDraft(
+        1,
+        PdfAnnotationKind.Freehand,
+        0.10, 0.60, 0.40, 0.90,
+        new[]
+        {
+            new PdfAnnotationPoint(0.10, 0.60),
+            new PdfAnnotationPoint(0.25, 0.75),
+            new PdfAnnotationPoint(0.40, 0.90)
+        },
+        null,
+        PdfAnnotationColor.Blue,
+        1.5);
+
+    var overlapping = new[] { rectangle, highlight };
+    Require(
+        PdfAnnotationHitTester.FindTopmostHitIndex(
+            overlapping,
+            new PdfAnnotationPoint(0.25, 0.25)) == 1,
+        "The eraser must select the most recently drawn overlapping annotation.");
+
+    Require(
+        PdfAnnotationHitTester.FindTopmostHitIndex(
+            overlapping,
+            new PdfAnnotationPoint(0.15, 0.15)) == 0,
+        "The eraser must find the earlier rectangle outside the newer highlight.");
+
+    Require(
+        PdfAnnotationHitTester.FindTopmostHitIndex(
+            new[] { ink },
+            new PdfAnnotationPoint(0.25, 0.75)) == 0,
+        "The eraser must hit a point close to a freehand segment.");
+
+    Require(
+        PdfAnnotationHitTester.FindTopmostHitIndex(
+            new[] { ink },
+            new PdfAnnotationPoint(0.10, 0.90)) == -1,
+        "The eraser must not treat the entire freehand bounding rectangle as ink.");
+
+    Require(
+        PdfAnnotationHitTester.FindTopmostHitIndex(
+            overlapping,
+            new PdfAnnotationPoint(0.85, 0.85)) == -1,
+        "The eraser must return no hit when the pointer is outside all drafts.");
 }
 
 static void VerifyNoTemporaryFilesRemain(string root)
