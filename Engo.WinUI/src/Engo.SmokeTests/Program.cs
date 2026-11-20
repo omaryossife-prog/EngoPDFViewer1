@@ -44,6 +44,7 @@ try
     await VerifyPdfAnnotationRoundTripAsync(annotationSource, annotationOutput);
     await VerifyPdfMergeRoundTripAsync(mergeFirst, mergeSecond, mergeOutput);
     VerifyAnnotationEraserHitTesting();
+    VerifyImageViewportMath();
     VerifyNoTemporaryFilesRemain(root);
 
     Console.WriteLine("PASS: recent PDF and image persistence");
@@ -51,6 +52,7 @@ try
     Console.WriteLine("PASS: PDF annotations save as a separate round-trip-readable copy");
     Console.WriteLine("PASS: PDF merge preserves input order and page count");
     Console.WriteLine("PASS: annotation eraser hit testing respects stroke geometry and draw order");
+    Console.WriteLine("PASS: image zoom remains anchored at the pointer and drag-pan follows pointer movement");
     Console.WriteLine("PASS: atomic JSON writes leave no temporary files");
     Console.WriteLine("All Engo smoke checks passed.");
     return 0;
@@ -344,6 +346,44 @@ static void VerifyAnnotationEraserHitTesting()
             overlapping,
             new PdfAnnotationPoint(0.85, 0.85)) == -1,
         "The eraser must return no hit when the pointer is outside all drafts.");
+}
+
+static void VerifyImageViewportMath()
+{
+    var zoomOffsets = ImageViewportMath.CalculateZoomAnchoredOffsets(
+        horizontalOffset: 200,
+        verticalOffset: 100,
+        pointerX: 100,
+        pointerY: 50,
+        currentZoomFactor: 2,
+        nextZoomFactor: 3);
+
+    Require(
+        Math.Abs(zoomOffsets.Horizontal - 350) < 0.001 &&
+        Math.Abs(zoomOffsets.Vertical - 175) < 0.001,
+        "Zooming must keep the same image point beneath the mouse pointer.");
+
+    var panOffsets = ImageViewportMath.CalculatePanOffsets(
+        horizontalOffset: 120,
+        verticalOffset: 70,
+        pointerDeltaX: 25,
+        pointerDeltaY: -10);
+
+    Require(
+        Math.Abs(panOffsets.Horizontal - 95) < 0.001 &&
+        Math.Abs(panOffsets.Vertical - 80) < 0.001,
+        "Dragging right/down must move the displayed image in the same direction.");
+
+    var clampedOffsets = ImageViewportMath.CalculatePanOffsets(
+        horizontalOffset: 5,
+        verticalOffset: 3,
+        pointerDeltaX: 20,
+        pointerDeltaY: 20);
+
+    Require(
+        clampedOffsets.Horizontal == 0 &&
+        clampedOffsets.Vertical == 0,
+        "Panning must not produce negative scroll offsets.");
 }
 
 static void VerifyNoTemporaryFilesRemain(string root)

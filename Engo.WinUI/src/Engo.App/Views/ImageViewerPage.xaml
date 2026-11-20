@@ -23,6 +23,14 @@
                 VerticalAlignment="Center"
                 Margin="12,0,0,0"
                 Opacity="0.72" />
+            <TextBlock
+                Text="عجلة الماوس للتكبير • اسحب بالزر الأيسر للتحريك"
+                VerticalAlignment="Center"
+                Margin="12,0,0,0"
+                MaxWidth="280"
+                TextWrapping="Wrap"
+                FontSize="12"
+                Opacity="0.65" />
         </StackPanel>
 
         <InfoBar
@@ -42,12 +50,22 @@
             <Grid>
                 <ScrollViewer
                     x:Name="ImageScrollViewer"
+                    Background="Transparent"
                     HorizontalScrollBarVisibility="Auto"
                     VerticalScrollBarVisibility="Auto"
+                    HorizontalScrollMode="Enabled"
+                    VerticalScrollMode="Enabled"
                     ZoomMode="Enabled"
                     MinZoomFactor="0.1"
                     MaxZoomFactor="8"
-                    ViewChanged="ImageScrollViewer_ViewChanged">
+                    SizeChanged="ImageScrollViewer_SizeChanged"
+                    ViewChanged="ImageScrollViewer_ViewChanged"
+                    PointerWheelChanged="ImageScrollViewer_PointerWheelChanged"
+                    PointerPressed="ImageScrollViewer_PointerPressed"
+                    PointerMoved="ImageScrollViewer_PointerMoved"
+                    PointerReleased="ImageScrollViewer_PointerReleased"
+                    PointerCanceled="ImageScrollViewer_PointerCanceled"
+                    PointerCaptureLost="ImageScrollViewer_PointerCaptureLost">
                     <Image
                         x:Name="DocumentImage"
                         Stretch="Uniform"
