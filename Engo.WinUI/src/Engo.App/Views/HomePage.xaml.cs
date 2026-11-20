@@ -28,14 +28,14 @@ public sealed partial class HomePage : Page
         try
         {
             var recent = await _recentDocuments.GetRecentAsync();
-            var availablePdfs = recent
+            var availableDocuments = recent
                 .Where(document =>
-                    document.Kind == DocumentKind.Pdf &&
+                    document.Kind is DocumentKind.Pdf or DocumentKind.Image &&
                     File.Exists(document.FullPath))
                 .ToArray();
 
-            RecentDocumentsList.ItemsSource = availablePdfs;
-            RecentDocumentsEmptyText.Visibility = availablePdfs.Length == 0
+            RecentDocumentsList.ItemsSource = availableDocuments;
+            RecentDocumentsEmptyText.Visibility = availableDocuments.Length == 0
                 ? Visibility.Visible
                 : Visibility.Collapsed;
         }
