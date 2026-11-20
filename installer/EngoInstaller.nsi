@@ -92,6 +92,14 @@ Function .onInit
   SetShellVarContext all
   !insertmacro MUI_LANGDLL_DISPLAY
 
+  ; A silent install cannot display the agreement or collect informed consent.
+  ; Refuse it instead of writing an acceptance record without user interaction.
+  IfSilent silent_install_denied interactive_install
+silent_install_denied:
+  MessageBox MB_ICONSTOP "Engo Setup requires an interactive installation so you can review and accept the Terms & Conditions. Silent installation is not supported."
+  Abort
+interactive_install:
+
   ; Remember the old location only. The existing installation is preserved
   ; until the new license page is accepted and the install section begins.
   ReadRegStr $ExistingInstallDir HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}" "InstallLocation"
