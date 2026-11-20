@@ -206,7 +206,7 @@
                                             <StackPanel
                                                 HorizontalAlignment="Center"
                                                 Spacing="5"
-                                                Padding="4">
+                                                Margin="4">
                                                 <Border
                                                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
