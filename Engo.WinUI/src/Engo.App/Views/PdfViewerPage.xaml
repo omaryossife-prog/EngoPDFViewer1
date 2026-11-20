@@ -202,7 +202,8 @@
                                     IsHitTestVisible="False"
                                     PointerPressed="AnnotationCanvas_PointerPressed"
                                     PointerMoved="AnnotationCanvas_PointerMoved"
-                                    PointerReleased="AnnotationCanvas_PointerReleased" />
+                                    PointerReleased="AnnotationCanvas_PointerReleased"
+                                    PointerCaptureLost="AnnotationCanvas_PointerCaptureLost" />
                             </Grid>
                         </ScrollViewer>
                         <ProgressRing
