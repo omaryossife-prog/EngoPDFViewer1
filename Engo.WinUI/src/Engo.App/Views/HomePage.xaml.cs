@@ -30,7 +30,7 @@ public sealed partial class HomePage : Page
             var recent = await _recentDocuments.GetRecentAsync();
             var availableDocuments = recent
                 .Where(document =>
-                    document.Kind is DocumentKind.Pdf or DocumentKind.Image &&
+                    (document.Kind is DocumentKind.Pdf or DocumentKind.Image) &&
                     File.Exists(document.FullPath))
                 .ToArray();
 
