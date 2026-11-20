@@ -1,4 +1,5 @@
 using System.Globalization;
+using Windows.Foundation;
 using Engo.Application.Documents;
 using Engo.Infrastructure.Pdf;
 using Microsoft.UI.Xaml;
@@ -961,7 +962,7 @@ public sealed partial class PdfViewerPage : Page
         PdfScrollViewer.ChangeView(
             null,
             null,
-            (float)Math.Clamp(fitScale, 0.5, 4.0));
+            (float)Math.Clamp(fitScale, 0.1, 4.0));
     }
 
     private void PdfScrollViewer_ViewChanged(
