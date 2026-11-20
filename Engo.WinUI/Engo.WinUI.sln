@@ -10,6 +10,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Engo.Infrastructure", "src\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Engo.App", "src\Engo.App\Engo.App.csproj", "{12A3BDF1-6B73-4E7C-94D2-18C5A37C4F04}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Engo.PdfEngineSpike", "src\Engo.PdfEngineSpike\Engo.PdfEngineSpike.csproj", "{12A3BDF1-6B73-4E7C-94D2-18C5A37C4F05}"
+EndProject
 Global
     GlobalSection(SolutionConfigurationPlatforms) = preSolution
         Debug|x64 = Debug|x64
@@ -50,5 +52,13 @@ Global
         {12A3BDF1-6B73-4E7C-94D2-18C5A37C4F04}.Debug|ARM64.Build.0 = Debug|ARM64
         {12A3BDF1-6B73-4E7C-94D2-18C5A37C4F04}.Release|ARM64.ActiveCfg = Release|ARM64
         {12A3BDF1-6B73-4E7C-94D2-18C5A37C4F04}.Release|ARM64.Build.0 = Release|ARM64
+        {12A3BDF1-6B73-4E7C-94D2-18C5A37C4F05}.Debug|x64.ActiveCfg = Debug|Any CPU
+        {12A3BDF1-6B73-4E7C-94D2-18C5A37C4F05}.Debug|x64.Build.0 = Debug|Any CPU
+        {12A3BDF1-6B73-4E7C-94D2-18C5A37C4F05}.Release|x64.ActiveCfg = Release|Any CPU
+        {12A3BDF1-6B73-4E7C-94D2-18C5A37C4F05}.Release|x64.Build.0 = Release|Any CPU
+        {12A3BDF1-6B73-4E7C-94D2-18C5A37C4F05}.Debug|ARM64.ActiveCfg = Debug|Any CPU
+        {12A3BDF1-6B73-4E7C-94D2-18C5A37C4F05}.Debug|ARM64.Build.0 = Debug|Any CPU
+        {12A3BDF1-6B73-4E7C-94D2-18C5A37C4F05}.Release|ARM64.ActiveCfg = Release|Any CPU
+        {12A3BDF1-6B73-4E7C-94D2-18C5A37C4F05}.Release|ARM64.Build.0 = Release|Any CPU
     EndGlobalSection
 EndGlobal
