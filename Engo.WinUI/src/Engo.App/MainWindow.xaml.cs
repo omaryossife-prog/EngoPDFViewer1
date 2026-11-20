@@ -1,6 +1,7 @@
 using Engo.App.Views;
 using Engo.Application.Documents;
 using Engo.Infrastructure.Persistence;
+using Engo.Infrastructure.Pdf;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Storage.Pickers;
@@ -12,6 +13,7 @@ public sealed partial class MainWindow : Window
 {
     private readonly RecentDocumentsService _recentDocuments;
     private readonly DocumentSessionService _documentSession;
+    private readonly IPdfMergeService _pdfMergeService = new AsposePdfMergeService();
     private bool _sessionRestoreStarted;
     private bool _isRestoringSession;
 
@@ -353,6 +355,100 @@ public sealed partial class MainWindow : Window
         }
 
         await PersistCurrentSessionAsync();
+    }
+
+    private async void MergePdfsButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var openPicker = new FileOpenPicker
+            {
+                ViewMode = PickerViewMode.List,
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary
+            };
+            openPicker.FileTypeFilter.Add(".pdf");
+            InitializeWithWindow.Initialize(
+                openPicker,
+                WindowNative.GetWindowHandle(this));
+
+            var selectedFiles = await openPicker.PickMultipleFilesAsync();
+            if (selectedFiles.Count < 2)
+            {
+                await ShowMessageAsync(
+                    "اختيار ملفات PDF",
+                    "اختر ملفين PDF على الأقل لإتمام عملية الدمج.");
+                return;
+            }
+
+            var savePicker = new FileSavePicker
+            {
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                SuggestedFileName = "Merged.pdf"
+            };
+            savePicker.FileTypeChoices.Add(
+                "ملف PDF",
+                new List<string> { ".pdf" });
+
+            InitializeWithWindow.Initialize(
+                savePicker,
+                WindowNative.GetWindowHandle(this));
+
+            var destination = await savePicker.PickSaveFileAsync();
+            if (destination is null)
+            {
+                return;
+            }
+
+            if (File.Exists(destination.Path))
+            {
+                var replaceDialog = new ContentDialog
+                {
+                    Title = "الملف موجود بالفعل",
+                    Content = $"هل تريد استبدال الملف التالي؟\n{destination.Path}",
+                    PrimaryButtonText = "استبدال",
+                    CloseButtonText = "إلغاء",
+                    DefaultButton = ContentDialogButton.Close,
+                    XamlRoot = RootNavigation.XamlRoot
+                };
+
+                if (await replaceDialog.ShowAsync() != ContentDialogResult.Primary)
+                {
+                    return;
+                }
+            }
+
+            var sourcePaths = selectedFiles
+                .Select(file => file.Path)
+                .ToArray();
+
+            var pageCount = await _pdfMergeService.MergeAsync(
+                sourcePaths,
+                destination.Path);
+
+            await _recentDocuments.RecordOpenedAsync(destination.Path);
+            OpenDocumentInTab(destination.Path);
+
+            await ShowMessageAsync(
+                "اكتمل دمج ملفات PDF",
+                $"تم دمج {selectedFiles.Count} ملفات في مستند واحد يحتوي على {pageCount} صفحة.");
+        }
+        catch (Exception exception)
+        {
+            await ShowErrorAsync("تعذّر دمج ملفات PDF", exception.Message);
+        }
+    }
+
+    private async Task ShowMessageAsync(string title, string message)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = message,
+            CloseButtonText = "موافق",
+            XamlRoot = RootNavigation.XamlRoot
+        };
+
+        await dialog.ShowAsync();
     }
 
     private async Task ShowErrorAsync(string title, string message)
