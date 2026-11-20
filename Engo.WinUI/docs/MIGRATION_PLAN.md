@@ -19,8 +19,13 @@ This is a phased rewrite, not a one-shot language conversion. The Python applica
 
 ## Phase 1 — Document foundation
 
+**Status: first PDF viewing slice scaffolded; Windows build and behavior verification pending.**
+
+- [x] Native PDF file picker wired to the WinUI window.
+- [x] Initial read-only PDF page rendering and previous/next navigation using Windows.Data.Pdf.
+- [ ] Validate the viewer against representative PDF fixtures on Windows.
+- [ ] Select and benchmark the long-term PDF engine for search, text extraction, annotations, and advanced rendering.
 - Native file picker and supported-format detection.
-- PDF engine proof of concept and page rendering.
 - Page navigation, zoom, fit modes, text extraction, and search.
 - Multi-document tabs and session restoration.
 - Recent files, thumbnails, and large-document performance.
