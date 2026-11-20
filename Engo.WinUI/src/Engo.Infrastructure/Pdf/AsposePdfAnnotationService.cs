@@ -92,12 +92,21 @@ public sealed class AsposePdfAnnotationService : IPdfAnnotationService
         }
 
         var page = document.Pages[draft.PageNumber];
-        var mediaBox = page.Rect;
+        // Use the visible CropBox rather than assuming that every page starts at (0, 0).
+        // PDF viewers display the crop area after page rotation, while annotation
+        // coordinates are stored in the page's unrotated PDF user space.
+        var visibleBox = page.CropBox;
+        var pageLeft = visibleBox.LLX;
+        var pageBottom = visibleBox.LLY;
+        var pageWidth = visibleBox.URX - visibleBox.LLX;
+        var pageHeight = visibleBox.URY - visibleBox.LLY;
+        var rotation = ((page.RotateDegrees % 360) + 360) % 360;
 
-        var pageLeft = mediaBox.LLX;
-        var pageBottom = mediaBox.LLY;
-        var pageWidth = mediaBox.URX - mediaBox.LLX;
-        var pageHeight = mediaBox.URY - mediaBox.LLY;
+        if (rotation is not (0 or 90 or 180 or 270))
+        {
+            throw new NotSupportedException(
+                $"Page rotation {page.RotateDegrees}° is not supported for annotations.");
+        }
 
         if (pageWidth <= 0 || pageHeight <= 0)
         {
@@ -107,10 +116,18 @@ public sealed class AsposePdfAnnotationService : IPdfAnnotationService
 
         // The UI stores ratios from the displayed page's top-left origin.
         // PDF user space uses the lower-left origin and points (1/72 inch).
-        var left = pageLeft + draft.LeftRatio * pageWidth;
-        var right = pageLeft + draft.RightRatio * pageWidth;
-        var top = pageBottom + (1 - draft.TopRatio) * pageHeight;
-        var bottom = pageBottom + (1 - draft.BottomRatio) * pageHeight;
+        var viewCorners = new[]
+        {
+            MapViewPointToPdf(draft.LeftRatio, draft.TopRatio, rotation),
+            MapViewPointToPdf(draft.RightRatio, draft.TopRatio, rotation),
+            MapViewPointToPdf(draft.LeftRatio, draft.BottomRatio, rotation),
+            MapViewPointToPdf(draft.RightRatio, draft.BottomRatio, rotation)
+        };
+
+        var left = pageLeft + viewCorners.Min(point => point.X) * pageWidth;
+        var right = pageLeft + viewCorners.Max(point => point.X) * pageWidth;
+        var bottom = pageBottom + viewCorners.Min(point => point.Y) * pageHeight;
+        var top = pageBottom + viewCorners.Max(point => point.Y) * pageHeight;
 
         var rectangle = new Rectangle(left, bottom, right, top);
         var color = NormalizeColor(draft.Color);
@@ -154,6 +171,7 @@ public sealed class AsposePdfAnnotationService : IPdfAnnotationService
                     pageBottom,
                     pageWidth,
                     pageHeight,
+                    rotation,
                     color,
                     lineWidth);
                 break;
@@ -172,6 +190,7 @@ public sealed class AsposePdfAnnotationService : IPdfAnnotationService
         double pageBottom,
         double pageWidth,
         double pageHeight,
+        int rotation,
         double[] color,
         double lineWidth)
     {
@@ -188,8 +207,13 @@ public sealed class AsposePdfAnnotationService : IPdfAnnotationService
             ValidateRatio(point.XRatio, nameof(point.XRatio));
             ValidateRatio(point.YRatio, nameof(point.YRatio));
 
-            path[index * 2] = pageLeft + point.XRatio * pageWidth;
-            path[(index * 2) + 1] = pageBottom + (1 - point.YRatio) * pageHeight;
+            var mappedPoint = MapViewPointToPdf(
+                point.XRatio,
+                point.YRatio,
+                rotation);
+
+            path[index * 2] = pageLeft + mappedPoint.X * pageWidth;
+            path[(index * 2) + 1] = pageBottom + mappedPoint.Y * pageHeight;
         }
 
         page.Annotations.AddInkAnnotation(
@@ -197,6 +221,22 @@ public sealed class AsposePdfAnnotationService : IPdfAnnotationService
             inkPaths: new[] { path },
             color: color,
             lineWidth: lineWidth);
+    }
+
+    private static (double X, double Y) MapViewPointToPdf(
+        double viewX,
+        double viewYFromTop,
+        int clockwiseRotation)
+    {
+        return clockwiseRotation switch
+        {
+            0 => (viewX, 1 - viewYFromTop),
+            90 => (1 - viewYFromTop, 1 - viewX),
+            180 => (1 - viewX, viewYFromTop),
+            270 => (viewYFromTop, viewX),
+            _ => throw new NotSupportedException(
+                $"Page rotation {clockwiseRotation}° is not supported.")
+        };
     }
 
     private static double[] NormalizeColor(PdfAnnotationColor color)
