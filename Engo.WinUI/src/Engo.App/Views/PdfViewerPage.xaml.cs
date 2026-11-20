@@ -410,6 +410,508 @@ public sealed partial class PdfViewerPage : Page
         }
     }
 
+
+    private string SelectedAnnotationTool =>
+        (AnnotationToolComboBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "Browse";
+
+    private PdfAnnotationColor SelectedAnnotationColor =>
+        ((AnnotationColorComboBox.SelectedItem as ComboBoxItem)?.Tag as string) switch
+        {
+            "Red" => PdfAnnotationColor.Red,
+            "Blue" => PdfAnnotationColor.Blue,
+            "Green" => PdfAnnotationColor.Green,
+            _ => PdfAnnotationColor.Yellow
+        };
+
+    private double SelectedPdfLineWidth =>
+        Math.Clamp(AnnotationLineWidthSlider.Value * 0.75, 0.5, 6.0);
+
+    private void AnnotationToolComboBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (AnnotationCanvas is null)
+        {
+            return;
+        }
+
+        AnnotationCanvas.IsHitTestVisible =
+            SelectedAnnotationTool != "Browse";
+
+        AnnotationStatusText.Text = SelectedAnnotationTool switch
+        {
+            "Highlight" => "اسحب فوق الصفحة لتحديد مساحة التظليل.",
+            "Freehand" => "ارسم بالقلم داخل الصفحة.",
+            "Rectangle" => "اسحب لرسم مستطيل.",
+            "Note" => "اضغط على الصفحة لإضافة ملاحظة.",
+            _ => "وضع التصفح: اسحب للتنقل واستخدم عجلة التكبير."
+        };
+    }
+
+    private async void AnnotationCanvas_PointerPressed(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        if (_document is null || PageImage.Source is null)
+        {
+            return;
+        }
+
+        var tool = SelectedAnnotationTool;
+        if (tool == "Browse")
+        {
+            return;
+        }
+
+        var position = e.GetCurrentPoint(AnnotationCanvas).Position;
+        if (tool == "Note")
+        {
+            await AddNoteAtAsync(position);
+            e.Handled = true;
+            return;
+        }
+
+        _isDrawing = true;
+        _drawingStart = position;
+        AnnotationCanvas.CapturePointer(e.Pointer);
+
+        if (tool == "Freehand")
+        {
+            _activeStrokePoints = [position];
+            _activePolyline = new Polyline
+            {
+                Stroke = CreateAnnotationBrush(SelectedAnnotationColor, 255),
+                StrokeThickness = Math.Max(1, AnnotationLineWidthSlider.Value),
+                StrokeLineJoin = PenLineJoin.Round,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round,
+                Points = new PointCollection { position }
+            };
+            AnnotationCanvas.Children.Add(_activePolyline);
+        }
+        else
+        {
+            var color = SelectedAnnotationColor;
+            var isHighlight = tool == "Highlight";
+            _activeRectangle = new Microsoft.UI.Xaml.Shapes.Rectangle
+            {
+                Stroke = CreateAnnotationBrush(color, 255),
+                StrokeThickness = Math.Max(1, AnnotationLineWidthSlider.Value),
+                Fill = isHighlight
+                    ? CreateAnnotationBrush(color, 78)
+                    : new SolidColorBrush(Color.FromArgb(0, 0, 0, 0))
+            };
+
+            Canvas.SetLeft(_activeRectangle, position.X);
+            Canvas.SetTop(_activeRectangle, position.Y);
+            _activeRectangle.Width = 0;
+            _activeRectangle.Height = 0;
+            AnnotationCanvas.Children.Add(_activeRectangle);
+        }
+
+        e.Handled = true;
+    }
+
+    private void AnnotationCanvas_PointerMoved(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        if (!_isDrawing)
+        {
+            return;
+        }
+
+        var position = e.GetCurrentPoint(AnnotationCanvas).Position;
+
+        if (_activePolyline is not null && _activeStrokePoints is not null)
+        {
+            var previous = _activeStrokePoints[^1];
+            var distanceX = position.X - previous.X;
+            var distanceY = position.Y - previous.Y;
+
+            if ((distanceX * distanceX) + (distanceY * distanceY) >= 2.25)
+            {
+                _activeStrokePoints.Add(position);
+                _activePolyline.Points.Add(position);
+            }
+        }
+        else if (_activeRectangle is not null)
+        {
+            var left = Math.Min(_drawingStart.X, position.X);
+            var top = Math.Min(_drawingStart.Y, position.Y);
+
+            Canvas.SetLeft(_activeRectangle, left);
+            Canvas.SetTop(_activeRectangle, top);
+            _activeRectangle.Width = Math.Abs(position.X - _drawingStart.X);
+            _activeRectangle.Height = Math.Abs(position.Y - _drawingStart.Y);
+        }
+
+        e.Handled = true;
+    }
+
+    private void AnnotationCanvas_PointerReleased(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        if (!_isDrawing)
+        {
+            return;
+        }
+
+        var end = e.GetCurrentPoint(AnnotationCanvas).Position;
+        var tool = SelectedAnnotationTool;
+
+        if (tool == "Freehand" && _activeStrokePoints is { Count: >= 2 })
+        {
+            var points = _activeStrokePoints
+                .Select(ToNormalizedPoint)
+                .ToArray();
+
+            var bounds = GetNormalizedBounds(points);
+            _pendingAnnotations.Add(new PdfAnnotationDraft(
+                checked((int)_pageIndex + 1),
+                PdfAnnotationKind.Freehand,
+                bounds.Left,
+                bounds.Top,
+                bounds.Right,
+                bounds.Bottom,
+                points,
+                null,
+                SelectedAnnotationColor,
+                SelectedPdfLineWidth));
+        }
+        else if (_activeRectangle is not null)
+        {
+            var bounds = GetNormalizedBounds(_drawingStart, end);
+            if (bounds.Right - bounds.Left >= 0.003 &&
+                bounds.Bottom - bounds.Top >= 0.003)
+            {
+                var kind = tool == "Highlight"
+                    ? PdfAnnotationKind.Highlight
+                    : PdfAnnotationKind.Rectangle;
+
+                _pendingAnnotations.Add(new PdfAnnotationDraft(
+                    checked((int)_pageIndex + 1),
+                    kind,
+                    bounds.Left,
+                    bounds.Top,
+                    bounds.Right,
+                    bounds.Bottom,
+                    [],
+                    null,
+                    SelectedAnnotationColor,
+                    SelectedPdfLineWidth));
+            }
+        }
+
+        AnnotationCanvas.ReleasePointerCaptures();
+        _isDrawing = false;
+        _activePolyline = null;
+        _activeRectangle = null;
+        _activeStrokePoints = null;
+
+        RedrawPendingAnnotations();
+        UpdateAnnotationStatus();
+        e.Handled = true;
+    }
+
+    private async Task AddNoteAtAsync(Point position)
+    {
+        var noteInput = new TextBox
+        {
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            PlaceholderText = "اكتب الملاحظة...",
+            MinWidth = 320,
+            MinHeight = 90,
+            MaxLength = 2000
+        };
+
+        var dialog = new ContentDialog
+        {
+            Title = "ملاحظة جديدة",
+            Content = noteInput,
+            PrimaryButtonText = "إضافة",
+            CloseButtonText = "إلغاء",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary ||
+            string.IsNullOrWhiteSpace(noteInput.Text) ||
+            PageImage.Width <= 0 ||
+            PageImage.Height <= 0)
+        {
+            return;
+        }
+
+        const double noteSizeRatio = 0.035;
+        var center = ToNormalizedPoint(position);
+        var left = Math.Clamp(center.XRatio, 0, 1 - noteSizeRatio);
+        var top = Math.Clamp(center.YRatio, 0, 1 - noteSizeRatio);
+
+        _pendingAnnotations.Add(new PdfAnnotationDraft(
+            checked((int)_pageIndex + 1),
+            PdfAnnotationKind.Note,
+            left,
+            top,
+            left + noteSizeRatio,
+            top + noteSizeRatio,
+            [],
+            noteInput.Text.Trim(),
+            SelectedAnnotationColor,
+            SelectedPdfLineWidth));
+
+        RedrawPendingAnnotations();
+        UpdateAnnotationStatus();
+    }
+
+    private PdfAnnotationPoint ToNormalizedPoint(Point point)
+    {
+        var width = Math.Max(1, PageImage.Width);
+        var height = Math.Max(1, PageImage.Height);
+
+        return new PdfAnnotationPoint(
+            Math.Clamp(point.X / width, 0, 1),
+            Math.Clamp(point.Y / height, 0, 1));
+    }
+
+    private (double Left, double Top, double Right, double Bottom) GetNormalizedBounds(
+        Point first,
+        Point second)
+    {
+        var a = ToNormalizedPoint(first);
+        var b = ToNormalizedPoint(second);
+
+        return (
+            Math.Min(a.XRatio, b.XRatio),
+            Math.Min(a.YRatio, b.YRatio),
+            Math.Max(a.XRatio, b.XRatio),
+            Math.Max(a.YRatio, b.YRatio));
+    }
+
+    private static (double Left, double Top, double Right, double Bottom) GetNormalizedBounds(
+        IReadOnlyList<PdfAnnotationPoint> points)
+    {
+        var left = points.Min(point => point.XRatio);
+        var right = points.Max(point => point.XRatio);
+        var top = points.Min(point => point.YRatio);
+        var bottom = points.Max(point => point.YRatio);
+
+        const double minimumPadding = 0.0015;
+        if (right - left < minimumPadding)
+        {
+            left = Math.Max(0, left - minimumPadding);
+            right = Math.Min(1, right + minimumPadding);
+        }
+
+        if (bottom - top < minimumPadding)
+        {
+            top = Math.Max(0, top - minimumPadding);
+            bottom = Math.Min(1, bottom + minimumPadding);
+        }
+
+        return (left, top, right, bottom);
+    }
+
+    private static SolidColorBrush CreateAnnotationBrush(
+        PdfAnnotationColor color,
+        byte alpha)
+    {
+        return new SolidColorBrush(Color.FromArgb(
+            alpha,
+            (byte)Math.Round(Math.Clamp(color.Red, 0, 1) * 255),
+            (byte)Math.Round(Math.Clamp(color.Green, 0, 1) * 255),
+            (byte)Math.Round(Math.Clamp(color.Blue, 0, 1) * 255)));
+    }
+
+    private void RedrawPendingAnnotations()
+    {
+        if (AnnotationCanvas is null ||
+            PageImage.Width <= 0 ||
+            PageImage.Height <= 0)
+        {
+            return;
+        }
+
+        AnnotationCanvas.Children.Clear();
+        var pageNumber = checked((int)_pageIndex + 1);
+
+        foreach (var draft in _pendingAnnotations.Where(
+                     annotation => annotation.PageNumber == pageNumber))
+        {
+            var color = CreateAnnotationBrush(draft.Color, 255);
+            var left = draft.LeftRatio * PageImage.Width;
+            var top = draft.TopRatio * PageImage.Height;
+            var width = (draft.RightRatio - draft.LeftRatio) * PageImage.Width;
+            var height = (draft.BottomRatio - draft.TopRatio) * PageImage.Height;
+
+            switch (draft.Kind)
+            {
+                case PdfAnnotationKind.Freehand:
+                {
+                    var polyline = new Polyline
+                    {
+                        Stroke = color,
+                        StrokeThickness = Math.Max(1, draft.LineWidth / 0.75),
+                        StrokeLineJoin = PenLineJoin.Round,
+                        StrokeStartLineCap = PenLineCap.Round,
+                        StrokeEndLineCap = PenLineCap.Round
+                    };
+
+                    foreach (var point in draft.StrokePoints)
+                    {
+                        polyline.Points.Add(new Point(
+                            point.XRatio * PageImage.Width,
+                            point.YRatio * PageImage.Height));
+                    }
+
+                    AnnotationCanvas.Children.Add(polyline);
+                    break;
+                }
+
+                case PdfAnnotationKind.Highlight:
+                case PdfAnnotationKind.Rectangle:
+                {
+                    var shape = new Microsoft.UI.Xaml.Shapes.Rectangle
+                    {
+                        Stroke = color,
+                        StrokeThickness = Math.Max(1, draft.LineWidth / 0.75),
+                        Fill = draft.Kind == PdfAnnotationKind.Highlight
+                            ? CreateAnnotationBrush(draft.Color, 78)
+                            : new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
+                        Width = width,
+                        Height = height
+                    };
+
+                    Canvas.SetLeft(shape, left);
+                    Canvas.SetTop(shape, top);
+                    AnnotationCanvas.Children.Add(shape);
+                    break;
+                }
+
+                case PdfAnnotationKind.Note:
+                {
+                    var note = new Border
+                    {
+                        Width = Math.Max(22, width),
+                        Height = Math.Max(22, height),
+                        CornerRadius = new CornerRadius(5),
+                        Background = CreateAnnotationBrush(draft.Color, 230),
+                        BorderBrush = color,
+                        BorderThickness = new Thickness(1),
+                        Child = new TextBlock
+                        {
+                            Text = "م",
+                            FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+                            HorizontalAlignment = HorizontalAlignment.Center,
+                            VerticalAlignment = VerticalAlignment.Center
+                        }
+                    };
+
+                    Canvas.SetLeft(note, left);
+                    Canvas.SetTop(note, top);
+                    AnnotationCanvas.Children.Add(note);
+                    break;
+                }
+            }
+        }
+
+        UpdateAnnotationStatus();
+    }
+
+    private void UpdateAnnotationStatus()
+    {
+        var count = _pendingAnnotations.Count;
+        AnnotationStatusText.Text = count switch
+        {
+            0 => "لا توجد تعليقات غير محفوظة.",
+            1 => "تعليق واحد غير محفوظ — احفظ نسخة PDF للاحتفاظ به.",
+            _ => $"{count} تعليقات غير محفوظة — احفظ نسخة PDF للاحتفاظ بها."
+        };
+    }
+
+    private void UndoLastAnnotationButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_pendingAnnotations.Count == 0)
+        {
+            return;
+        }
+
+        _pendingAnnotations.RemoveAt(_pendingAnnotations.Count - 1);
+        RedrawPendingAnnotations();
+    }
+
+    private async void SaveAnnotatedCopyButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_filePath) || _document is null)
+        {
+            ShowError("افتح ملف PDF أولًا.");
+            return;
+        }
+
+        if (_pendingAnnotations.Count == 0)
+        {
+            ShowError("لا توجد تعليقات غير محفوظة.");
+            return;
+        }
+
+        if (App.MainWindowInstance is null)
+        {
+            ShowError("تعذّر الوصول إلى نافذة التطبيق لفتح نافذة الحفظ.");
+            return;
+        }
+
+        var picker = new FileSavePicker();
+        picker.FileTypeChoices.Add("ملف PDF", new List<string> { ".pdf" });
+        picker.SuggestedFileName =
+            $"{Path.GetFileNameWithoutExtension(_filePath)}_annotated";
+
+        InitializeWithWindow.Initialize(
+            picker,
+            WindowNative.GetWindowHandle(App.MainWindowInstance));
+
+        var destination = await picker.PickSaveFileAsync();
+        if (destination is null)
+        {
+            return;
+        }
+
+        LoadingRing.IsActive = true;
+        ErrorInfoBar.IsOpen = false;
+
+        try
+        {
+            var annotations = _pendingAnnotations.ToArray();
+            await _annotationService.SaveAnnotatedCopyAsync(
+                _filePath,
+                destination.Path,
+                annotations);
+
+            var savedPdf = await PdfDocument.LoadFromFileAsync(destination);
+            var previousPageIndex = _pageIndex;
+
+            _document?.Dispose();
+            _document = savedPdf;
+            _filePath = destination.Path;
+            _pageIndex = Math.Min(previousPageIndex, _document.PageCount - 1);
+            _pendingAnnotations.Clear();
+
+            await RenderCurrentPageAsync();
+            AnnotationStatusText.Text = "تم حفظ نسخة PDF بالتعليقات الجديدة.";
+            AnnotatedCopySaved?.Invoke(this, destination.Path);
+        }
+        catch (Exception exception)
+        {
+            ShowError($"تعذّر حفظ التعليقات داخل نسخة PDF: {exception.Message}");
+        }
+        finally
+        {
+            LoadingRing.IsActive = false;
+        }
+    }
+
     private void ZoomInButton_Click(object sender, RoutedEventArgs e)
     {
         var nextZoom = Math.Min(4.0, PdfScrollViewer.ZoomFactor * 1.2);
