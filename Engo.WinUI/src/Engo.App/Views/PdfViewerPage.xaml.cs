@@ -866,26 +866,26 @@ public sealed partial class PdfViewerPage : Page
             return;
         }
 
-        var picker = new FileSavePicker();
-        picker.FileTypeChoices.Add("ملف PDF", new List<string> { ".pdf" });
-        picker.SuggestedFileName =
-            $"{Path.GetFileNameWithoutExtension(_filePath)}_annotated";
-
-        InitializeWithWindow.Initialize(
-            picker,
-            WindowNative.GetWindowHandle(App.MainWindowInstance));
-
-        var destination = await picker.PickSaveFileAsync();
-        if (destination is null)
-        {
-            return;
-        }
-
-        LoadingRing.IsActive = true;
-        ErrorInfoBar.IsOpen = false;
-
         try
         {
+            var picker = new FileSavePicker();
+            picker.FileTypeChoices.Add("ملف PDF", new List<string> { ".pdf" });
+            picker.SuggestedFileName =
+                $"{Path.GetFileNameWithoutExtension(_filePath)}_annotated";
+
+            InitializeWithWindow.Initialize(
+                picker,
+                WindowNative.GetWindowHandle(App.MainWindowInstance));
+
+            var destination = await picker.PickSaveFileAsync();
+            if (destination is null)
+            {
+                return;
+            }
+
+            LoadingRing.IsActive = true;
+            ErrorInfoBar.IsOpen = false;
+
             var annotations = _pendingAnnotations.ToArray();
             await _annotationService.SaveAnnotatedCopyAsync(
                 _filePath,
@@ -893,13 +893,20 @@ public sealed partial class PdfViewerPage : Page
                 annotations);
 
             var savedPdf = await PdfDocument.LoadFromFileAsync(destination);
-            var previousPageIndex = _pageIndex;
+            if (savedPdf.PageCount == 0)
+            {
+                savedPdf.Dispose();
+                throw new InvalidDataException("النسخة الناتجة لا تحتوي على صفحات.");
+            }
 
-            _document?.Dispose();
+            var previousPageIndex = _pageIndex;
+            var previousDocument = _document;
+
             _document = savedPdf;
             _filePath = destination.Path;
             _pageIndex = Math.Min(previousPageIndex, _document.PageCount - 1);
             _pendingAnnotations.Clear();
+            previousDocument.Dispose();
 
             await RenderCurrentPageAsync();
             AnnotationStatusText.Text = "تم حفظ نسخة PDF بالتعليقات الجديدة.";
