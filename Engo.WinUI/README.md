@@ -50,7 +50,7 @@ To launch the desktop application after a successful build, open the solution in
 
 ## Current implementation status
 
-The first migration increment establishes the solution, project boundaries, WinUI application shell, document domain model, recent-document application contract, and JSON persistence adapter. The initial PDF slice uses the Windows PDF API for read-only page rendering and previous/next navigation. It is **not** a feature-complete replacement. PDF text search, annotations, Office rendering, AI, voice, licensing, Supabase, and release packaging are tracked in `docs/FEATURE_PARITY.md`.
+The first migration increment establishes the solution, project boundaries, WinUI application shell, document domain model, recent-document application contract, and JSON persistence adapter. The initial PDF slice uses the Windows PDF API for read-only page rendering and previous/next navigation. Apache-2.0 PdfPig 0.1.16 is used separately for page text extraction and text search. Search results can navigate to the matching page. This is **not** a feature-complete replacement: OCR for scanned pages, visual search highlighting, annotations, Office rendering, AI, voice, licensing, Supabase, and release packaging are tracked in `docs/FEATURE_PARITY.md`.
 
 ## Engineering rules
 
