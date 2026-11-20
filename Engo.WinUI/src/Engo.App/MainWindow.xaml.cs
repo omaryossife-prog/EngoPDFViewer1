@@ -76,7 +76,7 @@ public sealed partial class MainWindow : Window
                 try
                 {
                     await _recentDocuments.RecordOpenedAsync(path);
-                    OpenPdfInTab(path);
+                    OpenDocumentInTab(path);
                 }
                 catch
                 {
@@ -169,12 +169,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void OpenPdfButton_Click(object sender, RoutedEventArgs e)
+    private async void OpenDocumentButton_Click(object sender, RoutedEventArgs e)
     {
         try
         {
             var picker = new FileOpenPicker();
             picker.FileTypeFilter.Add(".pdf");
+            foreach (var extension in new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tif", ".tiff" })
+            {
+                picker.FileTypeFilter.Add(extension);
+            }
 
             var windowHandle = WindowNative.GetWindowHandle(this);
             InitializeWithWindow.Initialize(picker, windowHandle);
@@ -186,11 +190,11 @@ public sealed partial class MainWindow : Window
             }
 
             await _recentDocuments.RecordOpenedAsync(file.Path);
-            OpenPdfInTab(file.Path);
+            OpenDocumentInTab(file.Path);
         }
         catch (Exception exception)
         {
-            await ShowErrorAsync("تعذّر فتح ملف PDF", exception.Message);
+            await ShowErrorAsync("تعذّر فتح المستند", exception.Message);
         }
     }
 
@@ -201,7 +205,7 @@ public sealed partial class MainWindow : Window
         try
         {
             await _recentDocuments.RecordOpenedAsync(filePath);
-            OpenPdfInTab(filePath);
+            OpenDocumentInTab(filePath);
         }
         catch (Exception exception)
         {
@@ -209,7 +213,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OpenPdfInTab(string filePath)
+    private void OpenDocumentInTab(string filePath)
     {
         var fullPath = Path.GetFullPath(filePath);
 
@@ -227,8 +231,18 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        var extension = Path.GetExtension(fullPath).ToLowerInvariant();
+        var pageType = extension switch
+        {
+            ".pdf" => typeof(PdfViewerPage),
+            ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".webp" or ".tif" or ".tiff"
+                => typeof(ImageViewerPage),
+            _ => throw new NotSupportedException(
+                $"The file type '{extension}' is not supported by the current C# viewer.")
+        };
+
         var documentFrame = new Frame();
-        documentFrame.Navigate(typeof(PdfViewerPage), fullPath);
+        documentFrame.Navigate(pageType, fullPath);
 
         var tab = new TabViewItem
         {
@@ -254,7 +268,7 @@ public sealed partial class MainWindow : Window
 
         if (tab.Content is Frame frame)
         {
-            // Navigate away so the PDF page releases its native document handle.
+            // Navigate away so the current document page releases its native handles.
             frame.Navigate(typeof(HomePage));
         }
 
