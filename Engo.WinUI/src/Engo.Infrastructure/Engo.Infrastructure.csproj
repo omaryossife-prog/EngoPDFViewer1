@@ -6,5 +6,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Engo.Application\Engo.Application.csproj" />
     <PackageReference Include="PdfPig" />
+    <PackageReference Include="Aspose.PDF.FOSS" />
   </ItemGroup>
 </Project>
