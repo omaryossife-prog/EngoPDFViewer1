@@ -1,0 +1,139 @@
+<Page
+    x:Class="Engo.App.Views.HomePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    FlowDirection="RightToLeft">
+    <ScrollViewer>
+        <StackPanel Padding="36" Spacing="22">
+            <StackPanel Spacing="6">
+                <TextBlock
+                    Text="Engo"
+                    FontSize="38"
+                    FontWeight="SemiBold" />
+                <TextBlock
+                    Text="قارئ PDF ومساعد الدراسة بالذكاء الاصطناعي"
+                    FontSize="22"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Text="بيئة Windows أصلية — C# وWinUI 3"
+                    Opacity="0.72"
+                    FontSize="14" />
+            </StackPanel>
+
+            <InfoBar
+                IsOpen="True"
+                IsClosable="False"
+                Severity="Informational"
+                Title="مساحة إعادة البناء"
+                Message="هذا الفرع مستقل عن إصدار Python. لا تزال الميزات القديمة هي المرجع، ولن تُعلن أي ميزة كمنقولة قبل تنفيذها واختبار تطابقها." />
+
+            <TextBlock
+                Text="خريطة نقل الميزات"
+                FontSize="24"
+                FontWeight="SemiBold"
+                Margin="0,10,0,0" />
+
+            <Grid
+                ColumnDefinitions="*,*"
+                RowDefinitions="Auto,Auto,Auto"
+                ColumnSpacing="14"
+                RowSpacing="14">
+                <Border
+                    Grid.Row="0"
+                    Grid.Column="0"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Padding="18">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="الأساس التقني" FontSize="17" FontWeight="SemiBold" />
+                        <TextBlock Text="تم إنشاء الحل ومشروعات Domain وApplication وInfrastructure وواجهة WinUI." TextWrapping="Wrap" />
+                        <TextBlock Text="مُجهّز" Opacity="0.72" />
+                    </StackPanel>
+                </Border>
+
+                <Border
+                    Grid.Row="0"
+                    Grid.Column="1"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Padding="18">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="قارئ PDF" FontSize="17" FontWeight="SemiBold" />
+                        <TextBlock Text="عرض الصفحات والتنقل والبحث والتكبير والتبويبات." TextWrapping="Wrap" />
+                        <TextBlock Text="قيد النقل" Opacity="0.72" />
+                    </StackPanel>
+                </Border>
+
+                <Border
+                    Grid.Row="1"
+                    Grid.Column="0"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Padding="18">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="التعليقات والأدوات" FontSize="17" FontWeight="SemiBold" />
+                        <TextBlock Text="التحديد والتظليل والرسم والأشكال وحفظ التعديلات." TextWrapping="Wrap" />
+                        <TextBlock Text="لم يبدأ" Opacity="0.72" />
+                    </StackPanel>
+                </Border>
+
+                <Border
+                    Grid.Row="1"
+                    Grid.Column="1"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Padding="18">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="المساعد الذكي والصوت" FontSize="17" FontWeight="SemiBold" />
+                        <TextBlock Text="المحادثة وسياق المستند والتلخيص والترجمة والشرح الصوتي." TextWrapping="Wrap" />
+                        <TextBlock Text="لم يبدأ" Opacity="0.72" />
+                    </StackPanel>
+                </Border>
+
+                <Border
+                    Grid.Row="2"
+                    Grid.Column="0"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Padding="18">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Office والصور" FontSize="17" FontWeight="SemiBold" />
+                        <TextBlock Text="فتح Word وPowerPoint والصور المدعومة داخل مساحة العمل." TextWrapping="Wrap" />
+                        <TextBlock Text="لم يبدأ" Opacity="0.72" />
+                    </StackPanel>
+                </Border>
+
+                <Border
+                    Grid.Row="2"
+                    Grid.Column="1"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Padding="18">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="الحساب والترخيص" FontSize="17" FontWeight="SemiBold" />
+                        <TextBlock Text="Google Login وSupabase والاشتراكات والتحقق والاستخدام." TextWrapping="Wrap" />
+                        <TextBlock Text="لم يبدأ" Opacity="0.72" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <TextBlock
+                Text="الهدف: نقل كامل الوظائف تدريجيًا مع الحفاظ على سلوك Engo وبيانات المستخدمين، وليس مجرد تغيير شكل الواجهة."
+                TextWrapping="Wrap"
+                Opacity="0.82"
+                Margin="0,6,0,0" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>
