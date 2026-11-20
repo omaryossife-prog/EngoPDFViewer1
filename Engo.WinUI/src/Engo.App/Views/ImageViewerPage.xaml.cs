@@ -61,6 +61,27 @@ public sealed partial class ImageViewerPage : Page
         }
     }
 
+    private void FitImageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (DocumentImage.Source is null ||
+            DocumentImage.Width <= 0 ||
+            DocumentImage.Height <= 0)
+        {
+            return;
+        }
+
+        var availableWidth = Math.Max(1, ImageScrollViewer.ActualWidth - 32);
+        var availableHeight = Math.Max(1, ImageScrollViewer.ActualHeight - 32);
+        var fitScale = Math.Min(
+            availableWidth / DocumentImage.Width,
+            availableHeight / DocumentImage.Height);
+
+        ImageScrollViewer.ChangeView(
+            null,
+            null,
+            (float)Math.Clamp(fitScale, 0.1, 8.0));
+    }
+
     private void ZoomInButton_Click(object sender, RoutedEventArgs e)
     {
         var nextZoom = Math.Min(8.0, ImageScrollViewer.ZoomFactor * 1.2);
