@@ -668,6 +668,11 @@ try {
     $ChevronUpLightPath = Join-Path $ProjectRoot 'combo_chevron_up_light.png'
     $ChevronUpDarkPath = Join-Path $ProjectRoot 'combo_chevron_up_dark.png'
     $GuidePath = Join-Path $ProjectRoot 'ENGO_PROGRAM_GUIDE.md'
+    $LegalDirectory = Join-Path $ProjectRoot 'LEGAL'
+    $TermsArPath = Join-Path $LegalDirectory 'TERMS_AND_CONDITIONS_AR.md'
+    $TermsEnPath = Join-Path $LegalDirectory 'TERMS_AND_CONDITIONS_EN.md'
+    $TermsTextPath = Join-Path $LegalDirectory 'TERMS_AND_CONDITIONS.txt'
+    $TermsModulePath = Join-Path $ProjectRoot 'engo_licensing\\terms.py'
     # The runtime config is intentionally git-ignored because each release may
     # have environment-specific public values and an Ed25519 public key. For CI
     # builds without a local config, ship the project-scoped public example.
@@ -693,7 +698,7 @@ try {
     [System.IO.File]::WriteAllText($BuildLicenseConfigPath, $PublicRuntimeJson, [System.Text.UTF8Encoding]::new($false))
     $NsisScript = Join-Path $ProjectRoot 'installer\EngoInstaller.nsi'
     Write-LogLine '[STAGE START] Validate required source files and installer script'
-    foreach ($Required in @($MainPath, $RequirementsPath, $IconPath, $CheckboxPath, $ChevronPath, $ChevronDarkPath, $ChevronUpLightPath, $ChevronUpDarkPath, $GuidePath, $RuntimeLicenseConfigPath, $NsisScript)) {
+    foreach ($Required in @($MainPath, $RequirementsPath, $IconPath, $CheckboxPath, $ChevronPath, $ChevronDarkPath, $ChevronUpLightPath, $ChevronUpDarkPath, $GuidePath, $TermsArPath, $TermsEnPath, $TermsTextPath, $TermsModulePath, $RuntimeLicenseConfigPath, $NsisScript)) {
         if (-not (Test-Path -LiteralPath $Required)) { throw "Required project file is missing: $Required" }
         Write-LogLine "[FILE OK] $Required"
     }
@@ -713,6 +718,22 @@ try {
     $VersionMatch = [regex]::Match($MainText, '(?m)^APP_VERSION\s*=\s*["''](?<version>\d+\.\d+\.\d+)["'']')
     if (-not $VersionMatch.Success) { throw 'Could not read APP_VERSION = "x.y.z" from main.py. Update that constant before building.' }
     $Version = $VersionMatch.Groups['version'].Value
+
+    $TermsSource = Get-Content -LiteralPath $TermsModulePath -Raw -Encoding UTF8
+    $TermsVersionMatch = [regex]::Match($TermsSource, '(?m)^TERMS_VERSION\\s*=\\s*["''](?<version>[^"'']+)["'']')
+    if (-not $TermsVersionMatch.Success) { throw 'Could not read TERMS_VERSION from engo_licensing/terms.py.' }
+    $TermsVersion = $TermsVersionMatch.Groups['version'].Value
+    $TermsArabic = [System.IO.File]::ReadAllText($TermsArPath, [System.Text.Encoding]::UTF8).Replace("`r`n", "`n").Replace("`r", "`n").Trim()
+    $TermsEnglish = [System.IO.File]::ReadAllText($TermsEnPath, [System.Text.Encoding]::UTF8).Replace("`r`n", "`n").Replace("`r", "`n").Trim()
+    $TermsPayload = "ar$([char]0)$TermsArabic$([char]0)en$([char]0)$TermsEnglish"
+    $TermsHasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $TermsDigest = [BitConverter]::ToString($TermsHasher.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($TermsPayload))).Replace('-', '').ToLowerInvariant()
+    } finally {
+        $TermsHasher.Dispose()
+    }
+    Write-LogLine "Terms version: $TermsVersion; content SHA-256: $TermsDigest"
+
     $AppName = 'Engo PDF Viewer & AI Study Agent'
     $ExeName = "$AppName.exe"
     Write-LogLine "Detected source version: $Version"
@@ -1008,6 +1029,9 @@ VSVersionInfo(
     [void]$NuitkaArgs.Add(('--include-data-files={0}=combo_chevron_up_light.png' -f $ChevronUpLightPath))
     [void]$NuitkaArgs.Add(('--include-data-files={0}=combo_chevron_up_dark.png' -f $ChevronUpDarkPath))
     [void]$NuitkaArgs.Add(('--include-data-files={0}=ENGO_PROGRAM_GUIDE.md' -f $GuidePath))
+    [void]$NuitkaArgs.Add(('--include-data-files={0}=LEGAL/TERMS_AND_CONDITIONS_AR.md' -f $TermsArPath))
+    [void]$NuitkaArgs.Add(('--include-data-files={0}=LEGAL/TERMS_AND_CONDITIONS_EN.md' -f $TermsEnPath))
+    [void]$NuitkaArgs.Add(('--include-data-files={0}=LEGAL/TERMS_AND_CONDITIONS.txt' -f $TermsTextPath))
     # LicenseConfig.load() looks next to the installed executable first. The
     # build uses a strict public-only allow-list; OAuth and signing secrets stay
     # in Supabase Edge Function secrets and never enter the end-user package.
@@ -1170,7 +1194,7 @@ except Exception as exc:
         Write-LogLine "[POWERSHELL] Remove-Item -LiteralPath `"$InstallerPath`" -Force"
         Remove-Item -LiteralPath $InstallerPath -Force
     }
-    Invoke-Native $Makensis @('/V3',"/DPRODUCT_VERSION=$Version",$NsisScript) 'Compile the professional Windows Setup and Uninstaller'
+    Invoke-Native $Makensis @('/V3',"/DPRODUCT_VERSION=$Version","/DTERMS_VERSION=$TermsVersion","/DTERMS_CONTENT_SHA256=$TermsDigest",$NsisScript) 'Compile the professional Windows Setup and Uninstaller'
     if (-not (Test-Path -LiteralPath $InstallerPath -PathType Leaf)) {
         throw "NSIS compiler did not create the expected Setup file: $InstallerPath"
     }
