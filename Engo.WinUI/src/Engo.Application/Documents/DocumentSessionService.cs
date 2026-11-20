@@ -30,10 +30,7 @@ public sealed class DocumentSessionService
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Select(Path.GetFullPath)
             .Where(File.Exists)
-            .Where(path => string.Equals(
-                Path.GetExtension(path),
-                ".pdf",
-                StringComparison.OrdinalIgnoreCase))
+            .Where(IsSupportedSessionDocument)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -54,4 +51,13 @@ public sealed class DocumentSessionService
 
         return _repository.SaveAsync(snapshot, cancellationToken);
     }
+
+    private static bool IsSupportedSessionDocument(string path) =>
+        Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".pdf" => true,
+            ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".tif" or ".tiff"
+                => true,
+            _ => false
+        };
 }
