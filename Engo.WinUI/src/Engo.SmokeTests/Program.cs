@@ -4,6 +4,9 @@ using Aspose.Pdf;
 using Aspose.Pdf.Annotations;
 using Engo.Infrastructure.Persistence;
 using Engo.Infrastructure.Pdf;
+using Engo.Infrastructure.Office;
+using System.IO.Compression;
+using System.Text;
 
 var root = Path.Combine(
     Path.GetTempPath(),
@@ -17,6 +20,8 @@ try
     var firstPdf = Path.Combine(root, "first.pdf");
     var secondPdf = Path.Combine(root, "second.pdf");
     var imageFile = Path.Combine(root, "scan.png");
+    var wordFile = Path.Combine(root, "sample.docx");
+    var powerpointFile = Path.Combine(root, "sample.pptx");
     var annotationSource = Path.Combine(root, "annotation-source.pdf");
     var annotationOutput = Path.Combine(root, "annotation-output.pdf");
     var mergeFirst = Path.Combine(root, "merge-first.pdf");
@@ -32,15 +37,20 @@ try
     CreatePdfWithPages(mergeSecond, 3);
     await File.WriteAllBytesAsync(imageFile, [0x89, 0x50, 0x4E, 0x47]);
     await File.WriteAllTextAsync(textFile, "This is not a supported document.");
+    CreateDocxFixture(wordFile);
+    CreatePptxFixture(powerpointFile);
 
-    await VerifyRecentDocumentsAsync(root, firstPdf, imageFile, textFile);
+    await VerifyRecentDocumentsAsync(root, firstPdf, imageFile, wordFile, powerpointFile, textFile);
     await VerifyDocumentSessionAsync(
         root,
         firstPdf,
         secondPdf,
         imageFile,
         textFile,
-        missingPdf);
+        missingPdf,
+        wordFile,
+        powerpointFile);
+    await VerifyOfficeDocumentReadingAsync(wordFile, powerpointFile);
     await VerifyPdfAnnotationRoundTripAsync(annotationSource, annotationOutput);
     await VerifyPdfMergeRoundTripAsync(mergeFirst, mergeSecond, mergeOutput);
     VerifyAnnotationEraserHitTesting();
@@ -48,7 +58,8 @@ try
     VerifyNoTemporaryFilesRemain(root);
 
     Console.WriteLine("PASS: recent PDF, image and Office persistence");
-    Console.WriteLine("PASS: PDF/image session persistence and path filtering");
+    Console.WriteLine("PASS: PDF/image/Office session persistence and path filtering");
+    Console.WriteLine("PASS: DOCX text/table/image preview and PPTX slide-order/image preview");
     Console.WriteLine("PASS: PDF annotations save as a separate round-trip-readable copy");
     Console.WriteLine("PASS: PDF merge preserves input order and page count");
     Console.WriteLine("PASS: annotation eraser hit testing respects stroke geometry and draw order");
@@ -81,6 +92,8 @@ static async Task VerifyRecentDocumentsAsync(
     string root,
     string firstPdf,
     string imageFile,
+    string wordFile,
+    string powerpointFile,
     string textFile)
 {
     var repository = new JsonRecentDocumentsRepository(
@@ -90,17 +103,24 @@ static async Task VerifyRecentDocumentsAsync(
     await service.RecordOpenedAsync(firstPdf);
     await service.RecordOpenedAsync(firstPdf);
     var image = await service.RecordOpenedAsync(imageFile);
+    var word = await service.RecordOpenedAsync(wordFile);
+    var powerpoint = await service.RecordOpenedAsync(powerpointFile);
 
     var recent = await service.GetRecentAsync();
     Require(
-        recent.Count == 2 &&
+        recent.Count == 4 &&
         recent.Count(document => document.Kind == DocumentKind.Pdf) == 1 &&
-        recent.Any(document =>
-            document.Kind == DocumentKind.Image &&
-            string.Equals(document.FullPath, imageFile, StringComparison.OrdinalIgnoreCase)),
-        "Recent documents must deduplicate PDFs and retain supported images.");
+        recent.Any(document => document.Kind == DocumentKind.Image &&
+            string.Equals(document.FullPath, imageFile, StringComparison.OrdinalIgnoreCase)) &&
+        recent.Any(document => document.Kind == DocumentKind.Word &&
+            string.Equals(document.FullPath, wordFile, StringComparison.OrdinalIgnoreCase)) &&
+        recent.Any(document => document.Kind == DocumentKind.PowerPoint &&
+            string.Equals(document.FullPath, powerpointFile, StringComparison.OrdinalIgnoreCase)),
+        "Recent documents must deduplicate PDFs and retain supported images and Office documents.");
 
     Require(image.Kind == DocumentKind.Image, "PNG files must be classified as images.");
+    Require(word.Kind == DocumentKind.Word, "DOCX files must be classified as Word documents.");
+    Require(powerpoint.Kind == DocumentKind.PowerPoint, "PPTX files must be classified as PowerPoint documents.");
 
     await AssertThrowsAsync<NotSupportedException>(
         () => service.RecordOpenedAsync(textFile),
@@ -113,14 +133,16 @@ static async Task VerifyDocumentSessionAsync(
     string secondPdf,
     string imageFile,
     string textFile,
-    string missingPdf)
+    string missingPdf,
+    string wordFile,
+    string powerpointFile)
 {
     var repository = new JsonDocumentSessionRepository(
         Path.Combine(root, "document-session.json"));
     var service = new DocumentSessionService(repository);
 
     await service.SaveAsync(
-        new[] { firstPdf, imageFile, textFile, missingPdf, secondPdf },
+        new[] { firstPdf, imageFile, wordFile, textFile, missingPdf, powerpointFile, secondPdf },
         imageFile);
 
     var restored = await service.LoadAsync();
@@ -128,19 +150,239 @@ static async Task VerifyDocumentSessionAsync(
     Require(restored is not null, "A saved document session must be loadable.");
     Require(
         restored!.OpenFilePaths.SequenceEqual(
-            new[] { firstPdf, imageFile, secondPdf },
+            new[] { firstPdf, imageFile, wordFile, powerpointFile, secondPdf },
             StringComparer.OrdinalIgnoreCase),
-        "A session must retain existing PDFs and images, filter unsupported/missing files, and preserve tab order.");
+        "A session must retain existing PDFs, images, Word and PowerPoint files, filter unsupported/missing files, and preserve tab order.");
     Require(
         string.Equals(restored.ActiveFilePath, imageFile, StringComparison.OrdinalIgnoreCase),
         "A session must preserve an active image document.");
 
-    await service.SaveAsync(new[] { firstPdf, imageFile, secondPdf }, textFile);
+    await service.SaveAsync(new[] { firstPdf, imageFile, secondPdf, wordFile, powerpointFile }, textFile);
     var withoutActiveDocument = await service.LoadAsync();
 
     Require(
         withoutActiveDocument is not null && withoutActiveDocument.ActiveFilePath is null,
         "An unsupported active path must not be persisted as the selected document.");
+}
+
+
+static void CreateDocxFixture(string outputPath)
+{
+    using var archive = ZipFile.Open(outputPath, ZipArchiveMode.Create);
+    WriteZipText(
+        archive,
+        "word/document.xml",
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                    xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                    xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+          <w:body>
+            <w:p>
+              <w:pPr><w:pStyle w:val="Title"/></w:pPr>
+              <w:r><w:t>Title from Word</w:t></w:r>
+            </w:p>
+            <w:p><w:r><w:t>&lt;script&gt;alert(1)&lt;/script&gt;</w:t></w:r></w:p>
+            <w:p><w:pPr><w:bidi/></w:pPr><w:r><w:t>مرحبا بالعالم</w:t></w:r></w:p>
+            <w:p><w:hyperlink r:id="rIdExternal"><w:r><w:t>External link text</w:t></w:r></w:hyperlink></w:p>
+            <w:p>
+              <w:r>
+                <w:drawing><a:blip r:embed="rIdImage"/></w:drawing>
+              </w:r>
+            </w:p>
+            <w:tbl>
+              <w:tr><w:tc><w:p><w:r><w:t>Header cell</w:t></w:r></w:p></w:tc></w:tr>
+              <w:tr><w:tc><w:p><w:r><w:t>Word table value</w:t></w:r></w:p></w:tc></w:tr>
+            </w:tbl>
+            <w:sectPr/>
+          </w:body>
+        </w:document>
+        """);
+    WriteZipText(
+        archive,
+        "word/_rels/document.xml.rels",
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="rIdImage"
+                        Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+                        Target="media/pixel.png"/>
+          <Relationship Id="rIdExternal"
+                        Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+                        Target="https://example.invalid/"
+                        TargetMode="External"/>
+        </Relationships>
+        """);
+    WriteZipBytes(
+        archive,
+        "word/media/pixel.png",
+        Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jXioAAAAASUVORK5CYII="));
+}
+
+static void CreatePptxFixture(string outputPath)
+{
+    using var archive = ZipFile.Open(outputPath, ZipArchiveMode.Create);
+    WriteZipText(
+        archive,
+        "ppt/presentation.xml",
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+                        xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+          <p:sldIdLst>
+            <p:sldId id="7" r:id="rIdSecond"/>
+            <p:sldId id="8" r:id="rIdFirst"/>
+          </p:sldIdLst>
+          <p:sldSz cx="9144000" cy="5143500"/>
+        </p:presentation>
+        """);
+    WriteZipText(
+        archive,
+        "ppt/_rels/presentation.xml.rels",
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="rIdSecond" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slideB.xml"/>
+          <Relationship Id="rIdFirst" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slideA.xml"/>
+        </Relationships>
+        """);
+    WriteZipText(
+        archive,
+        "ppt/slides/slideB.xml",
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+               xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+               xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+          <p:cSld><p:spTree>
+            <p:sp>
+              <p:spPr><a:xfrm><a:off x="100000" y="100000"/><a:ext cx="3000000" cy="900000"/></a:xfrm></p:spPr>
+              <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr b="1"/><a:t>Second slide text</a:t></a:r></a:p></p:txBody>
+            </p:sp>
+            <p:pic>
+              <p:blipFill><a:blip r:embed="rIdSlideImage"/></p:blipFill>
+              <p:spPr><a:xfrm><a:off x="1000000" y="1800000"/><a:ext cx="1500000" cy="1200000"/></a:xfrm></p:spPr>
+            </p:pic>
+          </p:spTree></p:cSld>
+        </p:sld>
+        """);
+    WriteZipText(
+        archive,
+        "ppt/slides/_rels/slideB.xml.rels",
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="rIdSlideImage" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/pixel.png"/>
+        </Relationships>
+        """);
+    WriteZipText(
+        archive,
+        "ppt/slides/slideA.xml",
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+               xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+          <p:cSld><p:spTree>
+            <p:sp>
+              <p:spPr><a:xfrm><a:off x="100000" y="100000"/><a:ext cx="3000000" cy="900000"/></a:xfrm></p:spPr>
+              <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>First slide text</a:t></a:r></a:p></p:txBody>
+            </p:sp>
+          </p:spTree></p:cSld>
+        </p:sld>
+        """);
+    WriteZipBytes(
+        archive,
+        "ppt/media/pixel.png",
+        Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jXioAAAAASUVORK5CYII="));
+}
+
+static void WriteZipText(ZipArchive archive, string path, string content)
+{
+    var entry = archive.CreateEntry(path, CompressionLevel.Optimal);
+    using var stream = entry.Open();
+    using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+    writer.Write(content);
+}
+
+static void WriteZipBytes(ZipArchive archive, string path, byte[] content)
+{
+    var entry = archive.CreateEntry(path, CompressionLevel.Optimal);
+    using var stream = entry.Open();
+    stream.Write(content, 0, content.Length);
+}
+
+static async Task VerifyOfficeDocumentReadingAsync(
+    string wordFile,
+    string powerpointFile)
+{
+    var service = new OpenXmlOfficeDocumentReader();
+    OfficeDocumentPreview? wordPreview = null;
+    OfficeDocumentPreview? powerpointPreview = null;
+
+    try
+    {
+        wordPreview = await service.CreatePreviewAsync(wordFile);
+        Require(
+            wordPreview.Kind == DocumentKind.Word && wordPreview.Pages.Count == 1,
+            "A DOCX must produce one Word reading page.");
+
+        var wordHtml = await File.ReadAllTextAsync(wordPreview.Pages[0].HtmlFilePath);
+        Require(
+            wordHtml.Contains("<h1", StringComparison.Ordinal) &&
+            wordHtml.Contains("Title from Word", StringComparison.Ordinal) &&
+            wordHtml.Contains("<table>", StringComparison.Ordinal) &&
+            wordHtml.Contains("Word table value", StringComparison.Ordinal),
+            "The DOCX preview must retain title text and table content.");
+        Require(
+            wordHtml.Contains("&lt;script&gt;alert(1)&lt;/script&gt;", StringComparison.Ordinal) &&
+            !wordHtml.Contains("<script>", StringComparison.Ordinal),
+            "Word text must be HTML-encoded and must not become executable markup.");
+        Require(
+            wordHtml.Contains("مرحبا بالعالم", StringComparison.Ordinal) &&
+            wordHtml.Contains("direction:rtl", StringComparison.Ordinal),
+            "Arabic Word paragraphs must be rendered with right-to-left text direction.");
+        Require(
+            wordHtml.Contains("External link text", StringComparison.Ordinal) &&
+            !wordHtml.Contains("https://example.invalid/", StringComparison.Ordinal),
+            "External Office hyperlinks must remain inert and never become WebView navigation targets.");
+        Require(
+            File.Exists(Path.Combine(wordPreview.PreviewDirectory, "media", "media-0001.png")) &&
+            wordHtml.Contains("media/media-0001.png", StringComparison.Ordinal),
+            "Embedded Word pictures must be copied to the preview media folder and referenced.");
+
+        powerpointPreview = await service.CreatePreviewAsync(powerpointFile);
+        Require(
+            powerpointPreview.Kind == DocumentKind.PowerPoint &&
+            powerpointPreview.Pages.Count == 2 &&
+            powerpointPreview.Pages[0].Label == "الشريحة 1 / 2",
+            "A PPTX must create separate slide pages in presentation order.");
+
+        var firstSlideHtml = await File.ReadAllTextAsync(powerpointPreview.Pages[0].HtmlFilePath);
+        var secondSlideHtml = await File.ReadAllTextAsync(powerpointPreview.Pages[1].HtmlFilePath);
+        Require(
+            firstSlideHtml.Contains("Second slide text", StringComparison.Ordinal) &&
+            !firstSlideHtml.Contains("First slide text", StringComparison.Ordinal) &&
+            secondSlideHtml.Contains("First slide text", StringComparison.Ordinal),
+            "PowerPoint previews must follow the slide relationship order, not ZIP filename order.");
+        Require(
+            firstSlideHtml.Contains("media/media-0001.png", StringComparison.Ordinal) &&
+            File.Exists(Path.Combine(powerpointPreview.PreviewDirectory, "media", "media-0001.png")),
+            "Embedded PowerPoint pictures must be extracted into the preview media folder.");
+    }
+    finally
+    {
+        if (wordPreview is not null && Directory.Exists(wordPreview.PreviewDirectory))
+        {
+            Directory.Delete(wordPreview.PreviewDirectory, recursive: true);
+        }
+
+        if (powerpointPreview is not null && Directory.Exists(powerpointPreview.PreviewDirectory))
+        {
+            Directory.Delete(powerpointPreview.PreviewDirectory, recursive: true);
+        }
+    }
 }
 
 static void CreateSinglePagePdf(string outputPath)

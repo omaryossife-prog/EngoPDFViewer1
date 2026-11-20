@@ -187,10 +187,19 @@ public sealed class OpenXmlOfficeDocumentReader : IOfficeDocumentReader
             .Element(Word + "pPr")?
             .Element(Word + "jc")?
             .Attribute(Word + "val");
-        var direction = paragraph.Descendants(Word + "rtl").Any()
-            ? " direction:rtl;"
-            : string.Empty;
-        var style = BuildAlignmentStyle(alignment) + direction;
+        var isRightToLeft = paragraph.Descendants(Word + "rtl").Any() ||
+                            paragraph.Element(Word + "pPr")?.Element(Word + "bidi") is not null ||
+                            paragraph.Descendants(Word + "t").Any(node => ContainsArabic(node.Value));
+        var style = BuildAlignmentStyle(alignment);
+        if (isRightToLeft)
+        {
+            if (string.IsNullOrWhiteSpace(style))
+            {
+                style = "text-align:right";
+            }
+
+            style += ";direction:rtl;unicode-bidi:plaintext";
+        }
 
         var inner = new StringBuilder();
         foreach (var child in paragraph.Elements())
@@ -499,7 +508,20 @@ public sealed class OpenXmlOfficeDocumentReader : IOfficeDocumentReader
         {
             var paragraphProperties = paragraph.Element(Drawing + "pPr");
             var alignment = (string?)paragraphProperties?.Attribute("algn");
+            var isRightToLeft =
+                (string?)paragraphProperties?.Attribute("rtl") == "1" ||
+                paragraph.Descendants(Drawing + "t").Any(node => ContainsArabic(node.Value));
             var style = BuildAlignmentStyle(alignment);
+            if (isRightToLeft)
+            {
+                if (string.IsNullOrWhiteSpace(style))
+                {
+                    style = "text-align:right";
+                }
+
+                style += ";direction:rtl;unicode-bidi:plaintext";
+            }
+
             var runs = new StringBuilder();
 
             foreach (var node in paragraph.Elements())
@@ -869,6 +891,14 @@ public sealed class OpenXmlOfficeDocumentReader : IOfficeDocumentReader
             "black" => "9CA3AF",
             _ => null
         };
+
+    private static bool ContainsArabic(string value) =>
+        value.Any(character =>
+            character is >= '\u0600' and <= '\u06FF' ||
+            character is >= '\u0750' and <= '\u077F' ||
+            character is >= '\u08A0' and <= '\u08FF' ||
+            character is >= '\uFB50' and <= '\uFDFF' ||
+            character is >= '\uFE70' and <= '\uFEFF');
 
     private static string? NormalizeHexColor(string? color)
     {

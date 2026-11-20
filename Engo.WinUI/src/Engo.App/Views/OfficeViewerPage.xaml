@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     FlowDirection="RightToLeft">
     <Grid Padding="16" RowDefinitions="Auto,Auto,*" RowSpacing="10">
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="8">
             <Button
                 x:Name="PreviousPageButton"
                 Grid.Column="0"
@@ -30,6 +30,13 @@
                 MaxWidth="340"
                 TextTrimming="CharacterEllipsis"
                 Opacity="0.72" />
+            <TextBlock
+                Grid.Column="4"
+                Text="قراءة فقط"
+                VerticalAlignment="Center"
+                FontSize="12"
+                Opacity="0.65"
+                Margin="8,0,0,0" />
         </Grid>
 
         <InfoBar
