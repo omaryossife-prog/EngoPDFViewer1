@@ -1,5 +1,6 @@
 using System.Globalization;
 using Windows.Foundation;
+using Path = System.IO.Path;
 using Engo.Application.Documents;
 using Engo.Infrastructure.Pdf;
 using Microsoft.UI.Xaml;
@@ -67,8 +68,7 @@ public sealed partial class PdfViewerPage : Page
         _activeStrokePoints = null;
         _activePolyline = null;
         _activeRectangle = null;
-        _document?.Dispose();
-        _document = null;
+                _document = null;
 
         base.OnNavigatedFrom(e);
     }
@@ -86,8 +86,7 @@ public sealed partial class PdfViewerPage : Page
             var file = await StorageFile.GetFileFromPathAsync(filePath);
             var loadedDocument = await PdfDocument.LoadFromFileAsync(file);
 
-            _document?.Dispose();
-            _document = loadedDocument;
+                        _document = loadedDocument;
             _pageIndex = 0;
 
             if (_document.PageCount == 0)
@@ -378,12 +377,12 @@ public sealed partial class PdfViewerPage : Page
             await page.RenderToStreamAsync(stream);
             stream.Seek(0);
 
-            using var decoder = await BitmapDecoder.CreateAsync(stream);
+            var decoder = await BitmapDecoder.CreateAsync(stream);
             using var softwareBitmap = await decoder.GetSoftwareBitmapAsync(
                 BitmapPixelFormat.Bgra8,
                 BitmapAlphaMode.Premultiplied);
 
-            if (softwareBitmap.PixelWidth > engine.MaxImageDimension ||
+            if (softwareBitmap.PixelWidth > OcrEngine.MaxImageDimension ||
                 softwareBitmap.PixelHeight > engine.MaxImageDimension)
             {
                 ShowError(
@@ -864,13 +863,10 @@ public sealed partial class PdfViewerPage : Page
             }
 
             var previousPageIndex = _pageIndex;
-            var previousDocument = _document;
-
             _document = savedPdf;
             _filePath = destination.Path;
             _pageIndex = Math.Min(previousPageIndex, _document.PageCount - 1);
             _pendingAnnotations.Clear();
-            previousDocument.Dispose();
 
             await RenderCurrentPageAsync();
             AnnotationStatusText.Text = "تم حفظ نسخة PDF بالتعليقات الجديدة.";
