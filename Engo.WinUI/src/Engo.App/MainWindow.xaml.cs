@@ -57,6 +57,7 @@ public sealed partial class MainWindow : Window
     private async Task RestoreDocumentSessionAsync()
     {
         _isRestoringSession = true;
+        var shouldPersistRestoredSession = true;
         try
         {
             var snapshot = await _documentSession.LoadAsync();
@@ -102,6 +103,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
+            shouldPersistRestoredSession = false;
             await ShowErrorAsync(
                 "تعذّرت استعادة الجلسة السابقة",
                 exception.Message);
@@ -109,7 +111,10 @@ public sealed partial class MainWindow : Window
         finally
         {
             _isRestoringSession = false;
-            await PersistCurrentSessionAsync();
+            if (shouldPersistRestoredSession)
+            {
+                await PersistCurrentSessionAsync();
+            }
         }
     }
 
@@ -117,7 +122,7 @@ public sealed partial class MainWindow : Window
         object sender,
         SelectionChangedEventArgs e)
     {
-        if (!_isRestoringSession)
+        if (_sessionRestoreStarted && !_isRestoringSession)
         {
             await PersistCurrentSessionAsync();
         }
@@ -125,7 +130,7 @@ public sealed partial class MainWindow : Window
 
     private async Task PersistCurrentSessionAsync()
     {
-        if (_isRestoringSession)
+        if (!_sessionRestoreStarted || _isRestoringSession)
         {
             return;
         }
@@ -152,6 +157,16 @@ public sealed partial class MainWindow : Window
     private void HomeButton_Click(object sender, RoutedEventArgs e)
     {
         DocumentTabs.SelectedIndex = 0;
+    }
+
+    private void RootNavigation_SelectionChanged(
+        NavigationView sender,
+        NavigationViewSelectionChangedEventArgs e)
+    {
+        if (e.SelectedItemContainer?.Content?.ToString() == "الرئيسية")
+        {
+            DocumentTabs.SelectedIndex = 0;
+        }
     }
 
     private async void OpenPdfButton_Click(object sender, RoutedEventArgs e)
