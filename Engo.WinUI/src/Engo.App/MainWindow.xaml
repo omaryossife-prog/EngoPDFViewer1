@@ -38,6 +38,9 @@
                         <TabViewItem
                             Header="الرئيسية"
                             IsClosable="False">
+                            <TabViewItem.IconSource>
+                                <SymbolIconSource Symbol="Home" />
+                            </TabViewItem.IconSource>
                             <Frame x:Name="HomeFrame" />
                         </TabViewItem>
                     </TabView.TabItems>
