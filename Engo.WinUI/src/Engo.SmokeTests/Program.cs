@@ -1,6 +1,7 @@
 using Engo.Application.Documents;
 using Engo.Domain.Documents;
 using Aspose.Pdf;
+using Aspose.Pdf.Annotations;
 using Engo.Infrastructure.Persistence;
 using Engo.Infrastructure.Pdf;
 
