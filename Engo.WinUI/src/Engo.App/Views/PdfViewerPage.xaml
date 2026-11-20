@@ -1,0 +1,56 @@
+<Page
+    x:Class="Engo.App.Views.PdfViewerPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    FlowDirection="RightToLeft">
+    <Grid Padding="24" RowDefinitions="Auto,Auto,*" RowSpacing="12">
+        <StackPanel
+            Grid.Row="0"
+            Orientation="Horizontal"
+            Spacing="10"
+            VerticalAlignment="Center">
+            <Button
+                x:Name="PreviousButton"
+                Content="السابق"
+                Click="PreviousButton_Click"
+                IsEnabled="False" />
+            <Button
+                x:Name="NextButton"
+                Content="التالي"
+                Click="NextButton_Click"
+                IsEnabled="False" />
+            <TextBlock
+                x:Name="PageCounter"
+                VerticalAlignment="Center"
+                Margin="8,0,0,0"
+                Text="لم يتم فتح ملف" />
+        </StackPanel>
+
+        <InfoBar
+            x:Name="ErrorInfoBar"
+            Grid.Row="1"
+            IsOpen="False"
+            IsClosable="True"
+            Severity="Error"
+            Title="تعذّر فتح ملف PDF" />
+
+        <Grid Grid.Row="2">
+            <ScrollViewer
+                HorizontalScrollBarVisibility="Auto"
+                VerticalScrollBarVisibility="Auto"
+                ZoomMode="Enabled">
+                <Image
+                    x:Name="PageImage"
+                    HorizontalAlignment="Center"
+                    Stretch="Uniform" />
+            </ScrollViewer>
+            <ProgressRing
+                x:Name="LoadingRing"
+                IsActive="False"
+                Width="44"
+                Height="44"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center" />
+        </Grid>
+    </Grid>
+</Page>
