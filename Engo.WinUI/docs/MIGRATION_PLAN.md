@@ -35,7 +35,9 @@ This is a phased rewrite, not a one-shot language conversion. The Python applica
 - Native file picker and supported-format detection.
 - Page navigation, zoom, fit modes, text extraction, and search.
 - [x] Multi-document tab shell: independent PDF viewer frame per tab, duplicate-path activation, close cleanup, and recent-file integration.
-- [ ] Persist and restore open document tabs and the active tab across restarts.
+- [x] Persist open PDF paths and the active tab in a local JSON session snapshot; restore existing PDFs on startup.
+- [x] Add dependency-free persistence smoke checks and wire them into the Windows CI workflow.
+- [ ] Verify tab close/reopen/session restore behavior in a real Windows UI session.
 - Recent files, thumbnails, and large-document performance.
 
 **Exit gate:** representative PDFs render correctly; page counts, navigation, search, and tab/session behavior match the legacy app; memory and responsiveness are measured.
