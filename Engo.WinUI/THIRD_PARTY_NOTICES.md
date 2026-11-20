@@ -1,30 +1,30 @@
 # Third-party notices
 
-## Aspose.PDF FOSS for .NET
+Engo's C# migration currently references the following third-party PDF components.
 
-The isolated `Engo.PdfEngineSpike` evaluation project references `Aspose.PDF.FOSS` 26.11.0. The project is MIT-licensed. The package is not used by the shipping `Engo.App` application in this evaluation stage.
+## PdfPig 0.1.16
 
-The MIT License requires the copyright notice and permission notice to be included in copies or substantial portions of the software. The package's canonical license file is distributed inside the NuGet package; retain it when redistributing the package or a self-contained build.
+- **Usage:** PDF text extraction and text search in the WinUI application.
+- **License:** Apache License 2.0.
+- **Upstream:** https://github.com/UglyToad/PdfPig
+- **License copy:** [LICENSES/PdfPig-LICENSE.txt](LICENSES/PdfPig-LICENSE.txt)
+- **Third-party notices:** [LICENSES/PdfPig-NOTICES.txt](LICENSES/PdfPig-NOTICES.txt)
 
-Copyright (c) 2026 Aspose Pty Ltd
+PdfPig includes additional external components. Keep its upstream notices with distributed builds. Its license allows commercial use subject to the Apache 2.0 terms, including retaining the license and applicable notices.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+## Aspose.PDF FOSS 26.11.0
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+- **Usage:** native PDF annotation creation and save-copy support in the WinUI application, plus an isolated engine-evaluation project.
+- **License:** MIT.
+- **Upstream:** https://github.com/aspose-pdf-foss/Aspose.PDF-FOSS-for-.NET
+- **License copy:** [LICENSES/Aspose.PDF.FOSS-LICENSE.txt](LICENSES/Aspose.PDF.FOSS-LICENSE.txt)
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+The MIT license requires the copyright and permission notice to be included with copies or substantial portions of the software.
 
-Other third-party components must be added here before being included in a
-distributed Engo build.
+## Microsoft Windows App SDK 2.7.0
+
+- **Usage:** WinUI 3 desktop UI and Windows App SDK APIs.
+- **License and package terms:** use the license files and notices shipped with the official NuGet package and Windows App SDK runtime.
+- **Upstream:** https://github.com/microsoft/WindowsAppSDK
+
+The release process must collect the license files and notices for all direct and transitive NuGet dependencies. The contents of this file and the `LICENSES` directory are copied next to the development build so they can be inspected while testing.
