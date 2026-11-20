@@ -26,8 +26,8 @@
                         Click="HomeButton_Click" />
                     <AppBarButton
                         Icon="OpenFile"
-                        Label="فتح ملف PDF"
-                        Click="OpenPdfButton_Click" />
+                        Label="فتح مستند"
+                        Click="OpenDocumentButton_Click" />
                 </CommandBar>
 
                 <TabView
