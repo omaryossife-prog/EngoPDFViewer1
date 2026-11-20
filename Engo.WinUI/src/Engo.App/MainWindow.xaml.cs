@@ -213,6 +213,51 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void DocumentFrame_Navigated(
+        object sender,
+        Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
+    {
+        if (e.Content is not PdfViewerPage pdfPage)
+        {
+            return;
+        }
+
+        pdfPage.AnnotatedCopySaved -= PdfViewerPage_AnnotatedCopySaved;
+        pdfPage.AnnotatedCopySaved += PdfViewerPage_AnnotatedCopySaved;
+    }
+
+    private async void PdfViewerPage_AnnotatedCopySaved(
+        object? sender,
+        string savedPath)
+    {
+        var tab = DocumentTabs.TabItems
+            .OfType<TabViewItem>()
+            .FirstOrDefault(item =>
+                item.Content is Frame frame &&
+                ReferenceEquals(frame.Content, sender));
+
+        if (tab is null)
+        {
+            return;
+        }
+
+        var fullPath = Path.GetFullPath(savedPath);
+        tab.Tag = fullPath;
+        tab.Header = Path.GetFileName(fullPath);
+
+        try
+        {
+            await _recentDocuments.RecordOpenedAsync(fullPath);
+            await PersistCurrentSessionAsync();
+        }
+        catch (Exception exception)
+        {
+            await ShowErrorAsync(
+                "تم حفظ نسخة PDF، لكن تعذّر تحديث قائمة الملفات الأخيرة",
+                exception.Message);
+        }
+    }
+
     private void OpenDocumentInTab(string filePath)
     {
         var fullPath = Path.GetFullPath(filePath);
@@ -242,6 +287,7 @@ public sealed partial class MainWindow : Window
         };
 
         var documentFrame = new Frame();
+        documentFrame.Navigated += DocumentFrame_Navigated;
         documentFrame.Navigate(pageType, fullPath);
 
         var tab = new TabViewItem
@@ -268,6 +314,13 @@ public sealed partial class MainWindow : Window
 
         if (tab.Content is Frame frame)
         {
+            if (frame.Content is PdfViewerPage pdfPage)
+            {
+                pdfPage.AnnotatedCopySaved -= PdfViewerPage_AnnotatedCopySaved;
+            }
+
+            frame.Navigated -= DocumentFrame_Navigated;
+
             // Navigate away so the current document page releases its native handles.
             frame.Navigate(typeof(HomePage));
         }
