@@ -43,7 +43,7 @@ This is a phased rewrite, not a one-shot language conversion. The Python applica
 - [x] Initial image viewer page with dimensions, zoom/scroll, and fit-image controls for common Windows image codecs.
 - [x] Include image files in the recent-document list and saved-session restore.
 - [x] Add progressive PDF thumbnail groups in batches of 12 pages with direct page navigation and group paging.
-- [x] Add a focused full-page reading mode that hides toolbars/side panels and provides an always-visible exit control.
+- [x] Add a focused full-page reading mode that hides toolbars/side panels and provides an always-visible exit control; Windows x64 build and smoke checks pass.
 - [ ] Verify full-page mode, scrolling/zoom behavior, and performance on large PDFs in a real Windows UI session.
 - [ ] Complete manual Windows UI checks for thumbnail loading and page navigation.
 
