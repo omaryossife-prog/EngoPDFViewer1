@@ -1,4 +1,5 @@
 using Engo.Application.Documents;
+using Engo.Domain.Documents;
 using Engo.Infrastructure.Persistence;
 
 var root = Path.Combine(
@@ -12,19 +13,27 @@ try
 {
     var firstPdf = Path.Combine(root, "first.pdf");
     var secondPdf = Path.Combine(root, "second.pdf");
-    var textFile = Path.Combine(root, "not-a-pdf.txt");
+    var imageFile = Path.Combine(root, "scan.png");
+    var textFile = Path.Combine(root, "not-supported.txt");
     var missingPdf = Path.Combine(root, "missing.pdf");
 
     await File.WriteAllTextAsync(firstPdf, "%PDF-1.7\n");
     await File.WriteAllTextAsync(secondPdf, "%PDF-1.7\n");
-    await File.WriteAllTextAsync(textFile, "This is not a PDF.");
+    await File.WriteAllBytesAsync(imageFile, [0x89, 0x50, 0x4E, 0x47]);
+    await File.WriteAllTextAsync(textFile, "This is not a supported document.");
 
-    await VerifyRecentDocumentsAsync(root, firstPdf, textFile);
-    await VerifyDocumentSessionAsync(root, firstPdf, secondPdf, textFile, missingPdf);
+    await VerifyRecentDocumentsAsync(root, firstPdf, imageFile, textFile);
+    await VerifyDocumentSessionAsync(
+        root,
+        firstPdf,
+        secondPdf,
+        imageFile,
+        textFile,
+        missingPdf);
     VerifyNoTemporaryFilesRemain(root);
 
-    Console.WriteLine("PASS: recent-document persistence");
-    Console.WriteLine("PASS: document-session persistence and path filtering");
+    Console.WriteLine("PASS: recent PDF and image persistence");
+    Console.WriteLine("PASS: PDF/image session persistence and path filtering");
     Console.WriteLine("PASS: atomic JSON writes leave no temporary files");
     Console.WriteLine("All Engo smoke checks passed.");
     return 0;
@@ -52,6 +61,7 @@ finally
 static async Task VerifyRecentDocumentsAsync(
     string root,
     string firstPdf,
+    string imageFile,
     string textFile)
 {
     var repository = new JsonRecentDocumentsRepository(
@@ -60,12 +70,18 @@ static async Task VerifyRecentDocumentsAsync(
 
     await service.RecordOpenedAsync(firstPdf);
     await service.RecordOpenedAsync(firstPdf);
+    var image = await service.RecordOpenedAsync(imageFile);
 
     var recent = await service.GetRecentAsync();
     Require(
-        recent.Count == 1 &&
-        string.Equals(recent[0].FullPath, firstPdf, StringComparison.OrdinalIgnoreCase),
-        "Opening the same PDF twice must not create duplicate recent-file entries.");
+        recent.Count == 2 &&
+        recent.Count(document => document.Kind == DocumentKind.Pdf) == 1 &&
+        recent.Any(document =>
+            document.Kind == DocumentKind.Image &&
+            string.Equals(document.FullPath, imageFile, StringComparison.OrdinalIgnoreCase)),
+        "Recent documents must deduplicate PDFs and retain supported images.");
+
+    Require(image.Kind == DocumentKind.Image, "PNG files must be classified as images.");
 
     await AssertThrowsAsync<NotSupportedException>(
         () => service.RecordOpenedAsync(textFile),
@@ -76,6 +92,7 @@ static async Task VerifyDocumentSessionAsync(
     string root,
     string firstPdf,
     string secondPdf,
+    string imageFile,
     string textFile,
     string missingPdf)
 {
@@ -84,25 +101,27 @@ static async Task VerifyDocumentSessionAsync(
     var service = new DocumentSessionService(repository);
 
     await service.SaveAsync(
-        new[] { firstPdf, textFile, missingPdf, secondPdf },
-        secondPdf);
+        new[] { firstPdf, imageFile, textFile, missingPdf, secondPdf },
+        imageFile);
 
     var restored = await service.LoadAsync();
 
     Require(restored is not null, "A saved document session must be loadable.");
     Require(
-        restored!.OpenFilePaths.SequenceEqual(new[] { firstPdf, secondPdf }, StringComparer.OrdinalIgnoreCase),
-        "A session must keep existing PDFs only and preserve their tab order.");
+        restored!.OpenFilePaths.SequenceEqual(
+            new[] { firstPdf, imageFile, secondPdf },
+            StringComparer.OrdinalIgnoreCase),
+        "A session must retain existing PDFs and images, filter unsupported/missing files, and preserve tab order.");
     Require(
-        string.Equals(restored.ActiveFilePath, secondPdf, StringComparison.OrdinalIgnoreCase),
-        "A session must preserve the active PDF path.");
+        string.Equals(restored.ActiveFilePath, imageFile, StringComparison.OrdinalIgnoreCase),
+        "A session must preserve an active image document.");
 
-    await service.SaveAsync(new[] { firstPdf, secondPdf }, textFile);
-    var withoutActivePdf = await service.LoadAsync();
+    await service.SaveAsync(new[] { firstPdf, imageFile, secondPdf }, textFile);
+    var withoutActiveDocument = await service.LoadAsync();
 
     Require(
-        withoutActivePdf is not null && withoutActivePdf.ActiveFilePath is null,
-        "A non-PDF active path must not be persisted as the selected PDF.");
+        withoutActiveDocument is not null && withoutActiveDocument.ActiveFilePath is null,
+        "An unsupported active path must not be persisted as the selected document.");
 }
 
 static void VerifyNoTemporaryFilesRemain(string root)
