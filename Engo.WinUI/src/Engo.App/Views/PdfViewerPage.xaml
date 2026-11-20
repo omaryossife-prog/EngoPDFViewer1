@@ -68,6 +68,8 @@
             <Button Content="−" ToolTipService.ToolTip="تصغير" Click="ZoomOutButton_Click" />
             <Button Content="100%" x:Name="ResetZoomButton" Click="ResetZoomButton_Click" />
             <Button Content="+" ToolTipService.ToolTip="تكبير" Click="ZoomInButton_Click" />
+            <Button Content="ملاءمة الصفحة" Click="FitPageButton_Click" />
+            <Button Content="ملاءمة العرض" Click="FitWidthButton_Click" />
             <TextBlock
                 x:Name="ZoomStatusText"
                 Text="100%"
