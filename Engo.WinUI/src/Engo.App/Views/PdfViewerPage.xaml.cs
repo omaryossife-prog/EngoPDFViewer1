@@ -394,7 +394,7 @@ public sealed partial class PdfViewerPage : Page
 
     private void ZoomOutButton_Click(object sender, RoutedEventArgs e)
     {
-        var nextZoom = Math.Max(0.5, PdfScrollViewer.ZoomFactor / 1.2);
+        var nextZoom = Math.Max(0.1, PdfScrollViewer.ZoomFactor / 1.2);
         PdfScrollViewer.ChangeView(null, null, (float)nextZoom);
     }
 
@@ -419,7 +419,7 @@ public sealed partial class PdfViewerPage : Page
         PdfScrollViewer.ChangeView(
             null,
             null,
-            (float)Math.Clamp(fitScale, 0.5, 4.0));
+            (float)Math.Clamp(fitScale, 0.1, 4.0));
     }
 
     private void FitWidthButton_Click(object sender, RoutedEventArgs e)
