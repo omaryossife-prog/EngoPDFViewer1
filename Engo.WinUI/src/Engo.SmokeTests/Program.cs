@@ -201,9 +201,31 @@ static async Task VerifyPdfAnnotationRoundTripAsync(
         original.Pages[1].Annotations.Count == 0,
         "Saving annotations must not modify the source PDF.");
 
+    var savedPage = annotated.Pages[1];
     Require(
-        annotated.Pages[1].Annotations.Count == annotations.Length,
+        savedPage.Annotations.Count == annotations.Length,
         "Highlight, rectangle, note, and ink annotations must survive save and reopen.");
+
+    var highlight = savedPage.Annotations
+        .OfType<HighlightAnnotation>()
+        .SingleOrDefault();
+
+    Require(
+        highlight is not null && highlight.QuadPoints.Length == 4,
+        "A saved highlight must contain four PDF QuadPoints for interoperable rendering.");
+
+    var cropBox = savedPage.CropBox;
+    foreach (var annotation in savedPage.Annotations)
+    {
+        var bounds = annotation.Rect;
+        Require(bounds is not null, "Every saved annotation must contain a PDF rectangle.");
+        Require(
+            bounds!.LLX >= cropBox.LLX - 0.5 &&
+            bounds.LLY >= cropBox.LLY - 0.5 &&
+            bounds.URX <= cropBox.URX + 0.5 &&
+            bounds.URY <= cropBox.URY + 0.5,
+            "Annotation rectangles must stay inside the page CropBox after rotation mapping.");
+    }
 
     await AssertThrowsAsync<InvalidOperationException>(
         () => service.SaveAnnotatedCopyAsync(sourcePath, sourcePath, annotations),
