@@ -28,9 +28,20 @@
                         Label="فتح ملف PDF"
                         Click="OpenPdfButton_Click" />
                 </CommandBar>
-                <Frame
-                    x:Name="ContentFrame"
-                    Grid.Row="1" />
+
+                <TabView
+                    x:Name="DocumentTabs"
+                    Grid.Row="1"
+                    IsAddTabButtonVisible="False"
+                    TabCloseRequested="DocumentTabs_TabCloseRequested">
+                    <TabView.TabItems>
+                        <TabViewItem
+                            Header="الرئيسية"
+                            IsClosable="False">
+                            <Frame x:Name="HomeFrame" />
+                        </TabViewItem>
+                    </TabView.TabItems>
+                </TabView>
             </Grid>
         </NavigationView.Content>
     </NavigationView>
