@@ -65,7 +65,21 @@ public sealed class AsposePdfAnnotationService : IPdfAnnotationService
                 Directory.CreateDirectory(directory);
             }
 
-            File.WriteAllBytes(destinationPath, output.ToArray());
+            // Write beside the destination and replace it only after a complete
+            // PDF has been serialized, so a failed write cannot leave a partial file.
+            var temporaryPath = $"{destinationPath}.{Guid.NewGuid():N}.tmp";
+            try
+            {
+                File.WriteAllBytes(temporaryPath, output.ToArray());
+                File.Move(temporaryPath, destinationPath, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath))
+                {
+                    File.Delete(temporaryPath);
+                }
+            }
         }, cancellationToken);
     }
 
