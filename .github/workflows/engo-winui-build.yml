@@ -34,3 +34,6 @@ jobs:
 
       - name: Build
         run: dotnet build .\Engo.WinUI\Engo.WinUI.sln --configuration Release --no-restore -p:Platform=x64
+
+      - name: Run persistence smoke tests
+        run: dotnet run --project .\Engo.WinUI\src\Engo.SmokeTests\Engo.SmokeTests.csproj --configuration Release --no-build
