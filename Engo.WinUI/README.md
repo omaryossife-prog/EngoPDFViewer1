@@ -8,11 +8,10 @@ This directory contains the **new Windows-native C# implementation** of Engo. It
 
 - C# and .NET 11
 - WinUI 3 on Windows App SDK 2.7.0 (stable)
-- MVVM-oriented application architecture with separate Domain, Application, Infrastructure, and UI projects
+- Layered architecture: Domain, Application, Infrastructure, and UI
 - Windows desktop target: `net11.0-windows10.0.26100.0`
-- Minimum supported OS for this initial application target: Windows 10 version 2004 (10.0.19041)
-
-The Windows App SDK version is centrally pinned in `Directory.Packages.props`. Review the Microsoft release notes before updating it.
+- Minimum supported OS for this initial target: Windows 10 version 2004 (10.0.19041)
+- Explicit x64 and ARM64 application configurations
 
 ## Repository layout
 
@@ -23,15 +22,11 @@ Engo.WinUI/
   Directory.Build.props
   Directory.Packages.props
   src/
-    Engo.Domain/          Domain models; no UI or Windows SDK dependency
-    Engo.Application/     Use cases and service contracts
-    Engo.Infrastructure/  Persistence and external-system adapters
-    Engo.App/             WinUI 3 desktop application
+    Engo.Domain/
+    Engo.Application/
+    Engo.Infrastructure/
+    Engo.App/
   docs/
-    ARCHITECTURE.md
-    MIGRATION_PLAN.md
-    FEATURE_PARITY.md
-    decisions/
 ```
 
 ## Prerequisites
@@ -47,30 +42,26 @@ Run from this directory:
 
 ```powershell
 dotnet --info
-dotnet restore .\Engo.WinUI.sln
-dotnet build .\Engo.WinUI.sln --configuration Debug
+dotnet restore .\Engo.WinUI.sln -p:Platform=x64
+dotnet build .\Engo.WinUI.sln --configuration Debug -p:Platform=x64
 ```
 
-To launch the desktop application after a successful build:
-
-```powershell
-dotnet run --project .\src\Engo.App\Engo.App.csproj
-```
+To launch the desktop application after a successful build, open the solution in Visual Studio and select the **x64** configuration, or run the app project with the x64 platform selected.
 
 ## Current implementation status
 
-The first migration increment establishes the solution, project boundaries, WinUI application shell, document domain model, recent-document application contract, and JSON persistence adapter. It is **not** a feature-complete replacement yet. PDF rendering, annotations, Office rendering, AI, voice, licensing, Supabase, and release packaging are tracked explicitly in `docs/FEATURE_PARITY.md`.
+The first migration increment establishes the solution, project boundaries, WinUI application shell, document domain model, recent-document application contract, and JSON persistence adapter. The initial PDF slice uses the Windows PDF API for read-only page rendering and previous/next navigation. It is **not** a feature-complete replacement. PDF text search, annotations, Office rendering, AI, voice, licensing, Supabase, and release packaging are tracked in `docs/FEATURE_PARITY.md`.
 
-## Important engineering rules
+## Engineering rules
 
 1. Do not delete or rewrite Python modules as part of this migration branch.
 2. Keep secrets, signing private keys, API credentials, and Supabase service-role credentials out of the repository.
-3. Keep WinUI types inside `Engo.App`; the Domain and Application projects must remain UI-independent.
+3. Keep WinUI types inside `Engo.App`; Domain and Application must remain UI-independent.
 4. Migrate one vertical feature at a time and keep the legacy implementation as the behavior reference.
 5. Do not mark a feature complete until it has automated tests where practical and a documented manual parity check.
 6. Preserve the existing Engo brand assets; do not redraw or replace the original logo.
-7. Do not merge this branch into `main` until the acceptance criteria in the migration plan are met.
+7. Do not merge this branch into `main` until the migration acceptance criteria are met.
 
 ## Deployment note
 
-The initial app project is unpackaged to keep development independent of the future installer decision. The Windows App SDK runtime deployment strategy and integration with the existing NSIS installer must be finalized and tested before distributing a C# build.
+The initial app project is unpackaged so development remains independent of the installer decision. The Windows App SDK runtime deployment strategy and integration with the existing NSIS installer must be finalized and tested before distributing a C# build.
