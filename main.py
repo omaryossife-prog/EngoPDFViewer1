@@ -11795,17 +11795,17 @@ def main():
     # The official installer stores consent after its mandatory license page.
     # Source/portable launches use a per-user record and this explicit dialog.
     try:
-        terms_documents = load_terms_documents(resource_path("LEGAL"))
+        terms_documents = load_terms_documents(Path(resource_path("LEGAL/TERMS_AND_CONDITIONS_AR.md")).parent)
         terms_digest = terms_content_sha256(terms_documents)
     except Exception as exc:
         QMessageBox.critical(
             None,
             "Engo",
             (
-                "تعذر تحميل اتفاقية الاستخدام المطلوبة. لن يتم تشغيل البرنامج.\\n\\n"
+                "تعذر تحميل اتفاقية الاستخدام المطلوبة. لن يتم تشغيل البرنامج.\n\n"
                 f"التفاصيل: {exc}"
             ) if str(language).lower().startswith("ar") else
-            "The required Terms & Conditions could not be loaded. Engo will not start.\\n\\n"
+            "The required Terms & Conditions could not be loaded. Engo will not start.\n\n"
             f"Details: {exc}",
         )
         return 1
@@ -11835,7 +11835,7 @@ def main():
                     "تعذر حفظ موافقتك على الشروط. لن يتم تشغيل البرنامج."
                     if str(language).lower().startswith("ar") else
                     "Your acceptance could not be saved. Engo will not start."
-                ) + f"\\n\\n{exc}",
+                ) + f"\n\n{exc}",
             )
             return 1
 
