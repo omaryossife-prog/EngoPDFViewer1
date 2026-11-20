@@ -18,7 +18,7 @@ This checklist is the source of truth for migration completeness. Status values 
 | Highlights, comments, pen, shapes, eraser | Annotation services | Not started | Save/reopen geometry tests |
 | Merge PDFs | Document services | Not started | Output integrity tests |
 | Word and PowerPoint support | Office adapter | Not started | DOCX/PPTX fixture suite |
-| Image viewing, zoom, and pan | ImageViewerPage / Windows imaging codecs | In progress | PNG/JPEG/BMP/GIF/TIFF/WebP file picker, image tab, pixel dimensions, zoom and scroll/pan scaffolded; codec availability and UI fixture tests pending |
+| Image viewing, zoom, and pan | ImageViewerPage / Windows imaging codecs | In progress | PNG/JPEG/BMP/GIF/TIFF/WebP file picker, image tab, pixel dimensions, zoom, fit-image and scroll/pan scaffolded; codec availability and UI fixture tests pending |
 | AI chat and conversation history | AI services | Not started | Provider contract and persistence tests |
 | Summaries, explanations, and translation | AI application use cases | Not started | Arabic/English response tests |
 | Live voice tutor and speech playback | Voice services | Not started | Device/network interruption tests |
