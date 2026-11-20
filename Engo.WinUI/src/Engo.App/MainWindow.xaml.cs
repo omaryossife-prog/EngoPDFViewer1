@@ -121,7 +121,7 @@ public sealed partial class MainWindow : Window
         TabView sender,
         TabViewTabCloseRequestedEventArgs e)
     {
-        if (e.Item is not TabViewItem tab || !tab.IsClosable)
+        if (e.Tab is not TabViewItem tab || !tab.IsClosable)
         {
             return;
         }
