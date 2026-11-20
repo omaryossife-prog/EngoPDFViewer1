@@ -148,24 +148,89 @@
                 BorderThickness="1"
                 CornerRadius="10"
                 Padding="12">
-                <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
-                    <TextBlock
-                        Text="نتائج البحث"
-                        FontSize="18"
-                        FontWeight="SemiBold" />
-                    <TextBlock
-                        x:Name="SearchResultSummary"
-                        Grid.Row="1"
-                        Text="اكتب كلمة أو عبارة للبحث داخل الملف."
-                        Opacity="0.72"
-                        TextWrapping="Wrap" />
-                    <ListView
-                        x:Name="SearchResultsList"
-                        Grid.Row="2"
-                        SelectionMode="Single"
-                        DisplayMemberPath="Snippet"
-                        SelectionChanged="SearchResultsList_SelectionChanged" />
-                </Grid>
+                <TabView
+                    x:Name="PdfSideTabs"
+                    IsAddTabButtonVisible="False">
+                    <TabView.TabItems>
+                        <TabViewItem Header="نتائج البحث">
+                            <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
+                                <TextBlock
+                                    x:Name="SearchResultSummary"
+                                    Text="اكتب كلمة أو عبارة للبحث داخل الملف."
+                                    Opacity="0.72"
+                                    TextWrapping="Wrap" />
+                                <ListView
+                                    x:Name="SearchResultsList"
+                                    Grid.Row="2"
+                                    SelectionMode="Single"
+                                    DisplayMemberPath="Snippet"
+                                    SelectionChanged="SearchResultsList_SelectionChanged" />
+                            </Grid>
+                        </TabViewItem>
+                        <TabViewItem Header="الصفحات">
+                            <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
+                                <TextBlock
+                                    x:Name="ThumbnailSummary"
+                                    Text="صور مصغرة للصفحات القريبة من الصفحة الحالية."
+                                    Opacity="0.72"
+                                    TextWrapping="Wrap" />
+                                <StackPanel
+                                    Grid.Row="1"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Spacing="8">
+                                    <Button
+                                        x:Name="PreviousThumbnailRangeButton"
+                                        Content="المجموعة السابقة"
+                                        Click="PreviousThumbnailRangeButton_Click"
+                                        IsEnabled="False" />
+                                    <TextBlock
+                                        x:Name="ThumbnailRangeText"
+                                        VerticalAlignment="Center"
+                                        Text="—" />
+                                    <Button
+                                        x:Name="NextThumbnailRangeButton"
+                                        Content="المجموعة التالية"
+                                        Click="NextThumbnailRangeButton_Click"
+                                        IsEnabled="False" />
+                                </StackPanel>
+                                <ListView
+                                    x:Name="PageThumbnailsList"
+                                    Grid.Row="2"
+                                    SelectionMode="Single"
+                                    IsItemClickEnabled="True"
+                                    ItemClick="PageThumbnailsList_ItemClick">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel
+                                                HorizontalAlignment="Center"
+                                                Spacing="5"
+                                                Padding="4">
+                                                <Border
+                                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="4"
+                                                    Padding="3">
+                                                    <Image
+                                                        Source="{Binding Thumbnail}"
+                                                        Width="150"
+                                                        Height="190"
+                                                        Stretch="Uniform" />
+                                                </Border>
+                                                <TextBlock
+                                                    Text="{Binding PageLabel}"
+                                                    HorizontalAlignment="Center"
+                                                    FontWeight="SemiBold" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </Grid>
+                        </TabViewItem>
+                    </TabView.TabItems>
+                </TabView>
             </Border>
 
             <Grid
