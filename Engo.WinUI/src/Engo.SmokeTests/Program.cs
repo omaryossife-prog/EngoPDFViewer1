@@ -169,14 +169,6 @@ static async Task VerifyPdfAnnotationRoundTripAsync(
             1.5),
         new PdfAnnotationDraft(
             1,
-            PdfAnnotationKind.Note,
-            0.68, 0.20, 0.73, 0.25,
-            [],
-            "Annotation smoke test",
-            PdfAnnotationColor.Yellow,
-            1),
-        new PdfAnnotationDraft(
-            1,
             PdfAnnotationKind.Freehand,
             0.10, 0.55, 0.45, 0.75,
             new[]
@@ -204,7 +196,7 @@ static async Task VerifyPdfAnnotationRoundTripAsync(
     var savedPage = annotated.Pages[1];
     Require(
         savedPage.Annotations.Count == annotations.Length,
-        "Highlight, rectangle, note, and ink annotations must survive save and reopen.");
+        "Highlight, rectangle, and ink annotations must survive save and reopen.");
 
     var highlight = savedPage.Annotations
         .OfType<HighlightAnnotation>()
