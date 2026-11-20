@@ -1,6 +1,8 @@
 using Engo.Application.Documents;
 using Engo.Domain.Documents;
+using Aspose.Pdf;
 using Engo.Infrastructure.Persistence;
+using Engo.Infrastructure.Pdf;
 
 var root = Path.Combine(
     Path.GetTempPath(),
@@ -14,11 +16,14 @@ try
     var firstPdf = Path.Combine(root, "first.pdf");
     var secondPdf = Path.Combine(root, "second.pdf");
     var imageFile = Path.Combine(root, "scan.png");
+    var annotationSource = Path.Combine(root, "annotation-source.pdf");
+    var annotationOutput = Path.Combine(root, "annotation-output.pdf");
     var textFile = Path.Combine(root, "not-supported.txt");
     var missingPdf = Path.Combine(root, "missing.pdf");
 
     await File.WriteAllTextAsync(firstPdf, "%PDF-1.7\n");
     await File.WriteAllTextAsync(secondPdf, "%PDF-1.7\n");
+    CreateSinglePagePdf(annotationSource);
     await File.WriteAllBytesAsync(imageFile, [0x89, 0x50, 0x4E, 0x47]);
     await File.WriteAllTextAsync(textFile, "This is not a supported document.");
 
@@ -30,10 +35,12 @@ try
         imageFile,
         textFile,
         missingPdf);
+    await VerifyPdfAnnotationRoundTripAsync(annotationSource, annotationOutput);
     VerifyNoTemporaryFilesRemain(root);
 
     Console.WriteLine("PASS: recent PDF and image persistence");
     Console.WriteLine("PASS: PDF/image session persistence and path filtering");
+    Console.WriteLine("PASS: PDF annotations save as a separate round-trip-readable copy");
     Console.WriteLine("PASS: atomic JSON writes leave no temporary files");
     Console.WriteLine("All Engo smoke checks passed.");
     return 0;
@@ -122,6 +129,79 @@ static async Task VerifyDocumentSessionAsync(
     Require(
         withoutActiveDocument is not null && withoutActiveDocument.ActiveFilePath is null,
         "An unsupported active path must not be persisted as the selected document.");
+}
+
+static void CreateSinglePagePdf(string outputPath)
+{
+    using var document = Aspose.Pdf.Document.Create();
+    document.Pages.Add();
+    document.Save(outputPath);
+}
+
+static async Task VerifyPdfAnnotationRoundTripAsync(
+    string sourcePath,
+    string outputPath)
+{
+    var service = new AsposePdfAnnotationService();
+    var annotations = new[]
+    {
+        new PdfAnnotationDraft(
+            1,
+            PdfAnnotationKind.Highlight,
+            0.10, 0.12, 0.62, 0.18,
+            [],
+            null,
+            PdfAnnotationColor.Yellow,
+            2),
+        new PdfAnnotationDraft(
+            1,
+            PdfAnnotationKind.Rectangle,
+            0.12, 0.25, 0.52, 0.45,
+            [],
+            null,
+            PdfAnnotationColor.Red,
+            1.5),
+        new PdfAnnotationDraft(
+            1,
+            PdfAnnotationKind.Note,
+            0.68, 0.20, 0.73, 0.25,
+            [],
+            "Annotation smoke test",
+            PdfAnnotationColor.Yellow,
+            1),
+        new PdfAnnotationDraft(
+            1,
+            PdfAnnotationKind.Freehand,
+            0.10, 0.55, 0.45, 0.75,
+            new[]
+            {
+                new PdfAnnotationPoint(0.10, 0.70),
+                new PdfAnnotationPoint(0.24, 0.55),
+                new PdfAnnotationPoint(0.45, 0.72)
+            },
+            null,
+            PdfAnnotationColor.Blue,
+            1.5)
+    };
+
+    await service.SaveAnnotatedCopyAsync(sourcePath, outputPath, annotations);
+
+    Require(File.Exists(outputPath), "The annotated output PDF must be created.");
+
+    using var original = Aspose.Pdf.Document.Open(sourcePath);
+    using var annotated = Aspose.Pdf.Document.Open(outputPath);
+
+    Require(
+        original.Pages[1].Annotations.Count == 0,
+        "Saving annotations must not modify the source PDF.");
+
+    Require(
+        annotated.Pages[1].Annotations.Count == annotations.Length,
+        "Highlight, rectangle, note, and ink annotations must survive save and reopen.");
+
+    await AssertThrowsAsync<InvalidOperationException>(
+        () => service.SaveAnnotatedCopyAsync(sourcePath, sourcePath, annotations),
+        "The annotation service must never overwrite the original source PDF.");
 }
 
 static void VerifyNoTemporaryFilesRemain(string root)
