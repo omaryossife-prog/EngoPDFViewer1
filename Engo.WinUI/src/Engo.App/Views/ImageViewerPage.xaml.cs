@@ -24,6 +24,12 @@ public sealed partial class ImageViewerPage : Page
         }
     }
 
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        DocumentImage.Source = null;
+        base.OnNavigatedFrom(e);
+    }
+
     private async Task LoadImageAsync(string filePath)
     {
         LoadingRing.IsActive = true;
