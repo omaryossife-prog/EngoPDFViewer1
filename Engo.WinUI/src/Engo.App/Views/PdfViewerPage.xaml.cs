@@ -712,9 +712,9 @@ public sealed partial class PdfViewerPage : Page
     {
         return new SolidColorBrush(Color.FromArgb(
             alpha,
-            (byte)Math.Round(Math.Clamp(color.Red, 0, 1) * 255),
-            (byte)Math.Round(Math.Clamp(color.Green, 0, 1) * 255),
-            (byte)Math.Round(Math.Clamp(color.Blue, 0, 1) * 255)));
+            (byte)Math.Round(Math.Clamp(color.RedComponent, 0, 1) * 255),
+            (byte)Math.Round(Math.Clamp(color.GreenComponent, 0, 1) * 255),
+            (byte)Math.Round(Math.Clamp(color.BlueComponent, 0, 1) * 255)));
     }
 
     private void RedrawPendingAnnotations()
