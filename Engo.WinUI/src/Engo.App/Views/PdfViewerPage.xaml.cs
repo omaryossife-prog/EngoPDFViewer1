@@ -1,3 +1,4 @@
+using System.Globalization;
 using Engo.Application.Documents;
 using Engo.Infrastructure.Pdf;
 using Microsoft.UI.Xaml;
@@ -109,6 +110,7 @@ public sealed partial class PdfViewerPage : Page
             PageImage.Height = page.Size.Height;
 
             PageCounter.Text = $"الصفحة {_pageIndex + 1} من {_document.PageCount}";
+            PageNumberTextBox.Text = (_pageIndex + 1).ToString(CultureInfo.InvariantCulture);
             ExtractedPageText.Text = "استخدم زر استخراج نص الصفحة لعرض النص القابل للاستخراج.";
         }
         catch (Exception exception)
@@ -141,6 +143,31 @@ public sealed partial class PdfViewerPage : Page
         }
 
         _pageIndex++;
+        await RenderCurrentPageAsync();
+    }
+
+    private async void GoToPageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_document is null)
+        {
+            ShowError("افتح ملف PDF أولًا.");
+            return;
+        }
+
+        var normalizedPageNumber = NormalizeArabicDigits(PageNumberTextBox.Text.Trim());
+        if (!uint.TryParse(
+                normalizedPageNumber,
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var pageNumber) ||
+            pageNumber < 1 ||
+            pageNumber > _document.PageCount)
+        {
+            ShowError($"أدخل رقم صفحة من 1 إلى {_document.PageCount}.");
+            return;
+        }
+
+        _pageIndex = pageNumber - 1;
         await RenderCurrentPageAsync();
     }
 
