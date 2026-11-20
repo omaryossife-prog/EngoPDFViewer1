@@ -63,8 +63,8 @@
                     Padding="18">
                     <StackPanel Spacing="8">
                         <TextBlock Text="قارئ PDF" FontSize="17" FontWeight="SemiBold" />
-                        <TextBlock Text="فتح ملف وعرض صفحة والتنقل بين الصفحات باستخدام Windows PDF API." TextWrapping="Wrap" />
-                        <TextBlock Text="نموذج أولي — يحتاج اختبار Windows" Opacity="0.72" />
+                        <TextBlock Text="فتح PDF وعرض الصفحات والتنقل والبحث واستخراج النص." TextWrapping="Wrap" />
+                        <TextBlock Text="نموذج أولي — يلزمه اختبار التطابق" Opacity="0.72" />
                     </StackPanel>
                 </Border>
 
