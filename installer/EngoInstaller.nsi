@@ -83,21 +83,9 @@ Function .onInit
   SetShellVarContext all
   !insertmacro MUI_LANGDLL_DISPLAY
 
-  ; A clean upgrade removes the previous app payload first, preventing obsolete
-  ; DLLs from an older build from remaining in the installation folder.
-  ; Engo settings, chats and user documents live outside this folder and are preserved.
-  ReadRegStr $R0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}" "InstallLocation"
-  ${If} $R0 != ""
-    ${If} ${FileExists} "$R0\Uninstall.exe"
-      MessageBox MB_YESNO|MB_ICONQUESTION "An existing Engo installation was found.$\r$\n$\r$\nThe previous application files will be removed before this version is installed. Your settings and study data will be preserved.$\r$\n$\r$\nContinue?" IDYES +2
-        Abort
-      ExecWait '"$R0\Uninstall.exe" /S _?=$R0' $R1
-      ${If} $R1 != 0
-        MessageBox MB_ICONSTOP "The previous Engo installation could not be removed (code $R1). Close Engo and try again."
-        Abort
-      ${EndIf}
-    ${EndIf}
-  ${EndIf}
+  ; Remember the old location only. The existing installation is preserved
+  ; until the new license page is accepted and the install section begins.
+  ReadRegStr $ExistingInstallDir HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${PRODUCT_KEY}" "InstallLocation"
 FunctionEnd
 
 Section "Engo PDF Viewer & AI Study Agent (required)" SEC_CORE
@@ -124,6 +112,9 @@ Section "Engo PDF Viewer & AI Study Agent (required)" SEC_CORE
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}" "DisplayIcon" "$INSTDIR\${APP_EXE}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}" "QuietUninstallString" '"$INSTDIR\Uninstall.exe" /S'
+  ; The app validates this consent record against both the current terms version and digest.
+  WriteRegStr HKLM "Software\\Engo\\${PRODUCT_KEY}" "TermsAcceptedVersion" "${TERMS_VERSION}"
+  WriteRegStr HKLM "Software\\Engo\\${PRODUCT_KEY}" "TermsAcceptedSha256" "${TERMS_CONTENT_SHA256}"
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}" "NoRepair" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}" "EstimatedSize" 0
@@ -154,6 +145,7 @@ Section "Uninstall"
   ${EndIf}
 
   DeleteRegKey HKLM "${STARTMENU_KEY}"
+  DeleteRegKey HKLM "Software\\Engo\\${PRODUCT_KEY}"
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}"
   RMDir /r "$INSTDIR"
 SectionEnd
