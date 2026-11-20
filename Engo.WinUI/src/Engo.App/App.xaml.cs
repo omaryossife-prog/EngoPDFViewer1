@@ -6,6 +6,8 @@ public partial class App : Application
 {
     private Window? _mainWindow;
 
+    public static MainWindow? MainWindowInstance { get; private set; }
+
     public App()
     {
         InitializeComponent();
@@ -13,7 +15,8 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        _mainWindow = new MainWindow();
+        MainWindowInstance = new MainWindow();
+        _mainWindow = MainWindowInstance;
         _mainWindow.Activate();
     }
 }
