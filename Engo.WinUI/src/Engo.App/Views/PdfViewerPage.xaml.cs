@@ -24,11 +24,17 @@ namespace Engo.App.Views;
 
 public sealed partial class PdfViewerPage : Page
 {
+    private const uint ThumbnailBatchSize = 12;
+
     private readonly IPdfTextService _textService = new PdfPigTextService();
     private readonly IPdfAnnotationService _annotationService = new AsposePdfAnnotationService();
     private readonly List<PdfAnnotationDraft> _pendingAnnotations = [];
     private PdfDocument? _document;
     private CancellationTokenSource? _searchCancellation;
+    private CancellationTokenSource? _thumbnailCancellation;
+    private uint? _loadedThumbnailBatchStart;
+    private uint? _loadingThumbnailBatchStart;
+    private uint _thumbnailBatchStart;
     private string? _filePath;
     private uint _pageIndex;
     private bool _isDrawing;
@@ -63,6 +69,11 @@ public sealed partial class PdfViewerPage : Page
         _searchCancellation?.Dispose();
         _searchCancellation = null;
 
+        _thumbnailCancellation?.Cancel();
+        _thumbnailCancellation?.Dispose();
+        _thumbnailCancellation = null;
+        _loadingThumbnailBatchStart = null;
+
         PageImage.Source = null;
         AnnotationCanvas.Children.Clear();
         _activeStrokePoints = null;
@@ -79,6 +90,15 @@ public sealed partial class PdfViewerPage : Page
         ErrorInfoBar.IsOpen = false;
         SearchResultsList.ItemsSource = null;
         SearchResultSummary.Text = "اكتب كلمة أو عبارة للبحث داخل الملف.";
+        PageThumbnailsList.ItemsSource = null;
+        ThumbnailSummary.Text = "جاري تجهيز صور الصفحات المصغرة...";
+        ThumbnailRangeText.Text = "—";
+        _thumbnailCancellation?.Cancel();
+        _thumbnailCancellation?.Dispose();
+        _thumbnailCancellation = null;
+        _loadedThumbnailBatchStart = null;
+        _loadingThumbnailBatchStart = null;
+        _thumbnailBatchStart = 0;
         ExtractedPageText.Text = "استخدم زر استخراج نص الصفحة لعرض النص القابل للاستخراج.";
 
         try
@@ -140,6 +160,20 @@ public sealed partial class PdfViewerPage : Page
 
             PageCounter.Text = $"الصفحة {_pageIndex + 1} من {_document.PageCount}";
             PageNumberTextBox.Text = (_pageIndex + 1).ToString(CultureInfo.InvariantCulture);
+
+            var thumbnailBatchStart =
+                (_pageIndex / ThumbnailBatchSize) * ThumbnailBatchSize;
+            if (_loadedThumbnailBatchStart == thumbnailBatchStart)
+            {
+                PageThumbnailsList.SelectedIndex =
+                    checked((int)(_pageIndex - thumbnailBatchStart));
+                UpdateThumbnailRangeControls();
+            }
+            else
+            {
+                _ = LoadPageThumbnailBatchAsync(_pageIndex);
+            }
+
             ExtractedPageText.Text = "استخدم زر استخراج نص الصفحة لعرض النص القابل للاستخراج.";
         }
         catch (Exception exception)
@@ -151,6 +185,172 @@ public sealed partial class PdfViewerPage : Page
             LoadingRing.IsActive = false;
             UpdateNavigationButtons();
         }
+    }
+
+    private async Task LoadPageThumbnailBatchAsync(uint pageIndex)
+    {
+        var document = _document;
+        if (document is null || document.PageCount == 0 || pageIndex >= document.PageCount)
+        {
+            return;
+        }
+
+        var batchStart = (pageIndex / ThumbnailBatchSize) * ThumbnailBatchSize;
+        if (_loadedThumbnailBatchStart == batchStart)
+        {
+            PageThumbnailsList.SelectedIndex = checked((int)(pageIndex - batchStart));
+            UpdateThumbnailRangeControls();
+            return;
+        }
+
+        if (_loadingThumbnailBatchStart == batchStart)
+        {
+            return;
+        }
+
+        _thumbnailCancellation?.Cancel();
+        _thumbnailCancellation?.Dispose();
+
+        var cancellation = new CancellationTokenSource();
+        _thumbnailCancellation = cancellation;
+        _loadingThumbnailBatchStart = batchStart;
+        ThumbnailSummary.Text = "جاري تجهيز صور الصفحات المصغرة...";
+        ThumbnailRangeText.Text = "جاري التحميل";
+
+        try
+        {
+            var batchEnd = Math.Min(
+                document.PageCount,
+                batchStart + ThumbnailBatchSize);
+            var thumbnails = new List<PdfPageThumbnailItem>(
+                checked((int)(batchEnd - batchStart)));
+
+            for (var currentPage = batchStart; currentPage < batchEnd; currentPage++)
+            {
+                cancellation.Token.ThrowIfCancellationRequested();
+
+                using var page = document.GetPage(currentPage);
+                using var stream = new InMemoryRandomAccessStream();
+
+                var renderOptions = new PdfPageRenderOptions
+                {
+                    DestinationWidth = 150
+                };
+
+                await page.RenderToStreamAsync(stream, renderOptions);
+                stream.Seek(0);
+
+                var thumbnail = new BitmapImage();
+                await thumbnail.SetSourceAsync(stream);
+
+                thumbnails.Add(new PdfPageThumbnailItem(
+                    currentPage,
+                    $"الصفحة {currentPage + 1}",
+                    thumbnail));
+            }
+
+            cancellation.Token.ThrowIfCancellationRequested();
+
+            if (!ReferenceEquals(document, _document))
+            {
+                return;
+            }
+
+            _thumbnailBatchStart = batchStart;
+            _loadedThumbnailBatchStart = batchStart;
+            PageThumbnailsList.ItemsSource = thumbnails;
+            PageThumbnailsList.SelectedIndex =
+                checked((int)(_pageIndex - batchStart));
+
+            ThumbnailSummary.Text =
+                $"اختر صورة مصغرة للانتقال مباشرةً إلى الصفحة. يتم تحميل {ThumbnailBatchSize} صفحة في كل مجموعة.";
+            ThumbnailRangeText.Text =
+                $"{batchStart + 1}–{batchEnd} / {document.PageCount}";
+
+            UpdateThumbnailRangeControls();
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer page group or a document change replaced this request.
+        }
+        catch (Exception exception)
+        {
+            if (ReferenceEquals(document, _document) &&
+                !cancellation.Token.IsCancellationRequested)
+            {
+                ThumbnailSummary.Text =
+                    $"تعذّر تجهيز الصور المصغرة: {exception.Message}";
+                ThumbnailRangeText.Text = "—";
+            }
+        }
+        finally
+        {
+            if (_loadingThumbnailBatchStart == batchStart)
+            {
+                _loadingThumbnailBatchStart = null;
+            }
+
+            if (ReferenceEquals(_thumbnailCancellation, cancellation))
+            {
+                _thumbnailCancellation.Dispose();
+                _thumbnailCancellation = null;
+            }
+            else
+            {
+                cancellation.Dispose();
+            }
+        }
+    }
+
+    private void UpdateThumbnailRangeControls()
+    {
+        var pageCount = _document?.PageCount ?? 0;
+        PreviousThumbnailRangeButton.IsEnabled =
+            pageCount > 0 && _thumbnailBatchStart > 0;
+        NextThumbnailRangeButton.IsEnabled =
+            pageCount > _thumbnailBatchStart + ThumbnailBatchSize;
+    }
+
+    private async void PreviousThumbnailRangeButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_document is null || _thumbnailBatchStart == 0)
+        {
+            return;
+        }
+
+        _pageIndex = _thumbnailBatchStart - 1;
+        await RenderCurrentPageAsync();
+    }
+
+    private async void NextThumbnailRangeButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_document is null ||
+            _thumbnailBatchStart + ThumbnailBatchSize >= _document.PageCount)
+        {
+            return;
+        }
+
+        _pageIndex = _thumbnailBatchStart + ThumbnailBatchSize;
+        await RenderCurrentPageAsync();
+    }
+
+    private async void PageThumbnailsList_ItemClick(
+        object sender,
+        ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not PdfPageThumbnailItem thumbnail ||
+            _document is null ||
+            thumbnail.PageIndex >= _document.PageCount)
+        {
+            return;
+        }
+
+        _pageIndex = thumbnail.PageIndex;
+        await RenderCurrentPageAsync();
     }
 
     private async void PreviousButton_Click(object sender, RoutedEventArgs e)
