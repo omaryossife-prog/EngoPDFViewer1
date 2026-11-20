@@ -11,6 +11,8 @@ public sealed partial class HomePage : Page
     private readonly RecentDocumentsService _recentDocuments = new(
         new JsonRecentDocumentsRepository());
 
+    public event EventHandler<string>? OpenDocumentRequested;
+
     public HomePage()
     {
         InitializeComponent();
@@ -44,7 +46,7 @@ public sealed partial class HomePage : Page
         }
     }
 
-    private async void RecentDocumentsList_SelectionChanged(
+    private void RecentDocumentsList_SelectionChanged(
         object sender,
         SelectionChangedEventArgs e)
     {
@@ -53,26 +55,7 @@ public sealed partial class HomePage : Page
             return;
         }
 
-        try
-        {
-            await _recentDocuments.RecordOpenedAsync(document.FullPath);
-            Frame?.Navigate(typeof(PdfViewerPage), document.FullPath);
-        }
-        catch (Exception exception)
-        {
-            var dialog = new ContentDialog
-            {
-                Title = "تعذّر فتح الملف",
-                Content = exception.Message,
-                CloseButtonText = "موافق",
-                XamlRoot = XamlRoot
-            };
-
-            await dialog.ShowAsync();
-        }
-        finally
-        {
-            RecentDocumentsList.SelectedItem = null;
-        }
+        OpenDocumentRequested?.Invoke(this, document.FullPath);
+        RecentDocumentsList.SelectedItem = null;
     }
 }
