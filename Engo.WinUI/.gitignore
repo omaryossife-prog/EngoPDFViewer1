@@ -1,0 +1,31 @@
+# Build outputs
+**/bin/
+**/obj/
+**/artifacts/
+**/TestResults/
+
+# IDE state
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local packages and generated assets
+*.nupkg
+*.snupkg
+*.appx
+*.msix
+*.msixbundle
+*.appxbundle
+*.appxupload
+*.msixupload
+
+# Local settings and credentials
+appsettings.Local.json
+secrets.json
+*.pfx
+*.p12
+*.cer
