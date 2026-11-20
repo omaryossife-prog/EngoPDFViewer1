@@ -4,6 +4,5 @@ public enum PdfAnnotationKind
 {
     Highlight,
     Freehand,
-    Rectangle,
-    Note
+    Rectangle
 }
