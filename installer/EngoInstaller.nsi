@@ -70,7 +70,7 @@ VIAddVersionKey /LANG=1033 "OriginalFilename" "Engo_Setup_v${PRODUCT_VERSION}.ex
 
 !insertmacro MUI_PAGE_WELCOME
 ; Installation cannot continue unless the user explicitly accepts the agreement.
-!insertmacro MUI_PAGE_LICENSE "${__FILEDIR__}\\..\\LEGAL\\TERMS_AND_CONDITIONS.txt"
+!insertmacro MUI_PAGE_LICENSE "${__FILEDIR__}\..\LEGAL\TERMS_AND_CONDITIONS.txt"
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_STARTMENU Application $StartMenuFolder
@@ -94,7 +94,7 @@ Function .onInit
 
   ; Remember the old location only. The existing installation is preserved
   ; until the new license page is accepted and the install section begins.
-  ReadRegStr $ExistingInstallDir HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${PRODUCT_KEY}" "InstallLocation"
+  ReadRegStr $ExistingInstallDir HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}" "InstallLocation"
 FunctionEnd
 
 Section "Engo PDF Viewer & AI Study Agent (required)" SEC_CORE
@@ -103,10 +103,10 @@ Section "Engo PDF Viewer & AI Study Agent (required)" SEC_CORE
 
   ; Declining the agreement never deletes the current installation.
   ${If} $ExistingInstallDir != ""
-    ${If} ${FileExists} "$ExistingInstallDir\\Uninstall.exe"
-      MessageBox MB_YESNO|MB_ICONQUESTION "An existing Engo installation was found.$\\r$\\n$\\r$\\nThe previous application files will be removed before this version is installed. Your settings and study data will be preserved.$\\r$\\n$\\r$\\nContinue?" IDYES +2
+    ${If} ${FileExists} "$ExistingInstallDir\Uninstall.exe"
+      MessageBox MB_YESNO|MB_ICONQUESTION "An existing Engo installation was found.$\r$\n$\r$\nThe previous application files will be removed before this version is installed. Your settings and study data will be preserved.$\r$\n$\r$\nContinue?" IDYES +2
         Abort
-      ExecWait '"$ExistingInstallDir\\Uninstall.exe" /S _?=$ExistingInstallDir' $R1
+      ExecWait '"$ExistingInstallDir\Uninstall.exe" /S _?=$ExistingInstallDir' $R1
       ${If} $R1 != 0
         MessageBox MB_ICONSTOP "The previous Engo installation could not be removed (code $R1). Close Engo and try again."
         Abort
@@ -135,8 +135,8 @@ Section "Engo PDF Viewer & AI Study Agent (required)" SEC_CORE
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}" "QuietUninstallString" '"$INSTDIR\Uninstall.exe" /S'
   ; The app validates this consent record against both the current terms version and digest.
-  WriteRegStr HKLM "Software\\Engo\\${PRODUCT_KEY}" "TermsAcceptedVersion" "${TERMS_VERSION}"
-  WriteRegStr HKLM "Software\\Engo\\${PRODUCT_KEY}" "TermsAcceptedSha256" "${TERMS_CONTENT_SHA256}"
+  WriteRegStr HKLM "Software\Engo\${PRODUCT_KEY}" "TermsAcceptedVersion" "${TERMS_VERSION}"
+  WriteRegStr HKLM "Software\Engo\${PRODUCT_KEY}" "TermsAcceptedSha256" "${TERMS_CONTENT_SHA256}"
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}" "NoRepair" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}" "EstimatedSize" 0
@@ -167,7 +167,7 @@ Section "Uninstall"
   ${EndIf}
 
   DeleteRegKey HKLM "${STARTMENU_KEY}"
-  DeleteRegKey HKLM "Software\\Engo\\${PRODUCT_KEY}"
+  DeleteRegKey HKLM "Software\Engo\${PRODUCT_KEY}"
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_KEY}"
   RMDir /r "$INSTDIR"
 SectionEnd
