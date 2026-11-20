@@ -5,6 +5,9 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.Data.Pdf;
+using Windows.Globalization;
+using Windows.Graphics.Imaging;
+using Windows.Media.Ocr;
 using Windows.Storage;
 using Windows.Storage.Streams;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -294,6 +297,78 @@ public sealed partial class PdfViewerPage : Page
         }
     }
 
+
+    private async void RecognizePageTextButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_document is null)
+        {
+            ShowError("افتح ملف PDF أولًا.");
+            return;
+        }
+
+        var languageCode = (OcrLanguageComboBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        if (string.IsNullOrWhiteSpace(languageCode))
+        {
+            ShowError("اختر لغة التعرف الضوئي أولًا.");
+            return;
+        }
+
+        var engine = OcrEngine.TryCreateFromLanguage(new Language(languageCode));
+        if (engine is null)
+        {
+            ShowError(
+                $"محرك OCR للغة {languageCode} غير متاح على Windows حاليًا. " +
+                "ثبّت حزمة التعرف الضوئي المناسبة من إعدادات اللغة في Windows ثم أعد المحاولة.");
+            return;
+        }
+
+        LoadingRing.IsActive = true;
+        ErrorInfoBar.IsOpen = false;
+
+        try
+        {
+            using var page = _document.GetPage(_pageIndex);
+            using var stream = new InMemoryRandomAccessStream();
+
+            await page.RenderToStreamAsync(stream);
+            stream.Seek(0);
+
+            using var decoder = await BitmapDecoder.CreateAsync(stream);
+            using var softwareBitmap = await decoder.GetSoftwareBitmapAsync(
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Premultiplied);
+
+            if (softwareBitmap.PixelWidth > engine.MaxImageDimension ||
+                softwareBitmap.PixelHeight > engine.MaxImageDimension)
+            {
+                ShowError(
+                    $"أبعاد الصفحة أكبر من الحد الذي يدعمه OCR ({engine.MaxImageDimension} بكسل). " +
+                    "يمكن تقليل دقة العرض ثم إعادة المحاولة.");
+                return;
+            }
+
+            var recognition = await engine.RecognizeAsync(softwareBitmap);
+            var recognizedText = string.Join(
+                Environment.NewLine,
+                recognition.Lines.Select(line => line.Text));
+
+            ExtractedPageText.Text = string.IsNullOrWhiteSpace(recognizedText)
+                ? "لم يتمكن OCR من التعرف على نص واضح في هذه الصفحة."
+                : recognizedText;
+
+            PageTextExpander.IsExpanded = true;
+        }
+        catch (Exception exception)
+        {
+            ShowError($"تعذّر تنفيذ OCR: {exception.Message}");
+        }
+        finally
+        {
+            LoadingRing.IsActive = false;
+        }
+    }
 
     private void ZoomInButton_Click(object sender, RoutedEventArgs e)
     {
