@@ -11,6 +11,9 @@ namespace Engo.App;
 public sealed partial class MainWindow : Window
 {
     private readonly RecentDocumentsService _recentDocuments;
+    private readonly DocumentSessionService _documentSession;
+    private bool _sessionRestoreStarted;
+    private bool _isRestoringSession;
 
     public MainWindow()
     {
@@ -20,10 +23,11 @@ public sealed partial class MainWindow : Window
 
         _recentDocuments = new RecentDocumentsService(
             new JsonRecentDocumentsRepository());
+        _documentSession = new DocumentSessionService(
+            new JsonDocumentSessionRepository());
 
         HomeFrame.Navigated += HomeFrame_Navigated;
         HomeFrame.Navigate(typeof(HomePage));
-        DocumentTabs.SelectedIndex = 0;
     }
 
     private void HomeFrame_Navigated(
@@ -37,6 +41,112 @@ public sealed partial class MainWindow : Window
 
         homePage.OpenDocumentRequested -= HomePage_OpenDocumentRequested;
         homePage.OpenDocumentRequested += HomePage_OpenDocumentRequested;
+    }
+
+    private async void DocumentTabs_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (_sessionRestoreStarted)
+        {
+            return;
+        }
+
+        _sessionRestoreStarted = true;
+        await RestoreDocumentSessionAsync();
+    }
+
+    private async Task RestoreDocumentSessionAsync()
+    {
+        _isRestoringSession = true;
+        try
+        {
+            var snapshot = await _documentSession.LoadAsync();
+            if (snapshot is null)
+            {
+                return;
+            }
+
+            foreach (var path in snapshot.OpenFilePaths)
+            {
+                if (!File.Exists(path))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await _recentDocuments.RecordOpenedAsync(path);
+                    OpenPdfInTab(path);
+                }
+                catch
+                {
+                    // A single unavailable or invalid document must not block
+                    // the rest of the saved session from being restored.
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(snapshot.ActiveFilePath))
+            {
+                var activeTab = DocumentTabs.TabItems
+                    .OfType<TabViewItem>()
+                    .FirstOrDefault(tab =>
+                        string.Equals(
+                            tab.Tag as string,
+                            snapshot.ActiveFilePath,
+                            StringComparison.OrdinalIgnoreCase));
+
+                if (activeTab is not null)
+                {
+                    DocumentTabs.SelectedItem = activeTab;
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            await ShowErrorAsync(
+                "تعذّرت استعادة الجلسة السابقة",
+                exception.Message);
+        }
+        finally
+        {
+            _isRestoringSession = false;
+            await PersistCurrentSessionAsync();
+        }
+    }
+
+    private async void DocumentTabs_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (!_isRestoringSession)
+        {
+            await PersistCurrentSessionAsync();
+        }
+    }
+
+    private async Task PersistCurrentSessionAsync()
+    {
+        if (_isRestoringSession)
+        {
+            return;
+        }
+
+        var openPaths = DocumentTabs.TabItems
+            .OfType<TabViewItem>()
+            .Where(tab => tab.IsClosable && tab.Tag is string)
+            .Select(tab => (string)tab.Tag!)
+            .ToArray();
+
+        var activePath = (DocumentTabs.SelectedItem as TabViewItem)?.Tag as string;
+
+        try
+        {
+            await _documentSession.SaveAsync(openPaths, activePath);
+        }
+        catch
+        {
+            // Session persistence is best-effort; it must never prevent
+            // a document from opening or being closed.
+        }
     }
 
     private void HomeButton_Click(object sender, RoutedEventArgs e)
@@ -117,11 +227,12 @@ public sealed partial class MainWindow : Window
         DocumentTabs.SelectedItem = tab;
     }
 
-    private void DocumentTabs_TabCloseRequested(
+    private async void DocumentTabs_TabCloseRequested(
         TabView sender,
         TabViewTabCloseRequestedEventArgs e)
     {
-        if (e.Tab is not TabViewItem tab || !tab.IsClosable)
+        var tab = e.Tab;
+        if (!tab.IsClosable)
         {
             return;
         }
@@ -133,7 +244,12 @@ public sealed partial class MainWindow : Window
         }
 
         DocumentTabs.TabItems.Remove(tab);
-        DocumentTabs.SelectedIndex = 0;
+        if (DocumentTabs.TabItems.Count > 0)
+        {
+            DocumentTabs.SelectedIndex = 0;
+        }
+
+        await PersistCurrentSessionAsync();
     }
 
     private async Task ShowErrorAsync(string title, string message)
