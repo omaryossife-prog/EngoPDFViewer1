@@ -40,6 +40,8 @@ This is a phased rewrite, not a one-shot language conversion. The Python applica
 - [x] Persist open PDF paths and the active tab in a local JSON session snapshot; restore existing PDFs on startup.
 - [x] Add dependency-free persistence smoke checks and wire them into the Windows CI workflow.
 - [ ] Verify tab close/reopen/session restore behavior in a real Windows UI session.
+- [x] Initial image viewer page with dimensions and zoom/scroll controls for common Windows image codecs.
+- [x] Include image files in the recent-document list and saved-session restore.
 - Recent files, thumbnails, and large-document performance.
 
 **Exit gate:** representative PDFs render correctly; page counts, navigation, search, and tab/session behavior match the legacy app; memory and responsiveness are measured.
