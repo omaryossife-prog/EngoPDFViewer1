@@ -17,7 +17,17 @@
             </NavigationViewItem>
         </NavigationView.MenuItems>
         <NavigationView.Content>
-            <Frame x:Name="ContentFrame" />
+            <Grid RowDefinitions="Auto,*">
+                <CommandBar Grid.Row="0" DefaultLabelPosition="Right">
+                    <AppBarButton
+                        Icon="OpenFile"
+                        Label="فتح ملف PDF"
+                        Click="OpenPdfButton_Click" />
+                </CommandBar>
+                <Frame
+                    x:Name="ContentFrame"
+                    Grid.Row="1" />
+            </Grid>
         </NavigationView.Content>
     </NavigationView>
 </Window>
