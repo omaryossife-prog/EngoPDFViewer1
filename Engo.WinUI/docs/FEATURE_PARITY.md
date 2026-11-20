@@ -12,7 +12,7 @@ This checklist is the source of truth for migration completeness. Status values 
 | Windows desktop shell, navigation, theme | Engo.App | Scaffolded | Windows launch + theme tests |
 | PDF open, render, page navigation | Windows.Data.Pdf / PdfViewerPage | In progress | Native file picker, read-only page render, previous/next navigation scaffolded; Windows build and fixture parity still pending |
 | PDF tabs and session restoration | Engo.App / Application | Not started | Multi-file and relaunch tests |
-| PDF search and text extraction | Document engine | Not started | Search/extraction fixtures |
+| PDF search and text extraction | PdfPigTextService / PdfViewerPage | In progress | Page-level text extraction and text-query snippets wired; Arabic/scanned-PDF and fixture verification pending |
 | Zoom, thumbnails, full-page view | Engo.App / Document engine | Not started | DPI, scrolling, and large-file checks |
 | Text selection and contextual questions | AI / Document services | Not started | Selected-text context tests |
 | Highlights, comments, pen, shapes, eraser | Annotation services | Not started | Save/reopen geometry tests |
