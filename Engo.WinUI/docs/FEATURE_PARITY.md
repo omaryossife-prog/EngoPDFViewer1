@@ -10,7 +10,7 @@ This checklist is the source of truth for migration completeness. Status values 
 | Existing Engo capability | C# target area | Status | Acceptance evidence |
 |---|---|---|---|
 | Windows desktop shell, navigation, theme | Engo.App | Scaffolded | Windows launch + theme tests |
-| PDF open, render, page navigation | Document engine | Not started | PDF fixture suite |
+| PDF open, render, page navigation | Windows.Data.Pdf / PdfViewerPage | In progress | Native file picker, read-only page render, previous/next navigation scaffolded; Windows build and fixture parity still pending |
 | PDF tabs and session restoration | Engo.App / Application | Not started | Multi-file and relaunch tests |
 | PDF search and text extraction | Document engine | Not started | Search/extraction fixtures |
 | Zoom, thumbnails, full-page view | Engo.App / Document engine | Not started | DPI, scrolling, and large-file checks |
