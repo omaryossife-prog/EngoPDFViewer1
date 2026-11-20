@@ -24,6 +24,11 @@ public sealed partial class MainWindow : Window
         ContentFrame.Navigate(typeof(HomePage));
     }
 
+    private void HomeButton_Click(object sender, RoutedEventArgs e)
+    {
+        ContentFrame.Navigate(typeof(HomePage));
+    }
+
     private async void OpenPdfButton_Click(object sender, RoutedEventArgs e)
     {
         try
