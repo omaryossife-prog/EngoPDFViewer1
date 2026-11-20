@@ -24,7 +24,10 @@ This is a phased rewrite, not a one-shot language conversion. The Python applica
 - [x] Native PDF file picker wired to the WinUI window.
 - [x] Initial read-only PDF page rendering and previous/next navigation using Windows.Data.Pdf.
 - [ ] Validate the viewer against representative PDF fixtures on Windows.
-- [ ] Select and benchmark the long-term PDF engine for search, text extraction, annotations, and advanced rendering.
+- [x] Add an Apache-2.0 text-extraction/search adapter using PdfPig, kept separate from the Windows page renderer.
+- [x] Wire page-level text extraction, snippets, search-result navigation, and cancellation into the initial viewer.
+- [ ] Validate Arabic reading order, scanned-PDF behavior, and large-document responsiveness on Windows.
+- [ ] Select and benchmark the long-term PDF engine for annotations, search highlighting, and advanced rendering.
 - Native file picker and supported-format detection.
 - Page navigation, zoom, fit modes, text extraction, and search.
 - Multi-document tabs and session restoration.
