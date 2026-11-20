@@ -312,6 +312,27 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (tab.Content is Frame existingFrame &&
+            existingFrame.Content is PdfViewerPage currentPdfPage &&
+            currentPdfPage.HasUnsavedAnnotations)
+        {
+            var confirmClose = new ContentDialog
+            {
+                Title = "هناك تعليقات لم يتم حفظها",
+                Content = "إغلاق هذا التبويب الآن سيؤدي إلى فقدان التعليقات المضافة منذ آخر حفظ. هل تريد الإغلاق بدون حفظ؟",
+                PrimaryButtonText = "إغلاق بدون حفظ",
+                CloseButtonText = "العودة إلى المستند",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = RootNavigation.XamlRoot
+            };
+
+            var closeResult = await confirmClose.ShowAsync();
+            if (closeResult != ContentDialogResult.Primary)
+            {
+                return;
+            }
+        }
+
         if (tab.Content is Frame frame)
         {
             if (frame.Content is PdfViewerPage pdfPage)
