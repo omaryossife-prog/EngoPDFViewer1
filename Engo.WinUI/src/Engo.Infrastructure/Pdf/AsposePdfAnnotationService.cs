@@ -176,18 +176,6 @@ public sealed class AsposePdfAnnotationService : IPdfAnnotationService
                     lineWidth: lineWidth);
                 break;
 
-            case PdfAnnotationKind.Note:
-                var noteText = string.IsNullOrWhiteSpace(draft.Contents)
-                    ? "Engo note"
-                    : draft.Contents.Trim();
-
-                page.Annotations.AddTextAnnotation(
-                    rectangle,
-                    contents: noteText,
-                    title: "Engo",
-                    open: false);
-                break;
-
             case PdfAnnotationKind.Freehand:
                 ApplyInkAnnotation(
                     page,
