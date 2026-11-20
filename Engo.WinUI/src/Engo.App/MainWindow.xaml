@@ -33,6 +33,8 @@
                     x:Name="DocumentTabs"
                     Grid.Row="1"
                     IsAddTabButtonVisible="False"
+                    Loaded="DocumentTabs_Loaded"
+                    SelectionChanged="DocumentTabs_SelectionChanged"
                     TabCloseRequested="DocumentTabs_TabCloseRequested">
                     <TabView.TabItems>
                         <TabViewItem
