@@ -618,6 +618,22 @@ public sealed partial class PdfViewerPage : Page
         e.Handled = true;
     }
 
+    private void AnnotationCanvas_PointerCaptureLost(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        if (!_isDrawing)
+        {
+            return;
+        }
+
+        _isDrawing = false;
+        _activeStrokePoints = null;
+        _activePolyline = null;
+        _activeRectangle = null;
+        RedrawPendingAnnotations();
+    }
+
     private async Task AddNoteAtAsync(Point position)
     {
         var noteInput = new TextBox
