@@ -48,6 +48,18 @@
             <Button
                 Content="استخراج نص الصفحة"
                 Click="ExtractCurrentPageTextButton_Click" />
+            <ComboBox
+                x:Name="OcrLanguageComboBox"
+                Width="115"
+                SelectedIndex="0"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="لغة التعرف الضوئي">
+                <ComboBoxItem Content="العربية" Tag="ar" />
+                <ComboBoxItem Content="English" Tag="en-US" />
+            </ComboBox>
+            <Button
+                Content="OCR للصفحة"
+                Click="RecognizePageTextButton_Click" />
             <Rectangle
                 Width="1"
                 Height="28"
