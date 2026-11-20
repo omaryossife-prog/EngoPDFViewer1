@@ -315,12 +315,28 @@ public sealed partial class PdfViewerPage : Page
             return;
         }
 
-        var engine = OcrEngine.TryCreateFromLanguage(new Language(languageCode));
+        var matchingLanguage = OcrEngine.AvailableRecognizerLanguages
+            .FirstOrDefault(language =>
+                string.Equals(language.LanguageTag, languageCode, StringComparison.OrdinalIgnoreCase) ||
+                (languageCode == "ar" &&
+                 language.LanguageTag.StartsWith("ar-", StringComparison.OrdinalIgnoreCase)) ||
+                (languageCode == "en-US" &&
+                 language.LanguageTag.StartsWith("en-", StringComparison.OrdinalIgnoreCase)));
+
+        if (matchingLanguage is null)
+        {
+            ShowError(
+                $"حزمة OCR للغة {languageCode} غير مثبتة أو غير متاحة. " +
+                "ثبّت ميزة التعرف الضوئي المناسبة من إعدادات اللغة في Windows ثم أعد المحاولة.");
+            return;
+        }
+
+        var engine = OcrEngine.TryCreateFromLanguage(matchingLanguage);
         if (engine is null)
         {
             ShowError(
-                $"محرك OCR للغة {languageCode} غير متاح على Windows حاليًا. " +
-                "ثبّت حزمة التعرف الضوئي المناسبة من إعدادات اللغة في Windows ثم أعد المحاولة.");
+                $"تعذّر إنشاء محرك OCR للغة {matchingLanguage.LanguageTag}. " +
+                "تحقق من تثبيت ميزة التعرف الضوئي في Windows.");
             return;
         }
 
