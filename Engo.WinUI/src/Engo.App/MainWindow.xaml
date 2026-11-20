@@ -10,8 +10,11 @@
         <NavigationView.MenuItems>
             <NavigationViewItem
                 Content="الرئيسية"
-                Icon="Home"
-                IsSelected="True" />
+                IsSelected="True">
+                <NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="Home" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
         </NavigationView.MenuItems>
         <NavigationView.Content>
             <Frame x:Name="ContentFrame" />
