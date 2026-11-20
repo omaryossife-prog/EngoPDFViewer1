@@ -267,6 +267,31 @@ public sealed partial class PdfViewerPage : Page
         }
     }
 
+
+    private void ZoomInButton_Click(object sender, RoutedEventArgs e)
+    {
+        var nextZoom = Math.Min(4.0, PdfScrollViewer.ZoomFactor * 1.2);
+        PdfScrollViewer.ChangeView(null, null, (float)nextZoom);
+    }
+
+    private void ZoomOutButton_Click(object sender, RoutedEventArgs e)
+    {
+        var nextZoom = Math.Max(0.5, PdfScrollViewer.ZoomFactor / 1.2);
+        PdfScrollViewer.ChangeView(null, null, (float)nextZoom);
+    }
+
+    private void ResetZoomButton_Click(object sender, RoutedEventArgs e)
+    {
+        PdfScrollViewer.ChangeView(null, null, 1.0f);
+    }
+
+    private void PdfScrollViewer_ViewChanged(
+        object sender,
+        ScrollViewerViewChangedEventArgs e)
+    {
+        ZoomStatusText.Text = $"{Math.Round(PdfScrollViewer.ZoomFactor * 100)}%";
+    }
+
     private void UpdateNavigationButtons()
     {
         PreviousButton.IsEnabled = _document is not null && _pageIndex > 0;
