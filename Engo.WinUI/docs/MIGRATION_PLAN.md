@@ -50,14 +50,14 @@ This is a phased rewrite, not a one-shot language conversion. The Python applica
 
 **Status: initial PDF annotation slice implemented; Windows visual and round-trip verification pending.**
 
-- [x] Add annotation modes for highlight, freehand pen, rectangle, and sticky note.
-- [x] Add annotation color/line-width controls, live overlay preview, and undo.
+- [x] Add annotation modes for highlight, freehand pen, rectangle, and eraser (sticky-note tool intentionally omitted).
+- [x] Add annotation color/line-width controls, live overlay preview, undo, and erase-by-click for unsaved drafts.
 - [x] Save annotations as native PDF annotation objects to a separate output copy; never overwrite the source path.
 - [x] Transform page coordinates using the visible CropBox and 0/90/180/270 page rotation.
 - [x] Warn before closing a PDF tab with unsaved annotations.
-- [x] Add PDF annotation save/reopen smoke coverage for highlight, rectangle, note, and ink.
+- [x] Add PDF annotation save/reopen smoke coverage for highlight, rectangle, and ink.
 - [ ] Verify output in Windows PDF viewers against representative cropped/rotated PDFs.
-- [ ] Add text-selection highlights, eraser, annotation editing/resizing, and note re-editing.
+- [ ] Add text-selection highlights, annotation editing/resizing, and comment editing.
 - [ ] Implement robust undo/redo history and save-to-existing-copy UX.
 
 **Exit gate:** annotations remain visually and structurally correct after save/reopen and on different zoom levels.
