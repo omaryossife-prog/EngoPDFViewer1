@@ -259,9 +259,9 @@ public sealed class AsposePdfAnnotationService : IPdfAnnotationService
 
         return
         [
-            Math.Clamp(color.Red, 0, 1),
-            Math.Clamp(color.Green, 0, 1),
-            Math.Clamp(color.Blue, 0, 1)
+            Math.Clamp(color.RedComponent, 0, 1),
+            Math.Clamp(color.GreenComponent, 0, 1),
+            Math.Clamp(color.BlueComponent, 0, 1)
         ];
     }
 
