@@ -56,6 +56,7 @@ This is a phased rewrite, not a one-shot language conversion. The Python applica
 - [x] Transform page coordinates using the visible CropBox and 0/90/180/270 page rotation.
 - [x] Warn before closing a PDF tab with unsaved annotations.
 - [x] Add PDF annotation save/reopen smoke coverage for highlight, rectangle, and ink.
+- [x] Add automated eraser hit-testing checks for overlapping drafts and freehand stroke geometry.
 - [ ] Verify output in Windows PDF viewers against representative cropped/rotated PDFs.
 - [ ] Add text-selection highlights, annotation editing/resizing, and comment editing.
 - [ ] Implement robust undo/redo history and save-to-existing-copy UX.
