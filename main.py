@@ -11773,21 +11773,6 @@ def main():
     app._engo_tooltip_filter = _engo_tooltip_filter
     startup_paths = _startup_pdf_arguments(sys.argv[1:])
 
-    # Forward later double-click launches to the current Engo instance before
-    # presenting a second startup screen or doing a second license check.
-    client = QLocalSocket()
-    client.connectToServer(IPC_SERVER_NAME)
-    if client.waitForConnected(300):
-        try:
-            payload = json.dumps(startup_paths, ensure_ascii=False).encode("utf-8") + b"\n"
-            client.write(payload)
-            client.flush()
-            client.waitForBytesWritten(1000)
-            client.waitForReadyRead(1000)
-        finally:
-            client.disconnectFromServer()
-        return 0
-
     settings = QSettings(APP_ORG, "EngoPDFViewer")
     language = settings.value("interface_language", "en", type=str) or "en"
     ui_theme = settings.value("ui_theme", "dark", type=str) or "dark"
@@ -11838,6 +11823,22 @@ def main():
                 ) + f"\n\n{exc}",
             )
             return 1
+
+
+    # Forward later double-click launches to the current Engo instance before
+    # presenting a second startup screen or doing a second license check.
+    client = QLocalSocket()
+    client.connectToServer(IPC_SERVER_NAME)
+    if client.waitForConnected(300):
+        try:
+            payload = json.dumps(startup_paths, ensure_ascii=False).encode("utf-8") + b"\n"
+            client.write(payload)
+            client.flush()
+            client.waitForBytesWritten(1000)
+            client.waitForReadyRead(1000)
+        finally:
+            client.disconnectFromServer()
+        return 0
 
     service = LicenseService(config=LicenseConfig.load(APP_VERSION))
     icon_path = resource_path("engopdfviewer.ico")
