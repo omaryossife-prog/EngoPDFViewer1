@@ -383,10 +383,10 @@ public sealed partial class PdfViewerPage : Page
                 BitmapAlphaMode.Premultiplied);
 
             if (softwareBitmap.PixelWidth > OcrEngine.MaxImageDimension ||
-                softwareBitmap.PixelHeight > engine.MaxImageDimension)
+                softwareBitmap.PixelHeight > OcrEngine.MaxImageDimension)
             {
                 ShowError(
-                    $"أبعاد الصفحة أكبر من الحد الذي يدعمه OCR ({engine.MaxImageDimension} بكسل). " +
+                    $"أبعاد الصفحة أكبر من الحد الذي يدعمه OCR ({OcrEngine.MaxImageDimension} بكسل). " +
                     "يمكن تقليل دقة العرض ثم إعادة المحاولة.");
                 return;
             }
@@ -858,7 +858,6 @@ public sealed partial class PdfViewerPage : Page
             var savedPdf = await PdfDocument.LoadFromFileAsync(destination);
             if (savedPdf.PageCount == 0)
             {
-                savedPdf.Dispose();
                 throw new InvalidDataException("النسخة الناتجة لا تحتوي على صفحات.");
             }
 
