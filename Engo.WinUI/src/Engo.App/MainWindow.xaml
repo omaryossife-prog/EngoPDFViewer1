@@ -28,6 +28,10 @@
                         Icon="OpenFile"
                         Label="فتح مستند"
                         Click="OpenDocumentButton_Click" />
+                    <AppBarButton
+                        Icon="Add"
+                        Label="دمج ملفات PDF"
+                        Click="MergePdfsButton_Click" />
                 </CommandBar>
 
                 <TabView
