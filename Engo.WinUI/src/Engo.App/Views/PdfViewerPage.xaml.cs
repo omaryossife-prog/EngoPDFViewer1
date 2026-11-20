@@ -3,13 +3,19 @@ using Engo.Application.Documents;
 using Engo.Infrastructure.Pdf;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using Microsoft.UI.Xaml.Shapes;
 using Windows.Data.Pdf;
 using Windows.Globalization;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
 using Windows.Storage;
+using Windows.Storage.Pickers;
 using Windows.Storage.Streams;
+using Windows.UI;
+using WinRT.Interop;
 using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace Engo.App.Views;
@@ -17,10 +23,19 @@ namespace Engo.App.Views;
 public sealed partial class PdfViewerPage : Page
 {
     private readonly IPdfTextService _textService = new PdfPigTextService();
+    private readonly IPdfAnnotationService _annotationService = new AsposePdfAnnotationService();
+    private readonly List<PdfAnnotationDraft> _pendingAnnotations = [];
     private PdfDocument? _document;
     private CancellationTokenSource? _searchCancellation;
     private string? _filePath;
     private uint _pageIndex;
+    private bool _isDrawing;
+    private Point _drawingStart;
+    private List<Point>? _activeStrokePoints;
+    private Polyline? _activePolyline;
+    private Microsoft.UI.Xaml.Shapes.Rectangle? _activeRectangle;
+
+    public event EventHandler<string>? AnnotatedCopySaved;
 
     public PdfViewerPage()
     {
@@ -45,6 +60,10 @@ public sealed partial class PdfViewerPage : Page
         _searchCancellation = null;
 
         PageImage.Source = null;
+        AnnotationCanvas.Children.Clear();
+        _activeStrokePoints = null;
+        _activePolyline = null;
+        _activeRectangle = null;
         _document?.Dispose();
         _document = null;
 
@@ -111,6 +130,11 @@ public sealed partial class PdfViewerPage : Page
             PageImage.Source = bitmap;
             PageImage.Width = page.Size.Width;
             PageImage.Height = page.Size.Height;
+            PdfPageSurface.Width = page.Size.Width;
+            PdfPageSurface.Height = page.Size.Height;
+            AnnotationCanvas.Width = page.Size.Width;
+            AnnotationCanvas.Height = page.Size.Height;
+            RedrawPendingAnnotations();
 
             PageCounter.Text = $"الصفحة {_pageIndex + 1} من {_document.PageCount}";
             PageNumberTextBox.Text = (_pageIndex + 1).ToString(CultureInfo.InvariantCulture);
