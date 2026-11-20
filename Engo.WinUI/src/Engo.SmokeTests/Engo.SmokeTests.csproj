@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net11.0</TargetFramework>
+    <RootNamespace>Engo.SmokeTests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Engo.Application\Engo.Application.csproj" />
+    <ProjectReference Include="..\Engo.Infrastructure\Engo.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
