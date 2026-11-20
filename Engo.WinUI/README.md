@@ -36,6 +36,41 @@ Engo.WinUI/
 - Visual Studio 2026 with the **WinUI application development** workload, or an equivalent Windows SDK + .NET command-line environment.
 - A Windows machine for the actual WinUI build and run.
 
+## Run during development (no installer)
+
+The project is an **unpackaged WinUI 3 app**. You can build and launch it for testing without creating an installer or a release build.
+
+1. Install Visual Studio 2026 with the **WinUI application development** workload, the .NET 11 SDK, and Windows SDK 10.0.26100 or later.
+2. Install the Microsoft WinApp CLI if it is not already installed:
+
+   ```powershell
+   winget install Microsoft.winappcli --source winget
+   ```
+
+3. Open PowerShell in this directory and run:
+
+   ```powershell
+   .\run-dev.ps1
+   ```
+
+   For another architecture/configuration:
+
+   ```powershell
+   .\run-dev.ps1 -Configuration Debug -Architecture x64
+   .\run-dev.ps1 -Configuration Debug -Architecture ARM64
+   ```
+
+The script restores the app project, builds Debug, and launches it with `winapp run`. It does not package, publish, sign, or install an Engo release. WinApp CLI handles the matching Windows App SDK runtime for the unpackaged app.
+
+### Run from Visual Studio
+
+1. Open `Engo.WinUI.sln`.
+2. In Solution Explorer, right-click `Engo.App` and choose **Set as Startup Project**.
+3. Select **x64** and the **Unpackaged** launch profile.
+4. Press **F5** to debug or **Ctrl+F5** to run without the debugger.
+
+Do not choose a package/MSIX profile for this project; it is intentionally configured with `WindowsPackageType=None`.
+
 ## Build
 
 Run from this directory:
