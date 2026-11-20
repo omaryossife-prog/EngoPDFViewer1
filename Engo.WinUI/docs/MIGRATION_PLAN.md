@@ -30,7 +30,9 @@ This is a phased rewrite, not a one-shot language conversion. The Python applica
 - [x] Wire page-level text extraction, snippets, search-result navigation, and cancellation into the initial viewer.
 - [x] Add reader zoom-in, zoom-out, and 100% reset controls.
 - [x] Add direct page-number navigation with Arabic, Persian, and Western digit normalization.
-- [ ] Validate Arabic reading order, scanned-PDF behavior, and large-document responsiveness on Windows.
+- [x] Add user-triggered current-page OCR through Windows.Media.Ocr for Arabic and English when the Windows recognition language is installed.
+- [ ] Validate Arabic reading order, OCR language packs, scanned-PDF fixtures, and large-document responsiveness on Windows.
+- [ ] Add cancellable batch OCR and integrate its output into full-document search.
 - [ ] Select and benchmark the long-term PDF engine for annotations, search highlighting, and advanced rendering.
 - Native file picker and supported-format detection.
 - Page navigation, zoom, fit modes, text extraction, and search.
