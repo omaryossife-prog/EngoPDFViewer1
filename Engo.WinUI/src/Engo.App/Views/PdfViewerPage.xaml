@@ -106,7 +106,7 @@
                     <ComboBoxItem Content="تظليل" Tag="Highlight" />
                     <ComboBoxItem Content="قلم حر" Tag="Freehand" />
                     <ComboBoxItem Content="مستطيل" Tag="Rectangle" />
-                    <ComboBoxItem Content="ملاحظة" Tag="Note" />
+                    <ComboBoxItem Content="ممحاة" Tag="Eraser" />
                 </ComboBox>
                 <TextBlock Text="اللون" VerticalAlignment="Center" />
                 <ComboBox
