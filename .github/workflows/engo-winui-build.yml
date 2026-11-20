@@ -1,0 +1,36 @@
+name: Engo WinUI build
+
+on:
+  push:
+    branches:
+      - migration/winui3-csharp
+    paths:
+      - "Engo.WinUI/**"
+      - ".github/workflows/engo-winui-build.yml"
+  pull_request:
+    paths:
+      - "Engo.WinUI/**"
+      - ".github/workflows/engo-winui-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build WinUI solution (Windows x64)
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 11
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 11.0.x
+
+      - name: Restore
+        run: dotnet restore .\Engo.WinUI\Engo.WinUI.sln
+
+      - name: Build
+        run: dotnet build .\Engo.WinUI\Engo.WinUI.sln --configuration Release --no-restore
