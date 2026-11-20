@@ -19,12 +19,17 @@ try
     var imageFile = Path.Combine(root, "scan.png");
     var annotationSource = Path.Combine(root, "annotation-source.pdf");
     var annotationOutput = Path.Combine(root, "annotation-output.pdf");
+    var mergeFirst = Path.Combine(root, "merge-first.pdf");
+    var mergeSecond = Path.Combine(root, "merge-second.pdf");
+    var mergeOutput = Path.Combine(root, "merged-output.pdf");
     var textFile = Path.Combine(root, "not-supported.txt");
     var missingPdf = Path.Combine(root, "missing.pdf");
 
     await File.WriteAllTextAsync(firstPdf, "%PDF-1.7\n");
     await File.WriteAllTextAsync(secondPdf, "%PDF-1.7\n");
     CreateSinglePagePdf(annotationSource);
+    CreatePdfWithPages(mergeFirst, 2);
+    CreatePdfWithPages(mergeSecond, 3);
     await File.WriteAllBytesAsync(imageFile, [0x89, 0x50, 0x4E, 0x47]);
     await File.WriteAllTextAsync(textFile, "This is not a supported document.");
 
@@ -37,12 +42,14 @@ try
         textFile,
         missingPdf);
     await VerifyPdfAnnotationRoundTripAsync(annotationSource, annotationOutput);
+    await VerifyPdfMergeRoundTripAsync(mergeFirst, mergeSecond, mergeOutput);
     VerifyAnnotationEraserHitTesting();
     VerifyNoTemporaryFilesRemain(root);
 
     Console.WriteLine("PASS: recent PDF and image persistence");
     Console.WriteLine("PASS: PDF/image session persistence and path filtering");
     Console.WriteLine("PASS: PDF annotations save as a separate round-trip-readable copy");
+    Console.WriteLine("PASS: PDF merge preserves input order and page count");
     Console.WriteLine("PASS: annotation eraser hit testing respects stroke geometry and draw order");
     Console.WriteLine("PASS: atomic JSON writes leave no temporary files");
     Console.WriteLine("All Engo smoke checks passed.");
@@ -225,6 +232,52 @@ static async Task VerifyPdfAnnotationRoundTripAsync(
     await AssertThrowsAsync<InvalidOperationException>(
         () => service.SaveAnnotatedCopyAsync(sourcePath, sourcePath, annotations),
         "The annotation service must never overwrite the original source PDF.");
+}
+
+static void CreatePdfWithPages(string outputPath, int pageCount)
+{
+    using var document = Aspose.Pdf.Document.Create();
+    for (var index = 0; index < pageCount; index++)
+    {
+        document.Pages.Add();
+    }
+
+    document.Save(outputPath);
+}
+
+static async Task VerifyPdfMergeRoundTripAsync(
+    string firstPdf,
+    string secondPdf,
+    string outputPdf)
+{
+    var service = new AsposePdfMergeService();
+    var mergedPageCount = await service.MergeAsync(
+        new[] { firstPdf, secondPdf },
+        outputPdf);
+
+    Require(
+        mergedPageCount == 5,
+        "Merging two PDFs must report the total page count in input order.");
+
+    using var first = Aspose.Pdf.Document.Open(firstPdf);
+    using var second = Aspose.Pdf.Document.Open(secondPdf);
+    using var merged = Aspose.Pdf.Document.Open(outputPdf);
+
+    Require(first.PageCount == 2, "The first source PDF must remain unchanged.");
+    Require(second.PageCount == 3, "The second source PDF must remain unchanged.");
+    Require(merged.PageCount == 5, "The merged PDF must contain all pages from both sources.");
+
+    await AssertThrowsAsync<ArgumentException>(
+        () => service.MergeAsync(new[] { firstPdf }, Path.Combine(Path.GetDirectoryName(outputPdf)!, "single.pdf")),
+        "The merge service must require at least two input PDFs.");
+
+    await AssertThrowsAsync<ArgumentException>(
+        () => service.MergeAsync(new[] { firstPdf, firstPdf }, outputPdf),
+        "The merge service must reject duplicate input paths.");
+
+    await AssertThrowsAsync<InvalidOperationException>(
+        () => service.MergeAsync(new[] { firstPdf, secondPdf }, firstPdf),
+        "The merge service must never overwrite an input source PDF.");
 }
 
 static void VerifyAnnotationEraserHitTesting()
