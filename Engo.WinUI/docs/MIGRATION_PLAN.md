@@ -28,7 +28,7 @@ This is a phased rewrite, not a one-shot language conversion. The Python applica
 - [ ] Validate the viewer against representative PDF fixtures on Windows.
 - [x] Add an Apache-2.0 text-extraction/search adapter using PdfPig, kept separate from the Windows page renderer.
 - [x] Wire page-level text extraction, snippets, search-result navigation, and cancellation into the initial viewer.
-- [x] Add reader zoom-in, zoom-out, and 100% reset controls.
+- [x] Add reader zoom-in, zoom-out, 100% reset, fit-page, and fit-width controls.
 - [x] Add direct page-number navigation with Arabic, Persian, and Western digit normalization.
 - [x] Add user-triggered current-page OCR through Windows.Media.Ocr for Arabic and English when the Windows recognition language is installed.
 - [ ] Validate Arabic reading order, OCR language packs, scanned-PDF fixtures, and large-document responsiveness on Windows.
@@ -40,7 +40,7 @@ This is a phased rewrite, not a one-shot language conversion. The Python applica
 - [x] Persist open PDF paths and the active tab in a local JSON session snapshot; restore existing PDFs on startup.
 - [x] Add dependency-free persistence smoke checks and wire them into the Windows CI workflow.
 - [ ] Verify tab close/reopen/session restore behavior in a real Windows UI session.
-- [x] Initial image viewer page with dimensions and zoom/scroll controls for common Windows image codecs.
+- [x] Initial image viewer page with dimensions, zoom/scroll, and fit-image controls for common Windows image codecs.
 - [x] Include image files in the recent-document list and saved-session restore.
 - Recent files, thumbnails, and large-document performance.
 
