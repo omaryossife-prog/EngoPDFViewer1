@@ -26,20 +26,20 @@ public sealed partial class MainWindow : Window
 
     private async void OpenPdfButton_Click(object sender, RoutedEventArgs e)
     {
-        var picker = new FileOpenPicker();
-        picker.FileTypeFilter.Add(".pdf");
-
-        var windowHandle = WindowNative.GetWindowHandle(this);
-        InitializeWithWindow.Initialize(picker, windowHandle);
-
-        var file = await picker.PickSingleFileAsync();
-        if (file is null)
-        {
-            return;
-        }
-
         try
         {
+            var picker = new FileOpenPicker();
+            picker.FileTypeFilter.Add(".pdf");
+
+            var windowHandle = WindowNative.GetWindowHandle(this);
+            InitializeWithWindow.Initialize(picker, windowHandle);
+
+            var file = await picker.PickSingleFileAsync();
+            if (file is null)
+            {
+                return;
+            }
+
             await _recentDocuments.RecordOpenedAsync(file.Path);
             ContentFrame.Navigate(typeof(PdfViewerPage), file.Path);
         }
@@ -47,7 +47,7 @@ public sealed partial class MainWindow : Window
         {
             var dialog = new ContentDialog
             {
-                Title = "تعذّر فتح الملف",
+                Title = "تعذّر فتح ملف PDF",
                 Content = exception.Message,
                 CloseButtonText = "موافق",
                 XamlRoot = RootNavigation.XamlRoot
