@@ -3,7 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
-using Windows.Devices.Input;
+using Microsoft.UI.Input;
 using Windows.Foundation;
 using Windows.Storage;
 
