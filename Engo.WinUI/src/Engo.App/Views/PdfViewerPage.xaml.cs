@@ -38,6 +38,7 @@ public sealed partial class PdfViewerPage : Page
     private string? _filePath;
     private uint _pageIndex;
     private bool _isDrawing;
+    private bool _isFullPageMode;
     private Point _drawingStart;
     private List<Point>? _activeStrokePoints;
     private Polyline? _activePolyline;
@@ -1076,6 +1077,28 @@ public sealed partial class PdfViewerPage : Page
         {
             LoadingRing.IsActive = false;
         }
+    }
+
+    private void FullPageModeButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetFullPageMode(!_isFullPageMode);
+    }
+
+    private void SetFullPageMode(bool enabled)
+    {
+        _isFullPageMode = enabled;
+
+        PdfTopToolbar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        ErrorInfoBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        AnnotationToolbarBorder.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        PdfSidePanelBorder.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        PageTextExpander.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+
+        PdfSideColumn.Width = new GridLength(enabled ? 0 : 300);
+
+        FullPageModeButton.Content = enabled ? "عرض عادي" : "عرض كامل";
+        ExitFullPageModeButton.Visibility =
+            enabled ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void ZoomInButton_Click(object sender, RoutedEventArgs e)
