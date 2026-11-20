@@ -73,8 +73,8 @@ def test_official_installer_and_build_are_wired_to_the_same_terms_files():
     app_entry = (root / "main.py").read_text(encoding="utf-8")
 
     assert 'MUI_PAGE_LICENSE' in installer
-    assert "TERMS_ACCEPTED" not in installer  # no unrelated legacy marker
     assert "TermsAcceptedVersion" in installer
+    assert 'DeleteRegKey HKLM "Software\\\\Engo\\\\${PRODUCT_KEY}"' in installer
     assert "TermsAcceptedSha256" in installer
     assert "TERMS_AND_CONDITIONS_AR.md" in builder
     assert "TERMS_AND_CONDITIONS_EN.md" in builder
