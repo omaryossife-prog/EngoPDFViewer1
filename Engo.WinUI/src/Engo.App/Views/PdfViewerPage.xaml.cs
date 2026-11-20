@@ -446,12 +446,12 @@ public sealed partial class PdfViewerPage : Page
             "Highlight" => "اسحب فوق الصفحة لتحديد مساحة التظليل.",
             "Freehand" => "ارسم بالقلم داخل الصفحة.",
             "Rectangle" => "اسحب لرسم مستطيل.",
-            "Note" => "اضغط على الصفحة لإضافة ملاحظة.",
+            "Eraser" => "اضغط على تعليق غير محفوظ لإزالته.",
             _ => "وضع التصفح: اسحب للتنقل واستخدم عجلة التكبير."
         };
     }
 
-    private async void AnnotationCanvas_PointerPressed(
+    private void AnnotationCanvas_PointerPressed(
         object sender,
         PointerRoutedEventArgs e)
     {
@@ -467,9 +467,9 @@ public sealed partial class PdfViewerPage : Page
         }
 
         var position = e.GetCurrentPoint(AnnotationCanvas).Position;
-        if (tool == "Note")
+        if (tool == "Eraser")
         {
-            await AddNoteAtAsync(position);
+            ErasePendingAnnotationAt(position);
             e.Handled = true;
             return;
         }
@@ -634,56 +634,89 @@ public sealed partial class PdfViewerPage : Page
         RedrawPendingAnnotations();
     }
 
-    private async Task AddNoteAtAsync(Point position)
+    private void ErasePendingAnnotationAt(Point position)
     {
-        var noteInput = new TextBox
-        {
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.Wrap,
-            PlaceholderText = "اكتب الملاحظة...",
-            MinWidth = 320,
-            MinHeight = 90,
-            MaxLength = 2000
-        };
-
-        var dialog = new ContentDialog
-        {
-            Title = "ملاحظة جديدة",
-            Content = noteInput,
-            PrimaryButtonText = "إضافة",
-            CloseButtonText = "إلغاء",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = XamlRoot
-        };
-
-        var result = await dialog.ShowAsync();
-        if (result != ContentDialogResult.Primary ||
-            string.IsNullOrWhiteSpace(noteInput.Text) ||
-            PageImage.Width <= 0 ||
-            PageImage.Height <= 0)
+        if (PageImage.Width <= 0 || PageImage.Height <= 0 ||
+            _pendingAnnotations.Count == 0)
         {
             return;
         }
 
-        const double noteSizeRatio = 0.035;
-        var center = ToNormalizedPoint(position);
-        var left = Math.Clamp(center.XRatio, 0, 1 - noteSizeRatio);
-        var top = Math.Clamp(center.YRatio, 0, 1 - noteSizeRatio);
+        var target = ToNormalizedPoint(position);
+        const double edgeTolerance = 0.008;
+        const double strokeTolerance = 0.014;
 
-        _pendingAnnotations.Add(new PdfAnnotationDraft(
-            checked((int)_pageIndex + 1),
-            PdfAnnotationKind.Note,
-            left,
-            top,
-            left + noteSizeRatio,
-            top + noteSizeRatio,
-            [],
-            noteInput.Text.Trim(),
-            SelectedAnnotationColor,
-            SelectedPdfLineWidth));
+        for (var index = _pendingAnnotations.Count - 1; index >= 0; index--)
+        {
+            var annotation = _pendingAnnotations[index];
+            var hit = annotation.Kind == PdfAnnotationKind.Freehand
+                ? IsNearStroke(target, annotation.StrokePoints, strokeTolerance)
+                : target.XRatio >= annotation.LeftRatio - edgeTolerance &&
+                  target.XRatio <= annotation.RightRatio + edgeTolerance &&
+                  target.YRatio >= annotation.TopRatio - edgeTolerance &&
+                  target.YRatio <= annotation.BottomRatio + edgeTolerance;
 
-        RedrawPendingAnnotations();
-        UpdateAnnotationStatus();
+            if (!hit)
+            {
+                continue;
+            }
+
+            _pendingAnnotations.RemoveAt(index);
+            RedrawPendingAnnotations();
+            AnnotationStatusText.Text = "تمت إزالة التعليق غير المحفوظ.";
+            return;
+        }
+
+        AnnotationStatusText.Text = "لم يتم العثور على تعليق عند موضع الممحاة.";
+    }
+
+    private static bool IsNearStroke(
+        PdfAnnotationPoint target,
+        IReadOnlyList<PdfAnnotationPoint> points,
+        double tolerance)
+    {
+        if (points.Count == 0)
+        {
+            return false;
+        }
+
+        var toleranceSquared = tolerance * tolerance;
+
+        if (points.Count == 1)
+        {
+            var deltaX = target.XRatio - points[0].XRatio;
+            var deltaY = target.YRatio - points[0].YRatio;
+            return (deltaX * deltaX) + (deltaY * deltaY) <= toleranceSquared;
+        }
+
+        for (var index = 1; index < points.Count; index++)
+        {
+            var start = points[index - 1];
+            var end = points[index];
+            var deltaX = end.XRatio - start.XRatio;
+            var deltaY = end.YRatio - start.YRatio;
+            var lengthSquared = (deltaX * deltaX) + (deltaY * deltaY);
+
+            var projection = lengthSquared <= double.Epsilon
+                ? 0
+                : Math.Clamp(
+                    ((target.XRatio - start.XRatio) * deltaX +
+                     (target.YRatio - start.YRatio) * deltaY) / lengthSquared,
+                    0,
+                    1);
+
+            var closestX = start.XRatio + (projection * deltaX);
+            var closestY = start.YRatio + (projection * deltaY);
+            var distanceX = target.XRatio - closestX;
+            var distanceY = target.YRatio - closestY;
+
+            if ((distanceX * distanceX) + (distanceY * distanceY) <= toleranceSquared)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private PdfAnnotationPoint ToNormalizedPoint(Point point)
@@ -810,30 +843,6 @@ public sealed partial class PdfViewerPage : Page
                     break;
                 }
 
-                case PdfAnnotationKind.Note:
-                {
-                    var note = new Border
-                    {
-                        Width = Math.Max(22, width),
-                        Height = Math.Max(22, height),
-                        CornerRadius = new CornerRadius(5),
-                        Background = CreateAnnotationBrush(draft.Color, 230),
-                        BorderBrush = color,
-                        BorderThickness = new Thickness(1),
-                        Child = new TextBlock
-                        {
-                            Text = "م",
-                            FontWeight = Microsoft.UI.Text.FontWeights.Bold,
-                            HorizontalAlignment = HorizontalAlignment.Center,
-                            VerticalAlignment = VerticalAlignment.Center
-                        }
-                    };
-
-                    Canvas.SetLeft(note, left);
-                    Canvas.SetTop(note, top);
-                    AnnotationCanvas.Children.Add(note);
-                    break;
-                }
             }
         }
 
