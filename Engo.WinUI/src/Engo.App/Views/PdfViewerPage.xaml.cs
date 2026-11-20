@@ -3,6 +3,8 @@ using Windows.Foundation;
 using Path = System.IO.Path;
 using Engo.Application.Documents;
 using Engo.Infrastructure.Pdf;
+using Engo.Infrastructure.Persistence;
+using System.Collections.ObjectModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -27,8 +29,11 @@ public sealed partial class PdfViewerPage : Page
     private const uint ThumbnailBatchSize = 12;
 
     private readonly IPdfTextService _textService = new PdfPigTextService();
+    private static readonly TagLibraryService SharedTagLibrary =
+        new(new JsonTagLibraryRepository());
     private readonly IPdfAnnotationService _annotationService = new AsposePdfAnnotationService();
     private readonly List<PdfAnnotationDraft> _pendingAnnotations = [];
+    private readonly ObservableCollection<StudyTag> _studyTags = [];
     private PdfDocument? _document;
     private CancellationTokenSource? _searchCancellation;
     private CancellationTokenSource? _thumbnailCancellation;
@@ -60,6 +65,7 @@ public sealed partial class PdfViewerPage : Page
         if (e.Parameter is string filePath && !string.IsNullOrWhiteSpace(filePath))
         {
             _filePath = filePath;
+            await RefreshTagItemsAsync();
             await LoadDocumentAsync(filePath);
         }
     }
@@ -626,6 +632,265 @@ public sealed partial class PdfViewerPage : Page
     private double SelectedPdfLineWidth =>
         Math.Clamp(AnnotationLineWidthSlider.Value * 0.75, 0.5, 6.0);
 
+
+    private StudyTag? SelectedStudyTag =>
+        RegionTagComboBox?.SelectedItem as StudyTag;
+
+    private PdfAnnotationColor SelectedTagColor =>
+        SelectedStudyTag is { } tag
+            ? ParseTagColor(tag.ColorHex)
+            : PdfAnnotationColor.Yellow;
+
+    private static PdfAnnotationColor ParseTagColor(string hex)
+    {
+        var normalized = TagLibraryService.NormalizeColor(hex);
+        return new PdfAnnotationColor(
+            Convert.ToByte(normalized.Substring(1, 2), 16) / 255.0,
+            Convert.ToByte(normalized.Substring(3, 2), 16) / 255.0,
+            Convert.ToByte(normalized.Substring(5, 2), 16) / 255.0);
+    }
+
+    private async Task RefreshTagItemsAsync(string? selectedName = null)
+    {
+        var snapshot = await SharedTagLibrary.GetSnapshotAsync();
+        var wanted = selectedName ?? SelectedStudyTag?.Name;
+        _studyTags.Clear();
+        foreach (var tag in snapshot.Tags)
+        {
+            _studyTags.Add(tag);
+        }
+
+        RegionTagComboBox.ItemsSource = _studyTags;
+        RegionTagComboBox.SelectedItem = _studyTags.FirstOrDefault(tag =>
+            string.Equals(tag.Name, wanted, StringComparison.OrdinalIgnoreCase))
+            ?? _studyTags.FirstOrDefault();
+    }
+
+    private void RegionTagComboBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (SelectedAnnotationTool == "TagRegion" && AnnotationStatusText is not null)
+        {
+            AnnotationStatusText.Text = SelectedStudyTag is null
+                ? "لا توجد وسوم. افتح إدارة الوسوم لإنشاء وسم."
+                : $"الوسم المحدد: {SelectedStudyTag.Name} — اسحب لتعيينه على منطقة.";
+        }
+    }
+
+    private async void ManageTagsButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ShowTagLibraryDialogAsync();
+    }
+
+    private async Task ShowTagLibraryDialogAsync()
+    {
+        var nameBox = new TextBox
+        {
+            Header = "اسم الوسم",
+            PlaceholderText = "مثال: تعريفات مهمة",
+            MaxLength = 32
+        };
+        var colorBox = new ComboBox
+        {
+            Header = "لون الوسم",
+            Width = 220,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var colors = new[]
+        {
+            ("ذهبي", "#F2BD55"), ("أزرق سماوي", "#66C7E8"),
+            ("بنفسجي", "#9B8CFF"), ("أخضر", "#62C98B"),
+            ("أحمر", "#F08080"), ("وردي", "#E38BC8"),
+            ("أزرق", "#7CA8FF"), ("تركوازي", "#53C9B5"),
+            ("بني ذهبي", "#C5A65F"), ("برتقالي", "#D28A55")
+        };
+        foreach (var (label, hex) in colors)
+        {
+            colorBox.Items.Add(new ComboBoxItem
+            {
+                Content = label,
+                Tag = hex
+            });
+        }
+
+        var tagList = new ListView
+        {
+            ItemsSource = _studyTags,
+            DisplayMemberPath = nameof(StudyTag.Name),
+            SelectionMode = ListViewSelectionMode.Single,
+            MinHeight = 150,
+            MaxHeight = 260
+        };
+        var status = new TextBlock
+        {
+            Text = "أنشئ وسومًا مشتركة، أو اختر وسمًا لتغيير اسمه أو لونه.",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.75
+        };
+        var newButton = new Button
+        {
+            Content = "وسم جديد",
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var saveButton = new Button
+        {
+            Content = "إنشاء وسم",
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var deleteButton = new Button
+        {
+            Content = "حذف الوسم المحدد",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            IsEnabled = false
+        };
+        var panel = new StackPanel { Spacing = 10 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "مكتبة وسوم مشتركة لكل ملفات PDF",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
+        });
+        panel.Children.Add(tagList);
+        panel.Children.Add(nameBox);
+        panel.Children.Add(colorBox);
+        panel.Children.Add(newButton);
+        panel.Children.Add(saveButton);
+        panel.Children.Add(deleteButton);
+        panel.Children.Add(status);
+
+        var dialog = new ContentDialog
+        {
+            Title = "إدارة مكتبة الوسوم",
+            Content = panel,
+            PrimaryButtonText = "تم",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot
+        };
+
+        var selectedOriginalName = string.Empty;
+        var deleteConfirmationArmed = false;
+        tagList.SelectionChanged += (_, _) =>
+        {
+            if (tagList.SelectedItem is StudyTag selected)
+            {
+                selectedOriginalName = selected.Name;
+                nameBox.Text = selected.Name;
+                deleteButton.IsEnabled = true;
+                saveButton.Content = "حفظ التعديلات";
+                deleteButton.Content = "حذف الوسم المحدد";
+                deleteConfirmationArmed = false;
+                var colorItem = colorBox.Items
+                    .OfType<ComboBoxItem>()
+                    .FirstOrDefault(item =>
+                        string.Equals(item.Tag as string, selected.ColorHex, StringComparison.OrdinalIgnoreCase));
+                colorBox.SelectedItem = colorItem;
+                if (colorItem is null)
+                {
+                    var customColor = new ComboBoxItem
+                    {
+                        Content = selected.ColorHex,
+                        Tag = selected.ColorHex
+                    };
+                    colorBox.Items.Add(customColor);
+                    colorBox.SelectedItem = customColor;
+                }
+            }
+            else
+            {
+                selectedOriginalName = string.Empty;
+                deleteButton.IsEnabled = false;
+                saveButton.Content = "إنشاء وسم";
+            }
+        };
+
+        newButton.Click += (_, _) =>
+        {
+            selectedOriginalName = string.Empty;
+            tagList.SelectedItem = null;
+            nameBox.Text = string.Empty;
+            colorBox.SelectedIndex = 0;
+            saveButton.Content = "إنشاء وسم";
+            deleteButton.IsEnabled = false;
+            deleteButton.Content = "حذف الوسم المحدد";
+            deleteConfirmationArmed = false;
+            status.Text = "أدخل اسم الوسم الجديد واختر لونه.";
+        };
+
+        saveButton.Click += async (_, _) =>
+        {
+            try
+            {
+                var cleanName = nameBox.Text.Trim();
+                var selectedColor = (colorBox.SelectedItem as ComboBoxItem)?.Tag as string
+                    ?? "#F2BD55";
+                StudyTag saved;
+                if (string.IsNullOrWhiteSpace(selectedOriginalName))
+                {
+                    saved = await SharedTagLibrary.CreateAsync(cleanName, selectedColor);
+                }
+                else
+                {
+                    saved = string.Equals(
+                        selectedOriginalName,
+                        cleanName,
+                        StringComparison.OrdinalIgnoreCase)
+                        ? await SharedTagLibrary.RecolorAsync(selectedOriginalName, selectedColor)
+                        : await SharedTagLibrary.RenameAsync(selectedOriginalName, cleanName);
+                    if (!string.Equals(saved.ColorHex, selectedColor, StringComparison.OrdinalIgnoreCase))
+                    {
+                        saved = await SharedTagLibrary.RecolorAsync(saved.Name, selectedColor);
+                    }
+                }
+
+                await RefreshTagItemsAsync(saved.Name);
+                tagList.SelectedItem = _studyTags.FirstOrDefault(tag => tag.Name == saved.Name);
+                status.Text = $"تم حفظ الوسم: {saved.Name}";
+            }
+            catch (Exception exception)
+            {
+                status.Text = exception.Message;
+            }
+        };
+
+        deleteButton.Click += async (_, _) =>
+        {
+            if (tagList.SelectedItem is not StudyTag selected)
+            {
+                return;
+            }
+
+            if (!deleteConfirmationArmed)
+            {
+                deleteConfirmationArmed = true;
+                deleteButton.Content = "تأكيد الحذف";
+                status.Text = $"اضغط «تأكيد الحذف» مرة أخرى لحذف الوسم {selected.Name} من المكتبة.";
+                return;
+            }
+
+            try
+            {
+                await SharedTagLibrary.DeleteAsync(selected.Name);
+                await RefreshTagItemsAsync();
+                tagList.SelectedItem = null;
+                selectedOriginalName = string.Empty;
+                nameBox.Text = string.Empty;
+                saveButton.Content = "إنشاء وسم";
+                deleteButton.Content = "حذف الوسم المحدد";
+                deleteButton.IsEnabled = false;
+                deleteConfirmationArmed = false;
+                status.Text = $"تم حذف الوسم {selected.Name} من المكتبة.";
+            }
+            catch (Exception exception)
+            {
+                status.Text = exception.Message;
+            }
+        };
+
+        await dialog.ShowAsync();
+        await RefreshTagItemsAsync(SelectedStudyTag?.Name);
+        UpdateAnnotationStatus();
+    }
+
     private void AnnotationToolComboBox_SelectionChanged(
         object sender,
         SelectionChangedEventArgs e)
@@ -643,6 +908,9 @@ public sealed partial class PdfViewerPage : Page
             "Highlight" => "اسحب فوق الصفحة لتحديد مساحة التظليل.",
             "Freehand" => "ارسم بالقلم داخل الصفحة.",
             "Rectangle" => "اسحب لرسم مستطيل.",
+            "TagRegion" => SelectedStudyTag is null
+                ? "أنشئ وسمًا من إدارة الوسوم أولًا، ثم حدده واسحب فوق المنطقة."
+                : $"اسحب فوق منطقة الصفحة لإسناد الوسم: {SelectedStudyTag.Name}.",
             "Eraser" => "اضغط على تعليق غير محفوظ لإزالته.",
             _ => "وضع التصفح: اسحب للتنقل واستخدم عجلة التكبير."
         };
@@ -671,6 +939,13 @@ public sealed partial class PdfViewerPage : Page
             return;
         }
 
+        if (tool == "TagRegion" && SelectedStudyTag is null)
+        {
+            AnnotationStatusText.Text = "أنشئ وسمًا وحدده قبل تعيينه لمنطقة.";
+            e.Handled = true;
+            return;
+        }
+
         _isDrawing = true;
         _drawingStart = position;
         AnnotationCanvas.CapturePointer(e.Pointer);
@@ -691,7 +966,9 @@ public sealed partial class PdfViewerPage : Page
         }
         else
         {
-            var color = SelectedAnnotationColor;
+            var color = tool == "TagRegion"
+                ? SelectedTagColor
+                : SelectedAnnotationColor;
             var isHighlight = tool == "Highlight";
             _activeRectangle = new Microsoft.UI.Xaml.Shapes.Rectangle
             {
@@ -786,9 +1063,16 @@ public sealed partial class PdfViewerPage : Page
             if (bounds.Right - bounds.Left >= 0.003 &&
                 bounds.Bottom - bounds.Top >= 0.003)
             {
-                var kind = tool == "Highlight"
-                    ? PdfAnnotationKind.Highlight
-                    : PdfAnnotationKind.Rectangle;
+                var kind = tool switch
+                {
+                    "Highlight" => PdfAnnotationKind.Highlight,
+                    "TagRegion" => PdfAnnotationKind.TagRegion,
+                    _ => PdfAnnotationKind.Rectangle
+                };
+                var selectedTag = tool == "TagRegion" ? SelectedStudyTag : null;
+                var annotationColor = selectedTag is null
+                    ? SelectedAnnotationColor
+                    : ParseTagColor(selectedTag.ColorHex);
 
                 _pendingAnnotations.Add(new PdfAnnotationDraft(
                     checked((int)_pageIndex + 1),
@@ -798,8 +1082,8 @@ public sealed partial class PdfViewerPage : Page
                     bounds.Right,
                     bounds.Bottom,
                     [],
-                    null,
-                    SelectedAnnotationColor,
+                    selectedTag?.Name,
+                    annotationColor,
                     SelectedPdfLineWidth));
             }
         }
@@ -961,6 +1245,7 @@ public sealed partial class PdfViewerPage : Page
 
                 case PdfAnnotationKind.Highlight:
                 case PdfAnnotationKind.Rectangle:
+                case PdfAnnotationKind.TagRegion:
                 {
                     var shape = new Microsoft.UI.Xaml.Shapes.Rectangle
                     {
@@ -969,6 +1254,9 @@ public sealed partial class PdfViewerPage : Page
                         Fill = draft.Kind == PdfAnnotationKind.Highlight
                             ? CreateAnnotationBrush(draft.Color, 78)
                             : new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
+                        StrokeDashArray = draft.Kind == PdfAnnotationKind.TagRegion
+                            ? new DoubleCollection { 3, 2 }
+                            : null,
                         Width = width,
                         Height = height
                     };
@@ -976,6 +1264,25 @@ public sealed partial class PdfViewerPage : Page
                     Canvas.SetLeft(shape, left);
                     Canvas.SetTop(shape, top);
                     AnnotationCanvas.Children.Add(shape);
+
+                    if (draft.Kind == PdfAnnotationKind.TagRegion &&
+                        !string.IsNullOrWhiteSpace(draft.Contents))
+                    {
+                        var label = new TextBlock
+                        {
+                            Text = draft.Contents,
+                            FontSize = 12,
+                            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                            Foreground = new SolidColorBrush(Colors.Black),
+                            Background = CreateAnnotationBrush(draft.Color, 220),
+                            Padding = new Thickness(5, 2, 5, 2),
+                            IsHitTestVisible = false
+                        };
+                        Canvas.SetLeft(label, left);
+                        Canvas.SetTop(label, Math.Max(0, top - 22));
+                        AnnotationCanvas.Children.Add(label);
+                    }
+
                     break;
                 }
 

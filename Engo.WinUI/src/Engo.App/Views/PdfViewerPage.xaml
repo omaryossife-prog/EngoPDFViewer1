@@ -113,8 +113,18 @@
                     <ComboBoxItem Content="تظليل" Tag="Highlight" />
                     <ComboBoxItem Content="قلم حر" Tag="Freehand" />
                     <ComboBoxItem Content="مستطيل" Tag="Rectangle" />
+                    <ComboBoxItem Content="وسم منطقة" Tag="TagRegion" />
                     <ComboBoxItem Content="ممحاة" Tag="Eraser" />
                 </ComboBox>
+                <TextBlock Text="الوسم" VerticalAlignment="Center" />
+                <ComboBox
+                    x:Name="RegionTagComboBox"
+                    Width="135"
+                    DisplayMemberPath="Name"
+                    SelectionChanged="RegionTagComboBox_SelectionChanged" />
+                <Button
+                    Content="إدارة الوسوم"
+                    Click="ManageTagsButton_Click" />
                 <TextBlock Text="اللون" VerticalAlignment="Center" />
                 <ComboBox
                     x:Name="AnnotationColorComboBox"

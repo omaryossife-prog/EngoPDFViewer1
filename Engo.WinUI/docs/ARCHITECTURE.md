@@ -30,6 +30,7 @@ The Domain project has no project references. Infrastructure implements interfac
 - Use asynchronous I/O and cancellation for file, network, and database operations.
 - Keep expensive PDF rendering, OCR, AI, and Office package parsing/conversion work off the UI thread.
 - Treat DOCX/PPTX as untrusted ZIP/XML packages: prohibit DTDs and external entities, enforce package-size limits, ignore external relationships, HTML-encode text, and render script-disabled local WebView2 previews only.
+- Store the shared tag catalogue separately from document files using atomic JSON writes; persist each selected PDF tag region as a standard, named square annotation in a saved copy. Keep aliases/tombstones so renamed/deleted names are not silently reintroduced when old PDFs are revisited.
 - Keep API keys and private signing material out of source control. Use Windows Credential Manager / DPAPI for user secrets and server-side secrets for signing.
 - Centralize localization resources for Arabic and English and set RTL per localized view.
 - Keep telemetry and usage accounting explicit and testable.

@@ -1,4 +1,5 @@
 using Aspose.Pdf;
+using Aspose.Pdf.Annotations;
 using Engo.Application.Documents;
 using PdfDocument = Aspose.Pdf.Document;
 
@@ -174,6 +175,32 @@ public sealed class AsposePdfAnnotationService : IPdfAnnotationService
                     borderColor: color,
                     fillColor: null,
                     lineWidth: lineWidth);
+                break;
+
+            case PdfAnnotationKind.TagRegion:
+                var tagName = (draft.Contents ?? string.Empty).Trim();
+                if (tagName.Length is 0 or > 32)
+                {
+                    throw new ArgumentException("A PDF region tag needs a name of 1–32 characters.");
+                }
+
+                var tagAnnotation = new SquareAnnotation(page, rectangle)
+                {
+                    Title = "Engo Region Tag",
+                    Subject = "Engo Region Tag",
+                    Contents = tagName,
+                    Color = Aspose.Pdf.Color.FromRgb(
+                        color[0],
+                        color[1],
+                        color[2]),
+                    Opacity = 0.98
+                };
+                tagAnnotation.Border = new Border(tagAnnotation)
+                {
+                    Width = (int)Math.Clamp(Math.Round(lineWidth), 1, 12)
+                };
+                page.Annotations.Add(tagAnnotation);
+                tagAnnotation.UpdateAppearances();
                 break;
 
             case PdfAnnotationKind.Freehand:

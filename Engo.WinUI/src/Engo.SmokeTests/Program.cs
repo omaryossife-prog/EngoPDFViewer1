@@ -51,6 +51,7 @@ try
         wordFile,
         powerpointFile);
     await VerifyOfficeDocumentReadingAsync(wordFile, powerpointFile);
+    await VerifyTagLibraryAsync(root);
     await VerifyPdfAnnotationRoundTripAsync(annotationSource, annotationOutput);
     await VerifyPdfMergeRoundTripAsync(mergeFirst, mergeSecond, mergeOutput);
     VerifyAnnotationEraserHitTesting();
@@ -60,6 +61,8 @@ try
     Console.WriteLine("PASS: recent PDF, image and Office persistence");
     Console.WriteLine("PASS: PDF/image/Office session persistence and path filtering");
     Console.WriteLine("PASS: DOCX text/table/image preview and PPTX slide-order/image preview");
+    Console.WriteLine("PASS: shared tag library create/rename/recolor/delete and alias tombstones");
+    Console.WriteLine("PASS: PDF region tags persist as named, colored annotations");
     Console.WriteLine("PASS: PDF annotations save as a separate round-trip-readable copy");
     Console.WriteLine("PASS: PDF merge preserves input order and page count");
     Console.WriteLine("PASS: annotation eraser hit testing respects stroke geometry and draw order");
@@ -398,6 +401,59 @@ static void CreateSinglePagePdf(string outputPath)
     document.Save(outputPath);
 }
 
+
+static async Task VerifyTagLibraryAsync(string root)
+{
+    var path = Path.Combine(root, "tag-library.json");
+    var service = new TagLibraryService(new JsonTagLibraryRepository(path));
+
+    var created = await service.CreateAsync("Lecture", "#123456");
+    Require(
+        created.Name == "Lecture" && created.ColorHex == "#123456",
+        "Creating a tag must preserve its validated name and color.");
+
+    await AssertThrowsAsync<InvalidOperationException>(
+        () => service.CreateAsync("lecture", "#ABCDEF"),
+        "Tag names must be unique without regard to letter casing.");
+
+    await AssertThrowsAsync<ArgumentException>(
+        () => service.CreateAsync("Invalid Color", "#GGGGGG"),
+        "Tag colors must use a valid #RRGGBB value.");
+
+    var renamed = await service.RenameAsync("Lecture", "Important");
+    Require(
+        renamed.Name == "Important" && renamed.ColorHex == "#123456",
+        "Renaming a tag must preserve its color.");
+
+    var renamedSnapshot = await service.GetSnapshotAsync();
+    Require(
+        TagLibraryService.ResolveName(renamedSnapshot, "Lecture") == "Important",
+        "A renamed tag must resolve through its alias for existing PDF annotations.");
+
+    var recolored = await service.RecolorAsync("Important", "#AA22BB");
+    Require(
+        recolored.ColorHex == "#AA22BB",
+        "Recoloring a tag must update the shared catalogue.");
+
+    await service.DeleteAsync("Important");
+    var deletedSnapshot = await service.GetSnapshotAsync();
+    Require(
+        TagLibraryService.ResolveName(deletedSnapshot, "Important") is null &&
+        TagLibraryService.ResolveName(deletedSnapshot, "Lecture") is null,
+        "Deleting a tag must leave tombstones for its old name and aliases.");
+
+    await service.CreateAsync("Important", "#00AACC");
+    var recreatedSnapshot = await service.GetSnapshotAsync();
+    Require(
+        TagLibraryService.ResolveName(recreatedSnapshot, "Important") == "Important" &&
+        TagLibraryService.ResolveName(recreatedSnapshot, "Lecture") is null,
+        "Recreating a deleted tag must not resurrect stale aliases from older PDFs.");
+
+    Require(
+        !Directory.GetFiles(root, "*.tmp", SearchOption.TopDirectoryOnly).Any(),
+        "The tag library must use atomic writes and clean up temporary files.");
+}
+
 static async Task VerifyPdfAnnotationRoundTripAsync(
     string sourcePath,
     string outputPath)
@@ -433,7 +489,15 @@ static async Task VerifyPdfAnnotationRoundTripAsync(
             },
             null,
             PdfAnnotationColor.Blue,
-            1.5)
+            1.5),
+        new PdfAnnotationDraft(
+            1,
+            PdfAnnotationKind.TagRegion,
+            0.18, 0.78, 0.52, 0.94,
+            [],
+            "Vocabulary",
+            new PdfAnnotationColor(0.25, 0.65, 0.85),
+            2)
     };
 
     await service.SaveAnnotatedCopyAsync(sourcePath, outputPath, annotations);
@@ -450,7 +514,7 @@ static async Task VerifyPdfAnnotationRoundTripAsync(
     var savedPage = annotated.Pages[1];
     Require(
         savedPage.Annotations.Count == annotations.Length,
-        "Highlight, rectangle, and ink annotations must survive save and reopen.");
+        "Highlight, rectangle, ink, and region-tag annotations must survive save and reopen.");
 
     var highlight = savedPage.Annotations
         .OfType<HighlightAnnotation>()
@@ -459,6 +523,14 @@ static async Task VerifyPdfAnnotationRoundTripAsync(
     Require(
         highlight is not null && highlight.QuadPoints.Length == 4,
         "A saved highlight must contain four PDF QuadPoints for interoperable rendering.");
+
+    var tag = savedPage.Annotations
+        .OfType<SquareAnnotation>()
+        .SingleOrDefault(annotation =>
+            string.Equals(annotation.Title, "Engo Region Tag", StringComparison.Ordinal));
+    Require(
+        tag is not null && tag.Contents == "Vocabulary",
+        "A region tag must survive save/reopen with its Engo identifier and tag name.");
 
     var cropBox = savedPage.CropBox;
     foreach (var annotation in savedPage.Annotations)
