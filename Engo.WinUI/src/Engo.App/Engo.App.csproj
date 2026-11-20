@@ -20,4 +20,15 @@
     <ProjectReference Include="..\Engo.Application\Engo.Application.csproj" />
     <ProjectReference Include="..\Engo.Infrastructure\Engo.Infrastructure.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\LICENSES\**\*.*"
+          Link="LICENSES\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\THIRD_PARTY_NOTICES.md"
+          Link="THIRD_PARTY_NOTICES.md"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
