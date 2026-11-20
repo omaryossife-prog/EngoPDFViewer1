@@ -672,7 +672,7 @@ try {
     $TermsArPath = Join-Path $LegalDirectory 'TERMS_AND_CONDITIONS_AR.md'
     $TermsEnPath = Join-Path $LegalDirectory 'TERMS_AND_CONDITIONS_EN.md'
     $TermsTextPath = Join-Path $LegalDirectory 'TERMS_AND_CONDITIONS.txt'
-    $TermsModulePath = Join-Path $ProjectRoot 'engo_licensing\\terms.py'
+    $TermsModulePath = Join-Path $ProjectRoot 'engo_licensing\terms.py'
     # The runtime config is intentionally git-ignored because each release may
     # have environment-specific public values and an Ed25519 public key. For CI
     # builds without a local config, ship the project-scoped public example.
@@ -720,7 +720,7 @@ try {
     $Version = $VersionMatch.Groups['version'].Value
 
     $TermsSource = Get-Content -LiteralPath $TermsModulePath -Raw -Encoding UTF8
-    $TermsVersionMatch = [regex]::Match($TermsSource, '(?m)^TERMS_VERSION\\s*=\\s*["''](?<version>[^"'']+)["'']')
+    $TermsVersionMatch = [regex]::Match($TermsSource, '(?m)^TERMS_VERSION\s*=\s*["''](?<version>[^"'']+)["'']')
     if (-not $TermsVersionMatch.Success) { throw 'Could not read TERMS_VERSION from engo_licensing/terms.py.' }
     $TermsVersion = $TermsVersionMatch.Groups['version'].Value
     $TermsArabic = [System.IO.File]::ReadAllText($TermsArPath, [System.Text.Encoding]::UTF8).Replace("`r`n", "`n").Replace("`r", "`n").Trim()
