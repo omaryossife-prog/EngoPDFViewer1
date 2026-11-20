@@ -64,3 +64,20 @@ def test_failed_persistence_does_not_create_a_valid_acceptance():
             BrokenSettings(), terms_version=TERMS_VERSION,
             content_sha256="a" * 64, app_version="2.3.6", language="en",
         )
+
+
+def test_official_installer_and_build_are_wired_to_the_same_terms_files():
+    root = Path(__file__).resolve().parents[1]
+    installer = (root / "installer" / "EngoInstaller.nsi").read_text(encoding="utf-8")
+    builder = (root / "build_release.ps1").read_text(encoding="utf-8")
+    app_entry = (root / "main.py").read_text(encoding="utf-8")
+
+    assert 'MUI_PAGE_LICENSE' in installer
+    assert "TERMS_ACCEPTED" not in installer  # no unrelated legacy marker
+    assert "TermsAcceptedVersion" in installer
+    assert "TermsAcceptedSha256" in installer
+    assert "TERMS_AND_CONDITIONS_AR.md" in builder
+    assert "TERMS_AND_CONDITIONS_EN.md" in builder
+    assert "/DTERMS_CONTENT_SHA256=$TermsDigest" in builder
+    assert "accepted_current_terms" in app_entry
+    assert "TermsAcceptanceDialog" in app_entry
