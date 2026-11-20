@@ -24,6 +24,14 @@
                 VerticalAlignment="Center"
                 Margin="6,0"
                 Text="لم يتم فتح ملف" />
+            <TextBox
+                x:Name="PageNumberTextBox"
+                Width="72"
+                PlaceholderText="رقم الصفحة"
+                VerticalAlignment="Center" />
+            <Button
+                Content="انتقال"
+                Click="GoToPageButton_Click" />
             <Rectangle
                 Width="1"
                 Height="28"
