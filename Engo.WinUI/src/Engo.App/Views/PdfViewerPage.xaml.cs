@@ -212,6 +212,7 @@ public sealed partial class PdfViewerPage : Page
         _thumbnailCancellation?.Dispose();
 
         var cancellation = new CancellationTokenSource();
+        var cancellationToken = cancellation.Token;
         _thumbnailCancellation = cancellation;
         _loadingThumbnailBatchStart = batchStart;
         ThumbnailSummary.Text = "جاري تجهيز صور الصفحات المصغرة...";
@@ -227,7 +228,7 @@ public sealed partial class PdfViewerPage : Page
 
             for (var currentPage = batchStart; currentPage < batchEnd; currentPage++)
             {
-                cancellation.Token.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
 
                 using var page = document.GetPage(currentPage);
                 using var stream = new InMemoryRandomAccessStream();
@@ -249,7 +250,7 @@ public sealed partial class PdfViewerPage : Page
                     thumbnail));
             }
 
-            cancellation.Token.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (!ReferenceEquals(document, _document))
             {
@@ -276,7 +277,7 @@ public sealed partial class PdfViewerPage : Page
         catch (Exception exception)
         {
             if (ReferenceEquals(document, _document) &&
-                !cancellation.Token.IsCancellationRequested)
+                !cancellationToken.IsCancellationRequested)
             {
                 ThumbnailSummary.Text =
                     $"تعذّر تجهيز الصور المصغرة: {exception.Message}";
@@ -285,13 +286,9 @@ public sealed partial class PdfViewerPage : Page
         }
         finally
         {
-            if (_loadingThumbnailBatchStart == batchStart)
-            {
-                _loadingThumbnailBatchStart = null;
-            }
-
             if (ReferenceEquals(_thumbnailCancellation, cancellation))
             {
+                _loadingThumbnailBatchStart = null;
                 _thumbnailCancellation.Dispose();
                 _thumbnailCancellation = null;
             }
