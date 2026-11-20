@@ -134,7 +134,13 @@ static async Task VerifyDocumentSessionAsync(
 static void CreateSinglePagePdf(string outputPath)
 {
     using var document = Aspose.Pdf.Document.Create();
-    document.Pages.Add();
+    var page = document.Pages.Add();
+
+    // Exercise a non-zero CropBox origin and clockwise rotation so the
+    // annotation adapter has to map screen coordinates back to PDF space.
+    page.CropBox = new Rectangle(40, 60, 572, 732);
+    page.RotateDegrees = 90;
+
     document.Save(outputPath);
 }
 
