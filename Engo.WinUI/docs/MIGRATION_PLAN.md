@@ -42,7 +42,9 @@ This is a phased rewrite, not a one-shot language conversion. The Python applica
 - [ ] Verify tab close/reopen/session restore behavior in a real Windows UI session.
 - [x] Initial image viewer page with dimensions, zoom/scroll, and fit-image controls for common Windows image codecs.
 - [x] Include image files in the recent-document list and saved-session restore.
-- Recent files, thumbnails, and large-document performance.
+- [x] Add progressive PDF thumbnail groups in batches of 12 pages with direct page navigation and group paging.
+- [ ] Add a dedicated full-page reading mode and verify scrolling/zoom behavior on large PDFs.
+- [ ] Complete manual Windows UI checks for thumbnail loading and page navigation.
 
 **Exit gate:** representative PDFs render correctly; page counts, navigation, search, and tab/session behavior match the legacy app; memory and responsiveness are measured.
 
