@@ -153,7 +153,7 @@
                     Padding="18">
                     <StackPanel Spacing="8">
                         <TextBlock Text="Office والصور" FontSize="17" FontWeight="SemiBold" />
-                        <TextBlock Text="فتح Word وPowerPoint والصور المدعومة داخل مساحة العمل." TextWrapping="Wrap" />
+                        <TextBlock Text="قراءة ملفات Word وعرض شرائح PowerPoint، إلى جانب الصور المدعومة." TextWrapping="Wrap" />
                         <TextBlock Text="لم يبدأ" Opacity="0.72" />
                     </StackPanel>
                 </Border>

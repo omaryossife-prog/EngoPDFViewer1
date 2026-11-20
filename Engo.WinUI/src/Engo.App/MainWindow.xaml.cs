@@ -177,7 +177,7 @@ public sealed partial class MainWindow : Window
         {
             var picker = new FileOpenPicker();
             picker.FileTypeFilter.Add(".pdf");
-            foreach (var extension in new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tif", ".tiff" })
+            foreach (var extension in new[] { ".docx", ".pptx", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tif", ".tiff" })
             {
                 picker.FileTypeFilter.Add(extension);
             }
@@ -282,6 +282,7 @@ public sealed partial class MainWindow : Window
         var pageType = extension switch
         {
             ".pdf" => typeof(PdfViewerPage),
+            ".docx" or ".pptx" => typeof(OfficeViewerPage),
             ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".webp" or ".tif" or ".tiff"
                 => typeof(ImageViewerPage),
             _ => throw new NotSupportedException(

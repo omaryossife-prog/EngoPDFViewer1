@@ -47,7 +47,7 @@ try
     VerifyImageViewportMath();
     VerifyNoTemporaryFilesRemain(root);
 
-    Console.WriteLine("PASS: recent PDF and image persistence");
+    Console.WriteLine("PASS: recent PDF, image and Office persistence");
     Console.WriteLine("PASS: PDF/image session persistence and path filtering");
     Console.WriteLine("PASS: PDF annotations save as a separate round-trip-readable copy");
     Console.WriteLine("PASS: PDF merge preserves input order and page count");

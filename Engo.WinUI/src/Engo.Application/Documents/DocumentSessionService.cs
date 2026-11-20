@@ -55,7 +55,7 @@ public sealed class DocumentSessionService
     private static bool IsSupportedSessionDocument(string path) =>
         Path.GetExtension(path).ToLowerInvariant() switch
         {
-            ".pdf" => true,
+            ".pdf" or ".docx" or ".pptx" => true,
             ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".webp" or ".tif" or ".tiff"
                 => true,
             _ => false
