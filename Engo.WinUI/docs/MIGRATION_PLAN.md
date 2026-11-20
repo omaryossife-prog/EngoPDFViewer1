@@ -67,7 +67,9 @@ This is a phased rewrite, not a one-shot language conversion. The Python applica
 
 - Word and PowerPoint import/render strategy.
 - Supported image formats, zoom, pan, and fit behavior.
-- Merge and document utility workflows.
+- [x] Merge multiple PDFs into a new output copy using the native PDF engine, preserving the selected input order.
+- [x] Add smoke coverage for merged page counts and source-file preservation.
+- [ ] Verify encrypted/corrupt PDFs and large-file merge memory usage on Windows.
 
 **Exit gate:** supported file matrix is documented and each format has representative fixtures.
 
