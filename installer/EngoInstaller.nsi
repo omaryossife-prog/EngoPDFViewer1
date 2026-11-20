@@ -9,6 +9,12 @@ Unicode true
 !ifndef PRODUCT_VERSION
   !define PRODUCT_VERSION "2.3.6"
 !endif
+!ifndef TERMS_VERSION
+  !define TERMS_VERSION "1.0.0"
+!endif
+!ifndef TERMS_CONTENT_SHA256
+  !define TERMS_CONTENT_SHA256 "UNSET"
+!endif
 
 !define PRODUCT_NAME "Engo PDF Viewer & AI Study Agent"
 !define PRODUCT_KEY  "EngoPDFViewerAIStudyAgent"
@@ -18,6 +24,7 @@ Unicode true
 
 ; Required by MUI_PAGE_STARTMENU and MUI_STARTMENU_WRITE_BEGIN.
 Var StartMenuFolder
+Var ExistingInstallDir
 
 Name "${PRODUCT_NAME}"
 Caption "${PRODUCT_NAME} Setup"
@@ -62,6 +69,8 @@ VIAddVersionKey /LANG=1033 "OriginalFilename" "Engo_Setup_v${PRODUCT_VERSION}.ex
 !define MUI_STARTMENUPAGE_REGISTRY_VALUENAME "StartMenuFolder"
 
 !insertmacro MUI_PAGE_WELCOME
+; Installation cannot continue unless the user explicitly accepts the agreement.
+!insertmacro MUI_PAGE_LICENSE "${__FILEDIR__}\\..\\LEGAL\\TERMS_AND_CONDITIONS.txt"
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_STARTMENU Application $StartMenuFolder
@@ -91,6 +100,19 @@ FunctionEnd
 Section "Engo PDF Viewer & AI Study Agent (required)" SEC_CORE
   SectionIn RO
   SetShellVarContext all
+
+  ; Declining the agreement never deletes the current installation.
+  ${If} $ExistingInstallDir != ""
+    ${If} ${FileExists} "$ExistingInstallDir\\Uninstall.exe"
+      MessageBox MB_YESNO|MB_ICONQUESTION "An existing Engo installation was found.$\\r$\\n$\\r$\\nThe previous application files will be removed before this version is installed. Your settings and study data will be preserved.$\\r$\\n$\\r$\\nContinue?" IDYES +2
+        Abort
+      ExecWait '"$ExistingInstallDir\\Uninstall.exe" /S _?=$ExistingInstallDir' $R1
+      ${If} $R1 != 0
+        MessageBox MB_ICONSTOP "The previous Engo installation could not be removed (code $R1). Close Engo and try again."
+        Abort
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
   SetOutPath "$INSTDIR"
 
   ; Each release is a fresh Nuitka standalone build. Copy the complete runtime tree.
