@@ -47,11 +47,21 @@ The project is an **unpackaged WinUI 3 app**. You can build and launch it for te
    winget install Microsoft.winappcli --source winget
    ```
 
-3. Open PowerShell in this directory and run:
+3. From the repository root, open PowerShell and run:
 
    ```powershell
-   .\run-dev.ps1
+   .\Engo.WinUI\run-dev.ps1
    ```
+
+   The script checks for .NET 11 and WinApp CLI, installs WinApp CLI with WinGet if it is missing, restores dependencies, then builds the **Debug** configuration and launches Engo directly.
+
+   You can also run the app manually after installing WinApp CLI:
+
+   ```powershell
+   winapp run .\Engo.WinUI\src\Engo.App\Engo.App.csproj -c Debug --arch x64
+   ```
+
+   This still compiles the C# code as a Debug build, as C# is a compiled language; it does **not** create a Release package, installer, or distribution build.
 
    For another architecture/configuration:
 
