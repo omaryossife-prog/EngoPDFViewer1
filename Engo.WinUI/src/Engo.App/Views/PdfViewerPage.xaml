@@ -3,7 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     FlowDirection="RightToLeft">
-    <Grid Padding="20" RowDefinitions="Auto,Auto,*" RowSpacing="12">
+    <Grid Padding="20" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="10">
         <StackPanel
             Grid.Row="0"
             Orientation="Horizontal"
@@ -85,7 +85,62 @@
             Severity="Error"
             Title="حدث خطأ" />
 
-        <Grid Grid.Row="2" ColumnDefinitions="300,*" ColumnSpacing="12">
+        <Border
+            Grid.Row="2"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Padding="8">
+            <StackPanel
+                Orientation="Horizontal"
+                Spacing="8"
+                VerticalAlignment="Center">
+                <TextBlock Text="أداة التعليق" VerticalAlignment="Center" />
+                <ComboBox
+                    x:Name="AnnotationToolComboBox"
+                    Width="145"
+                    SelectedIndex="0"
+                    SelectionChanged="AnnotationToolComboBox_SelectionChanged">
+                    <ComboBoxItem Content="تصفح وتحريك" Tag="Browse" />
+                    <ComboBoxItem Content="تظليل" Tag="Highlight" />
+                    <ComboBoxItem Content="قلم حر" Tag="Freehand" />
+                    <ComboBoxItem Content="مستطيل" Tag="Rectangle" />
+                    <ComboBoxItem Content="ملاحظة" Tag="Note" />
+                </ComboBox>
+                <TextBlock Text="اللون" VerticalAlignment="Center" />
+                <ComboBox
+                    x:Name="AnnotationColorComboBox"
+                    Width="105"
+                    SelectedIndex="0">
+                    <ComboBoxItem Content="أصفر" Tag="Yellow" />
+                    <ComboBoxItem Content="أحمر" Tag="Red" />
+                    <ComboBoxItem Content="أزرق" Tag="Blue" />
+                    <ComboBoxItem Content="أخضر" Tag="Green" />
+                </ComboBox>
+                <TextBlock Text="السُمك" VerticalAlignment="Center" />
+                <Slider
+                    x:Name="AnnotationLineWidthSlider"
+                    Width="100"
+                    Minimum="1"
+                    Maximum="8"
+                    Value="3"
+                    StepFrequency="0.5" />
+                <Button
+                    Content="تراجع"
+                    Click="UndoLastAnnotationButton_Click" />
+                <Button
+                    Content="حفظ نسخة PDF"
+                    Click="SaveAnnotatedCopyButton_Click" />
+                <TextBlock
+                    x:Name="AnnotationStatusText"
+                    VerticalAlignment="Center"
+                    Opacity="0.72"
+                    Text="اختر أداة للتعليق، ثم ارسم على الصفحة." />
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="3" ColumnDefinitions="300,*" ColumnSpacing="12">
             <Border
                 Grid.Column="0"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -132,10 +187,23 @@
                             MinZoomFactor="0.1"
                             MaxZoomFactor="4"
                             ViewChanged="PdfScrollViewer_ViewChanged">
-                            <Image
-                                x:Name="PageImage"
+                            <Grid
+                                x:Name="PdfPageSurface"
                                 HorizontalAlignment="Center"
-                                Stretch="Uniform" />
+                                VerticalAlignment="Center">
+                                <Image
+                                    x:Name="PageImage"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Stretch="Uniform" />
+                                <Canvas
+                                    x:Name="AnnotationCanvas"
+                                    Background="Transparent"
+                                    IsHitTestVisible="False"
+                                    PointerPressed="AnnotationCanvas_PointerPressed"
+                                    PointerMoved="AnnotationCanvas_PointerMoved"
+                                    PointerReleased="AnnotationCanvas_PointerReleased" />
+                            </Grid>
                         </ScrollViewer>
                         <ProgressRing
                             x:Name="LoadingRing"
