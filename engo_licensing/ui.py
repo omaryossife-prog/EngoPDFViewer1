@@ -1816,4 +1816,4 @@ class AccountDialog(QDialog):
         self._set_busy(False, self.service.state.reason)
 
 
-__all__ = ["StartupVerifierWorker", "EngoSplashScreen", "AccountDialog", "PlansDialog", "ServiceActionWorker"]
+__all__ = ["TermsAcceptanceDialog", "StartupVerifierWorker", "EngoSplashScreen", "AccountDialog", "PlansDialog", "ServiceActionWorker"]
