@@ -21,7 +21,7 @@ This checklist is the source of truth for migration completeness. Status values 
 | Zoom, thumbnails, full-page view | Engo.App / Document engine | Not started | DPI, scrolling, and large-file checks |
 | Text selection and contextual questions | AI / Document services | Not started | Selected-text context tests |
 | PDF highlights, freehand ink, rectangles, and eraser | AsposePdfAnnotationService / PdfViewerPage | In progress | Native PDF highlight/ink/rectangle annotations, live overlay preview, undo, pending-annotation eraser, separate-copy saving, CropBox/rotation mapping, and close-with-unsaved-warning wired; round-trip smoke coverage added, Windows visual verification pending |
-| Merge PDFs | Document services | Not started | Output integrity tests |
+| Merge PDFs | AsposePdfMergeService / MainWindow | In progress | Multi-file picker, user-selected destination, output opened in a tab; smoke test verifies combined page count, input order and source preservation; Windows UI verification pending |
 | Word and PowerPoint support | Office adapter | Not started | DOCX/PPTX fixture suite |
 | Image viewing, zoom, and pan | ImageViewerPage / Windows imaging codecs | In progress | PNG/JPEG/BMP/GIF/TIFF/WebP file picker, image tab, pixel dimensions, zoom, fit-image and scroll/pan scaffolded; codec availability and UI fixture tests pending |
 | AI chat and conversation history | AI services | Not started | Provider contract and persistence tests |
