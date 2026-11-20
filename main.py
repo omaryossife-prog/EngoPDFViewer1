@@ -132,6 +132,15 @@ from engo_licensing import (
     is_expected_free_startup,
     ServiceActionWorker,
     StartupVerifierWorker,
+    TermsAcceptanceDialog,
+)
+from engo_licensing.terms import (
+    TERMS_VERSION,
+    is_installer_terms_acceptance_current,
+    is_terms_acceptance_current,
+    load_terms_documents,
+    save_terms_acceptance,
+    terms_content_sha256,
 )
 
 
@@ -11782,6 +11791,54 @@ def main():
     settings = QSettings(APP_ORG, "EngoPDFViewer")
     language = settings.value("interface_language", "en", type=str) or "en"
     ui_theme = settings.value("ui_theme", "dark", type=str) or "dark"
+
+    # The official installer stores consent after its mandatory license page.
+    # Source/portable launches use a per-user record and this explicit dialog.
+    try:
+        terms_documents = load_terms_documents(resource_path("LEGAL"))
+        terms_digest = terms_content_sha256(terms_documents)
+    except Exception as exc:
+        QMessageBox.critical(
+            None,
+            "Engo",
+            (
+                "تعذر تحميل اتفاقية الاستخدام المطلوبة. لن يتم تشغيل البرنامج.\\n\\n"
+                f"التفاصيل: {exc}"
+            ) if str(language).lower().startswith("ar") else
+            "The required Terms & Conditions could not be loaded. Engo will not start.\\n\\n"
+            f"Details: {exc}",
+        )
+        return 1
+
+    accepted_current_terms = (
+        is_terms_acceptance_current(settings, TERMS_VERSION, terms_digest)
+        or is_installer_terms_acceptance_current(TERMS_VERSION, terms_digest)
+    )
+    if not accepted_current_terms:
+        terms_dialog = TermsAcceptanceDialog(
+            terms_documents, language=language, terms_version=TERMS_VERSION, theme=ui_theme,
+        )
+        if terms_dialog.exec() != QDialog.DialogCode.Accepted:
+            return 0
+        try:
+            save_terms_acceptance(
+                settings,
+                terms_version=TERMS_VERSION,
+                content_sha256=terms_digest,
+                app_version=APP_VERSION,
+                language=terms_dialog.language,
+            )
+        except Exception as exc:
+            QMessageBox.critical(
+                None, "Engo",
+                (
+                    "تعذر حفظ موافقتك على الشروط. لن يتم تشغيل البرنامج."
+                    if str(language).lower().startswith("ar") else
+                    "Your acceptance could not be saved. Engo will not start."
+                ) + f"\\n\\n{exc}",
+            )
+            return 1
+
     service = LicenseService(config=LicenseConfig.load(APP_VERSION))
     icon_path = resource_path("engopdfviewer.ico")
     splash = EngoSplashScreen(icon_path, language, theme=ui_theme)
