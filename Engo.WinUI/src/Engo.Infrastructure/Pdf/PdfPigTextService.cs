@@ -99,6 +99,12 @@ public sealed class PdfPigTextService : IPdfTextService
         string query,
         CancellationToken cancellationToken)
     {
+        var normalizedQuery = NormalizeWhitespace(query);
+        if (normalizedQuery.Length == 0)
+        {
+            return [];
+        }
+
         using var document = PdfPigDocument.Open(filePath);
         var hits = new List<PdfTextSearchHit>();
         var pageNumber = 0;
@@ -122,7 +128,7 @@ public sealed class PdfPigTextService : IPdfTextService
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var matchIndex = normalizedText.IndexOf(
-                    query,
+                    normalizedQuery,
                     searchOffset,
                     StringComparison.OrdinalIgnoreCase);
 
@@ -140,7 +146,7 @@ public sealed class PdfPigTextService : IPdfTextService
                     return hits;
                 }
 
-                searchOffset = matchIndex + Math.Max(1, query.Length);
+                searchOffset = matchIndex + Math.Max(1, normalizedQuery.Length);
             }
         }
 
