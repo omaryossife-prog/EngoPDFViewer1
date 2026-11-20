@@ -16,6 +16,8 @@ This is a phased rewrite, not a one-shot language conversion. The Python applica
 - [ ] Build and launch on Windows 10/11.
 - [ ] Add automated tests for the recent-document service and persistence adapter.
 - [ ] Add Arabic/English resource-based localization and the application theme system.
+- [x] Add an isolated Aspose.PDF FOSS engine-evaluation project and document its commercial-license suitability.
+- [ ] Restore, build, and run the PDF engine spike on Windows with a non-sensitive fixture set.
 
 ## Phase 1 — Document foundation
 
