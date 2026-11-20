@@ -153,7 +153,7 @@
                     IsAddTabButtonVisible="False">
                     <TabView.TabItems>
                         <TabViewItem Header="نتائج البحث">
-                            <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
+                            <Grid RowDefinitions="Auto,*" RowSpacing="8">
                                 <TextBlock
                                     x:Name="SearchResultSummary"
                                     Text="اكتب كلمة أو عبارة للبحث داخل الملف."
@@ -161,7 +161,7 @@
                                     TextWrapping="Wrap" />
                                 <ListView
                                     x:Name="SearchResultsList"
-                                    Grid.Row="2"
+                                    Grid.Row="1"
                                     SelectionMode="Single"
                                     DisplayMemberPath="Snippet"
                                     SelectionChanged="SearchResultsList_SelectionChanged" />
