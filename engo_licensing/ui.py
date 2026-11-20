@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QListWidget, QMessageBox, QPushButton, QProgressBar, QVBoxLayout, QWidget,
     QComboBox, QScrollArea, QPlainTextEdit, QTableWidget, QTableWidgetItem,
     QHeaderView, QAbstractItemView, QAbstractScrollArea, QSizePolicy, QButtonGroup,
-    QTextBrowser,
+    QTextBrowser, QCheckBox,
 )
 
 from .core import LicenseService, LicenseState
@@ -60,6 +60,206 @@ def _fmt_datetime_local(value: Any) -> str:
         return dt.astimezone().strftime("%Y-%m-%d %H:%M")
     except (ValueError, TypeError, OverflowError):
         return "—"
+
+
+
+class TermsAcceptanceDialog(QDialog):
+    """Mandatory bilingual agreement screen. Consent is enabled after reading to the end."""
+
+    def __init__(
+        self, documents: dict[str, str], language: str = "en",
+        terms_version: str = "1.0.0", parent=None, theme: str = "dark",
+    ):
+        super().__init__(parent)
+        self.documents = dict(documents or {})
+        if not self.documents.get("ar") or not self.documents.get("en"):
+            raise ValueError("Both Arabic and English Terms & Conditions are required.")
+        self.language = "ar" if str(language).lower().startswith("ar") else "en"
+        self.terms_version = str(terms_version)
+        self._reached_end = False
+        self.setObjectName("termsAcceptanceDialog")
+        self.setWindowTitle(
+            "اتفاقية الاستخدام والشروط والأحكام" if self.language == "ar"
+            else "Terms of Use & License Agreement"
+        )
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.setModal(True)
+        self.setMinimumSize(680, 570)
+        self.resize(860, 720)
+
+        t = _get_theme_tokens(theme)
+        win, panel, raised = t["window"], t["panel"], t["raised"]
+        border, border_strong = t["border"], t["border_strong"]
+        txt, muted, accent = t["text"], t["muted"], t["accent"]
+        accent_hover = t["accent_hover"]
+        self.setStyleSheet(f"""
+            QDialog#termsAcceptanceDialog {{ background:{win}; color:{txt}; }}
+            QLabel#termsTitle {{ color:{txt}; font-size:19pt; font-weight:800; }}
+            QLabel#termsSubtitle {{ color:{muted}; font-size:9.5pt; }}
+            QLabel#termsLanguageLabel {{ color:{muted}; font-weight:650; }}
+            QTextBrowser#termsDocument {{
+                background:{panel}; color:{txt}; border:1px solid {border};
+                border-radius:11px; padding:12px; font-size:10pt;
+                selection-background-color:{accent}; selection-color:{win};
+            }}
+            QCheckBox#termsConsent {{
+                color:{txt}; spacing:10px; font-size:10pt; font-weight:650;
+                padding:5px 2px;
+            }}
+            QCheckBox#termsConsent::indicator {{
+                width:19px; height:19px; border-radius:5px;
+                border:1px solid {border_strong}; background:{panel};
+            }}
+            QCheckBox#termsConsent::indicator:checked {{
+                background:{accent}; border-color:{accent};
+            }}
+            QComboBox#termsLanguage {{
+                color:{txt}; background:{panel}; border:1px solid {border};
+                border-radius:8px; padding:6px 10px; min-height:28px;
+            }}
+            QPushButton#termsAcceptButton, QPushButton#termsDeclineButton {{
+                min-height:38px; min-width:145px; border-radius:9px;
+                padding:0 15px; font-weight:750;
+            }}
+            QPushButton#termsAcceptButton {{
+                color:{win}; background:{accent}; border:1px solid {accent};
+            }}
+            QPushButton#termsAcceptButton:hover {{
+                background:{accent_hover}; border-color:{accent_hover};
+            }}
+            QPushButton#termsAcceptButton:disabled {{
+                color:{muted}; background:{raised}; border-color:{border};
+            }}
+            QPushButton#termsDeclineButton {{
+                color:{txt}; background:{raised}; border:1px solid {border};
+            }}
+            QPushButton#termsDeclineButton:hover {{
+                background:{panel}; border-color:{border_strong};
+            }}
+        """)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(22, 20, 22, 18)
+        root.setSpacing(11)
+        heading = QVBoxLayout()
+        heading.setSpacing(4)
+        self.title_label = QLabel()
+        self.title_label.setObjectName("termsTitle")
+        self.subtitle_label = QLabel()
+        self.subtitle_label.setObjectName("termsSubtitle")
+        self.subtitle_label.setWordWrap(True)
+        heading.addWidget(self.title_label)
+        heading.addWidget(self.subtitle_label)
+        root.addLayout(heading)
+
+        language_row = QHBoxLayout()
+        self.language_label = QLabel()
+        self.language_label.setObjectName("termsLanguageLabel")
+        self.language_combo = QComboBox()
+        self.language_combo.setObjectName("termsLanguage")
+        self.language_combo.addItem("العربية", "ar")
+        self.language_combo.addItem("English", "en")
+        self.language_combo.setMinimumWidth(130)
+        language_row.addWidget(self.language_label)
+        language_row.addWidget(self.language_combo)
+        language_row.addStretch(1)
+        root.addLayout(language_row)
+
+        self.document = QTextBrowser()
+        self.document.setObjectName("termsDocument")
+        self.document.setOpenExternalLinks(False)
+        self.document.setReadOnly(True)
+        self.document.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        root.addWidget(self.document, 1)
+        self.document.verticalScrollBar().valueChanged.connect(self._update_read_status)
+        self.document.verticalScrollBar().rangeChanged.connect(
+            lambda _minimum, _maximum: QTimer.singleShot(0, self._update_read_status)
+        )
+
+        self.consent_checkbox = QCheckBox()
+        self.consent_checkbox.setObjectName("termsConsent")
+        self.consent_checkbox.setChecked(False)
+        self.consent_checkbox.setEnabled(False)
+        self.consent_checkbox.toggled.connect(self._update_accept_enabled)
+        root.addWidget(self.consent_checkbox)
+
+        self.footer_note = QLabel()
+        self.footer_note.setWordWrap(True)
+        self.footer_note.setStyleSheet(f"color:{muted}; font-size:8.5pt;")
+        root.addWidget(self.footer_note)
+
+        buttons = QHBoxLayout()
+        buttons.setSpacing(10)
+        buttons.addStretch(1)
+        self.decline_button = QPushButton()
+        self.decline_button.setObjectName("termsDeclineButton")
+        self.decline_button.clicked.connect(self.reject)
+        self.accept_button = QPushButton()
+        self.accept_button.setObjectName("termsAcceptButton")
+        self.accept_button.setEnabled(False)
+        self.accept_button.setDefault(True)
+        self.accept_button.clicked.connect(self.accept)
+        buttons.addWidget(self.decline_button)
+        buttons.addWidget(self.accept_button)
+        root.addLayout(buttons)
+
+        self.language_combo.currentIndexChanged.connect(self._apply_selected_language)
+        self.language_combo.setCurrentIndex(0 if self.language == "ar" else 1)
+        self._apply_language(self.language)
+
+    def _apply_selected_language(self, _index: int):
+        self._apply_language(str(self.language_combo.currentData() or "en"))
+
+    def _apply_language(self, language: str):
+        self.language = "ar" if str(language).lower().startswith("ar") else "en"
+        is_arabic = self.language == "ar"
+        direction = Qt.LayoutDirection.RightToLeft if is_arabic else Qt.LayoutDirection.LeftToRight
+        self.setLayoutDirection(direction)
+        self.document.setLayoutDirection(direction)
+        self._reached_end = False
+        self.consent_checkbox.blockSignals(True)
+        self.consent_checkbox.setChecked(False)
+        self.consent_checkbox.setEnabled(False)
+        self.consent_checkbox.blockSignals(False)
+        self.accept_button.setEnabled(False)
+        self.setWindowTitle(
+            "اتفاقية الاستخدام والشروط والأحكام" if is_arabic
+            else "Terms of Use & License Agreement"
+        )
+        self.title_label.setText(
+            "اتفاقية الاستخدام والشروط والأحكام" if is_arabic
+            else "Terms of Use & License Agreement"
+        )
+        self.subtitle_label.setText(
+            "راجع الاتفاقية حتى نهايتها، ثم فعّل مربع الموافقة للمتابعة. لن يبدأ البرنامج عند الرفض."
+            if is_arabic else
+            "Read this agreement to the end, then tick the consent box to continue. Engo will not start if you decline."
+        )
+        self.language_label.setText("لغة الاتفاقية" if is_arabic else "Agreement language")
+        self.document.setMarkdown(self.documents[self.language])
+        self.consent_checkbox.setText(
+            "قرأت اتفاقية الاستخدام والشروط والأحكام وفهمتها وأوافق على الالتزام بها."
+            if is_arabic else
+            "I have read and understood these Terms & Conditions and agree to be bound by them."
+        )
+        self.footer_note.setText(
+            f"إصدار الاتفاقية {self.terms_version} • ستُحفظ الموافقة على هذا الإصدار."
+            if is_arabic else
+            f"Agreement version {self.terms_version} • Your acceptance of this version will be saved."
+        )
+        self.decline_button.setText("لا أوافق، إغلاق Engo" if is_arabic else "Decline & Exit Engo")
+        self.accept_button.setText("أوافق وأتابع" if is_arabic else "I Agree & Continue")
+        QTimer.singleShot(0, self._update_read_status)
+
+    def _update_read_status(self, *_args):
+        scrollbar = self.document.verticalScrollBar()
+        at_end = scrollbar.maximum() <= 0 or scrollbar.value() >= scrollbar.maximum() - 2
+        if at_end and not self._reached_end:
+            self._reached_end = True
+            self.consent_checkbox.setEnabled(True)
+
+    def _update_accept_enabled(self, checked: bool):
+        self.accept_button.setEnabled(bool(checked) and self._reached_end)
 
 
 class StartupVerifierWorker(QThread):
