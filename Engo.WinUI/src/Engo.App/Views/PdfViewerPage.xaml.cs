@@ -1,3 +1,5 @@
+using Engo.Application.Documents;
+using Engo.Infrastructure.Pdf;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
@@ -10,7 +12,10 @@ namespace Engo.App.Views;
 
 public sealed partial class PdfViewerPage : Page
 {
+    private readonly IPdfTextService _textService = new PdfPigTextService();
     private PdfDocument? _document;
+    private CancellationTokenSource? _searchCancellation;
+    private string? _filePath;
     private uint _pageIndex;
 
     public PdfViewerPage()
@@ -24,12 +29,17 @@ public sealed partial class PdfViewerPage : Page
 
         if (e.Parameter is string filePath && !string.IsNullOrWhiteSpace(filePath))
         {
+            _filePath = filePath;
             await LoadDocumentAsync(filePath);
         }
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        _searchCancellation?.Cancel();
+        _searchCancellation?.Dispose();
+        _searchCancellation = null;
+
         PageImage.Source = null;
         _document?.Dispose();
         _document = null;
@@ -41,6 +51,9 @@ public sealed partial class PdfViewerPage : Page
     {
         LoadingRing.IsActive = true;
         ErrorInfoBar.IsOpen = false;
+        SearchResultsList.ItemsSource = null;
+        SearchResultSummary.Text = "اكتب كلمة أو عبارة للبحث داخل الملف.";
+        ExtractedPageText.Text = "استخدم زر استخراج نص الصفحة لعرض النص القابل للاستخراج.";
 
         try
         {
@@ -96,6 +109,7 @@ public sealed partial class PdfViewerPage : Page
             PageImage.Height = page.Size.Height;
 
             PageCounter.Text = $"الصفحة {_pageIndex + 1} من {_document.PageCount}";
+            ExtractedPageText.Text = "استخدم زر استخراج نص الصفحة لعرض النص القابل للاستخراج.";
         }
         catch (Exception exception)
         {
@@ -128,6 +142,129 @@ public sealed partial class PdfViewerPage : Page
 
         _pageIndex++;
         await RenderCurrentPageAsync();
+    }
+
+    private async void SearchButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_filePath))
+        {
+            ShowError("افتح ملف PDF أولًا.");
+            return;
+        }
+
+        var query = SearchTextBox.Text.Trim();
+        if (query.Length == 0)
+        {
+            SearchResultSummary.Text = "اكتب كلمة أو عبارة للبحث داخل الملف.";
+            SearchResultsList.ItemsSource = null;
+            return;
+        }
+
+        _searchCancellation?.Cancel();
+        _searchCancellation?.Dispose();
+        _searchCancellation = new CancellationTokenSource();
+        var cancellationToken = _searchCancellation.Token;
+
+        LoadingRing.IsActive = true;
+        ErrorInfoBar.IsOpen = false;
+        SearchResultsList.ItemsSource = null;
+        SearchResultSummary.Text = "جاري البحث داخل المستند...";
+
+        try
+        {
+            var results = await _textService.SearchAsync(
+                _filePath,
+                query,
+                cancellationToken);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            SearchResultsList.ItemsSource = results;
+            SearchResultSummary.Text = results.Count switch
+            {
+                0 => "لم يتم العثور على نتائج.",
+                1 => "تم العثور على نتيجة واحدة.",
+                _ => $"تم العثور على {results.Count} نتيجة."
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer search or page navigation replaced this request.
+        }
+        catch (Exception exception)
+        {
+            ShowError($"تعذّر البحث داخل المستند: {exception.Message}");
+            SearchResultSummary.Text = "تعذّر إكمال البحث.";
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                LoadingRing.IsActive = false;
+            }
+        }
+    }
+
+    private async void SearchResultsList_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (SearchResultsList.SelectedItem is not PdfTextSearchHit hit ||
+            _document is null)
+        {
+            return;
+        }
+
+        var targetPageIndex = (uint)Math.Max(0, hit.PageNumber - 1);
+        if (targetPageIndex >= _document.PageCount)
+        {
+            return;
+        }
+
+        _pageIndex = targetPageIndex;
+        await RenderCurrentPageAsync();
+
+        ExtractedPageText.Text = hit.Snippet;
+        PageTextExpander.IsExpanded = true;
+    }
+
+    private async void ExtractCurrentPageTextButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_filePath) || _document is null)
+        {
+            ShowError("افتح ملف PDF أولًا.");
+            return;
+        }
+
+        LoadingRing.IsActive = true;
+        ErrorInfoBar.IsOpen = false;
+
+        try
+        {
+            var pageNumber = checked((int)_pageIndex + 1);
+            var text = await _textService.ExtractPageTextAsync(
+                _filePath,
+                pageNumber);
+
+            ExtractedPageText.Text = string.IsNullOrWhiteSpace(text)
+                ? "لم يتم العثور على نص قابل للاستخراج في هذه الصفحة. قد تكون الصفحة صورة ممسوحة ضوئيًا وتحتاج إلى OCR."
+                : text;
+
+            PageTextExpander.IsExpanded = true;
+        }
+        catch (Exception exception)
+        {
+            ShowError($"تعذّر استخراج النص: {exception.Message}");
+        }
+        finally
+        {
+            LoadingRing.IsActive = false;
+        }
     }
 
     private void UpdateNavigationButtons()
