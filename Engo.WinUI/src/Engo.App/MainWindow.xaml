@@ -6,7 +6,8 @@
         x:Name="RootNavigation"
         IsBackButtonVisible="Collapsed"
         IsSettingsVisible="False"
-        PaneDisplayMode="LeftCompact">
+        PaneDisplayMode="LeftCompact"
+        SelectionChanged="RootNavigation_SelectionChanged">
         <NavigationView.MenuItems>
             <NavigationViewItem
                 Content="الرئيسية"
