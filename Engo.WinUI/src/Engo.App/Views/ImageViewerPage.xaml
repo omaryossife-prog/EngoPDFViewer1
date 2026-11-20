@@ -11,6 +11,7 @@
             VerticalAlignment="Center">
             <Button Content="تصغير" Click="ZoomOutButton_Click" />
             <Button Content="100%" Click="ResetZoomButton_Click" />
+            <Button Content="ملاءمة" Click="FitImageButton_Click" />
             <Button Content="تكبير" Click="ZoomInButton_Click" />
             <TextBlock
                 x:Name="ZoomStatusText"
