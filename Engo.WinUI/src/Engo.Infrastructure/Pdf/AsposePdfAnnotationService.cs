@@ -150,9 +150,21 @@ public sealed class AsposePdfAnnotationService : IPdfAnnotationService
         switch (draft.Kind)
         {
             case PdfAnnotationKind.Highlight:
+                // PDF text-markup annotations use four explicit corner points
+                // (upper-left, upper-right, lower-left, lower-right). Without
+                // QuadPoints some viewers show the annotation rectangle but no
+                // visible highlighted region.
+                var highlightQuadPoints = new[]
+                {
+                    left, top,
+                    right, top,
+                    left, bottom,
+                    right, bottom
+                };
+
                 page.Annotations.AddHighlightAnnotation(
                     rectangle,
-                    quadPoints: null,
+                    quadPoints: highlightQuadPoints,
                     color: color);
                 break;
 
