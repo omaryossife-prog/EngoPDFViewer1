@@ -643,80 +643,19 @@ public sealed partial class PdfViewerPage : Page
         }
 
         var target = ToNormalizedPoint(position);
-        const double edgeTolerance = 0.008;
-        const double strokeTolerance = 0.014;
+        var index = PdfAnnotationHitTester.FindTopmostHitIndex(
+            _pendingAnnotations,
+            target);
 
-        for (var index = _pendingAnnotations.Count - 1; index >= 0; index--)
+        if (index < 0)
         {
-            var annotation = _pendingAnnotations[index];
-            var hit = annotation.Kind == PdfAnnotationKind.Freehand
-                ? IsNearStroke(target, annotation.StrokePoints, strokeTolerance)
-                : target.XRatio >= annotation.LeftRatio - edgeTolerance &&
-                  target.XRatio <= annotation.RightRatio + edgeTolerance &&
-                  target.YRatio >= annotation.TopRatio - edgeTolerance &&
-                  target.YRatio <= annotation.BottomRatio + edgeTolerance;
-
-            if (!hit)
-            {
-                continue;
-            }
-
-            _pendingAnnotations.RemoveAt(index);
-            RedrawPendingAnnotations();
-            AnnotationStatusText.Text = "تمت إزالة التعليق غير المحفوظ.";
+            AnnotationStatusText.Text = "لم يتم العثور على تعليق عند موضع الممحاة.";
             return;
         }
 
-        AnnotationStatusText.Text = "لم يتم العثور على تعليق عند موضع الممحاة.";
-    }
-
-    private static bool IsNearStroke(
-        PdfAnnotationPoint target,
-        IReadOnlyList<PdfAnnotationPoint> points,
-        double tolerance)
-    {
-        if (points.Count == 0)
-        {
-            return false;
-        }
-
-        var toleranceSquared = tolerance * tolerance;
-
-        if (points.Count == 1)
-        {
-            var deltaX = target.XRatio - points[0].XRatio;
-            var deltaY = target.YRatio - points[0].YRatio;
-            return (deltaX * deltaX) + (deltaY * deltaY) <= toleranceSquared;
-        }
-
-        for (var index = 1; index < points.Count; index++)
-        {
-            var start = points[index - 1];
-            var end = points[index];
-            var deltaX = end.XRatio - start.XRatio;
-            var deltaY = end.YRatio - start.YRatio;
-            var lengthSquared = (deltaX * deltaX) + (deltaY * deltaY);
-
-            var projection = lengthSquared <= double.Epsilon
-                ? 0
-                : Math.Clamp(
-                    ((target.XRatio - start.XRatio) * deltaX +
-                     (target.YRatio - start.YRatio) * deltaY) / lengthSquared,
-                    0,
-                    1);
-
-            var closestX = start.XRatio + (projection * deltaX);
-            var closestY = start.YRatio + (projection * deltaY);
-            var distanceX = target.XRatio - closestX;
-            var distanceY = target.YRatio - closestY;
-
-            if ((distanceX * distanceX) + (distanceY * distanceY) <= toleranceSquared)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        _pendingAnnotations.RemoveAt(index);
+        RedrawPendingAnnotations();
+        AnnotationStatusText.Text = "تمت إزالة التعليق غير المحفوظ.";
     }
 
     private PdfAnnotationPoint ToNormalizedPoint(Point point)
