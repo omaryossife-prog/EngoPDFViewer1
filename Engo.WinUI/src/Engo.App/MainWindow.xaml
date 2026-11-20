@@ -20,6 +20,10 @@
             <Grid RowDefinitions="Auto,*">
                 <CommandBar Grid.Row="0" DefaultLabelPosition="Right">
                     <AppBarButton
+                        Icon="Home"
+                        Label="الرئيسية"
+                        Click="HomeButton_Click" />
+                    <AppBarButton
                         Icon="OpenFile"
                         Label="فتح ملف PDF"
                         Click="OpenPdfButton_Click" />
