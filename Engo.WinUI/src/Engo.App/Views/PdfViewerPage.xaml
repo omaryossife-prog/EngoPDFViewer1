@@ -40,6 +40,19 @@
             <Button
                 Content="استخراج نص الصفحة"
                 Click="ExtractCurrentPageTextButton_Click" />
+            <Rectangle
+                Width="1"
+                Height="28"
+                Fill="{ThemeResource DividerStrokeColorDefaultBrush}"
+                Margin="6,0" />
+            <Button Content="−" ToolTipService.ToolTip="تصغير" Click="ZoomOutButton_Click" />
+            <Button Content="100%" x:Name="ResetZoomButton" Click="ResetZoomButton_Click" />
+            <Button Content="+" ToolTipService.ToolTip="تكبير" Click="ZoomInButton_Click" />
+            <TextBlock
+                x:Name="ZoomStatusText"
+                Text="100%"
+                VerticalAlignment="Center"
+                Opacity="0.72" />
         </StackPanel>
 
         <InfoBar
@@ -90,9 +103,13 @@
                     CornerRadius="10">
                     <Grid>
                         <ScrollViewer
+                            x:Name="PdfScrollViewer"
                             HorizontalScrollBarVisibility="Auto"
                             VerticalScrollBarVisibility="Auto"
-                            ZoomMode="Enabled">
+                            ZoomMode="Enabled"
+                            MinZoomFactor="0.5"
+                            MaxZoomFactor="4"
+                            ViewChanged="PdfScrollViewer_ViewChanged">
                             <Image
                                 x:Name="PageImage"
                                 HorizontalAlignment="Center"
