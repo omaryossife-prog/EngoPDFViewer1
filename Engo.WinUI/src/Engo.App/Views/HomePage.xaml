@@ -36,11 +36,11 @@
                 Padding="18">
                 <StackPanel Spacing="10">
                     <TextBlock
-                        Text="آخر ملفات PDF"
+                        Text="آخر المستندات"
                         FontSize="20"
                         FontWeight="SemiBold" />
                     <TextBlock
-                        Text="افتح أحد الملفات التي استخدمتها مؤخرًا."
+                        Text="افتح ملف PDF أو صورة استخدمتها مؤخرًا."
                         Opacity="0.72"
                         TextWrapping="Wrap" />
                     <ListView
