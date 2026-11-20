@@ -244,7 +244,7 @@ public sealed partial class MainWindow : Window
         }
 
         DocumentTabs.TabItems.Remove(tab);
-        if (DocumentTabs.TabItems.Count > 0)
+        if (DocumentTabs.SelectedItem is null && DocumentTabs.TabItems.Count > 0)
         {
             DocumentTabs.SelectedIndex = 0;
         }
