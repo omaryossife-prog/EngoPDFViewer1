@@ -425,8 +425,7 @@ public sealed class OpenXmlOfficeDocumentReader : IOfficeDocumentReader
         double slideHeight)
     {
         var slide = slideDocument.Root;
-        var backgroundColorNode = slide?
-            .Descendants(Presentation + "bg")
+        var backgroundColorNode = slide?.Descendants(Presentation + "bg")
             .SelectMany(background => background.Descendants(Drawing + "srgbClr"))
             .FirstOrDefault();
         var backgroundColor = NormalizeHexColor(
