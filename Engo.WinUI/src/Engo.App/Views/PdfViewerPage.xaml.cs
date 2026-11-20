@@ -1268,15 +1268,18 @@ public sealed partial class PdfViewerPage : Page
                     if (draft.Kind == PdfAnnotationKind.TagRegion &&
                         !string.IsNullOrWhiteSpace(draft.Contents))
                     {
-                        var label = new TextBlock
+                        var label = new Border
                         {
-                            Text = draft.Contents,
-                            FontSize = 12,
-                            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                            Foreground = new SolidColorBrush(Colors.Black),
                             Background = CreateAnnotationBrush(draft.Color, 220),
                             Padding = new Thickness(5, 2, 5, 2),
-                            IsHitTestVisible = false
+                            IsHitTestVisible = false,
+                            Child = new TextBlock
+                            {
+                                Text = draft.Contents,
+                                FontSize = 12,
+                                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                                Foreground = new SolidColorBrush(Color.FromArgb(255, 0, 0, 0))
+                            }
                         };
                         Canvas.SetLeft(label, left);
                         Canvas.SetTop(label, Math.Max(0, top - 22));
