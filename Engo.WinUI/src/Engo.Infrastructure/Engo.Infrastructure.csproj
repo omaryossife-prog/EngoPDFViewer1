@@ -3,8 +3,8 @@
     <TargetFramework>net11.0</TargetFramework>
     <RootNamespace>Engo.Infrastructure</RootNamespace>
   </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\Engo.Application\Engo.Application.csproj" />
+    <PackageReference Include="PdfPig" />
   </ItemGroup>
 </Project>
