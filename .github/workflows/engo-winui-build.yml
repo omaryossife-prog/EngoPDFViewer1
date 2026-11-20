@@ -30,7 +30,7 @@ jobs:
           dotnet-version: 11.0.x
 
       - name: Restore
-        run: dotnet restore .\Engo.WinUI\Engo.WinUI.sln
+        run: dotnet restore .\Engo.WinUI\Engo.WinUI.sln -p:Platform=x64
 
       - name: Build
-        run: dotnet build .\Engo.WinUI\Engo.WinUI.sln --configuration Release --no-restore
+        run: dotnet build .\Engo.WinUI\Engo.WinUI.sln --configuration Release --no-restore -p:Platform=x64
