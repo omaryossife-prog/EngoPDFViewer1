@@ -56,7 +56,7 @@ public sealed class DocumentSessionService
         Path.GetExtension(path).ToLowerInvariant() switch
         {
             ".pdf" => true,
-            ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".tif" or ".tiff"
+            ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".webp" or ".tif" or ".tiff"
                 => true,
             _ => false
         };
