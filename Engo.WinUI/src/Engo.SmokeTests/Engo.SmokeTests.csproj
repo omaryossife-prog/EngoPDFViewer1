@@ -7,5 +7,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Engo.Application\Engo.Application.csproj" />
     <ProjectReference Include="..\Engo.Infrastructure\Engo.Infrastructure.csproj" />
+    <PackageReference Include="Aspose.PDF.FOSS" />
   </ItemGroup>
 </Project>
